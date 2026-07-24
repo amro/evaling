@@ -93,7 +93,27 @@ def test_no_user_message_falls_back(tmp_path):
     assert complete(spec, request).text == "mock response"
 
 
-def test_unimplemented_provider_rejected():
-    spec = ModelSpec(id="m", provider="anthropic")
+def test_every_schema_provider_is_registered():
+    # Catches a provider added to the config schema but not to the registry:
+    # the config would validate and then fail at run time.
+    import typing
+
+    from evaling.config.schema import ProviderName
+    from evaling.providers import provider_class
+
+    extras = {
+        "openai-compatible": {"base_url": "http://localhost:1234/v1"},
+        "command": {"command": "true"},
+    }
+    for name in typing.get_args(ProviderName):
+        assert provider_class(name) is not None
+        # and it constructs from a minimal valid spec
+        spec = ModelSpec.model_validate({"id": "m", "provider": name, **extras.get(name, {})})
+        assert create_provider(spec).spec.id == "m"
+
+
+def test_unknown_provider_rejected():
+    from evaling.providers import provider_class
+
     with pytest.raises(ProviderError, match="not implemented yet"):
-        create_provider(spec)
+        provider_class("telepathy")

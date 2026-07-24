@@ -1,10 +1,17 @@
 """Provider registry: map a model spec to a Provider instance."""
 
 from evaling.config.schema import ModelSpec
+from evaling.providers.anthropic import AnthropicProvider
 from evaling.providers.base import Completion, CompletionRequest, Provider, ProviderError
+from evaling.providers.command import CommandProvider
 from evaling.providers.mock import MockProvider
+from evaling.providers.openai import OpenAICompatibleProvider, OpenAIProvider
 
 _REGISTRY: dict[str, type[Provider]] = {
+    "anthropic": AnthropicProvider,
+    "openai": OpenAIProvider,
+    "openai-compatible": OpenAICompatibleProvider,
+    "command": CommandProvider,
     "mock": MockProvider,
 }
 

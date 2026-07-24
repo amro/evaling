@@ -1,0 +1,42 @@
+import pytest
+
+from evaling.providers.pricing import PRICES, estimate_cost, price_for
+
+
+def test_known_model_cost():
+    # 1M in @ $3 + 1M out @ $15
+    assert estimate_cost("claude-sonnet-5", 1_000_000, 1_000_000) == pytest.approx(18.0)
+
+
+def test_small_usage_precision():
+    assert estimate_cost("claude-opus-5", 1000, 500) == pytest.approx(1000 * 5e-6 + 500 * 25e-6)
+
+
+def test_unknown_model_has_no_cost():
+    assert estimate_cost("some-local-llama", 100, 100) is None
+
+
+def test_config_pricing_override():
+    params = {"pricing": {"input": 2.0, "output": 4.0}}
+    assert estimate_cost("some-local-llama", 1_000_000, 1_000_000, params) == pytest.approx(6.0)
+
+
+def test_override_beats_the_table():
+    params = {"pricing": {"input": 0.0, "output": 0.0}}
+    assert estimate_cost("claude-opus-5", 1_000_000, 1_000_000, params) == 0.0
+
+
+def test_partial_override_ignored():
+    # a half-specified override would silently mis-price; fall back to the table
+    assert price_for("claude-opus-5", {"pricing": {"input": 1.0}}) == PRICES["claude-opus-5"]
+
+
+def test_missing_usage_treated_as_zero():
+    assert estimate_cost("claude-opus-5", None, None) == 0.0
+    assert estimate_cost("claude-opus-5", 1_000_000, None) == pytest.approx(5.0)
+
+
+def test_table_entries_are_positive():
+    for model, price in PRICES.items():
+        assert price.input > 0 and price.output > 0, model
+        assert price.output >= price.input, model  # output always costs at least input
