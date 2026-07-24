@@ -1,0 +1,124 @@
+import asyncio
+import json
+
+import pytest
+
+from evaling.config import Case, EvalConfig
+from evaling.providers import create_provider
+from evaling.scorers import create_scorer, create_scorers
+from evaling.scorers.base import ScoringError
+from evaling.scorers.judge import JudgeScorer
+
+
+def judge_config(response, rubric=None, scorer_params=None, tmp_path=None):
+    """Config whose judge model is a mock returning a fixed verdict."""
+    cfg = EvalConfig.model_validate(
+        {
+            "models": [
+                {"id": "main", "provider": "mock"},
+                {"id": "judge-model", "provider": "mock", "params": {"response": response}},
+            ],
+            "variants": [{"name": "v1", "prompt": [{"role": "user", "content": "{{ q }}"}]}],
+            "cases": [{"vars": {"q": "hi"}}],
+            "scorecard": [
+                {
+                    "criterion": "quality",
+                    "scorer": {"type": "llm-judge", "judge": "grader", **(scorer_params or {})},
+                }
+            ],
+            "judges": {
+                "grader": {
+                    "model": "judge-model",
+                    "rubric": rubric
+                    or [
+                        {"role": "system", "content": "Grade 0-1. Answer JSON."},
+                        {"role": "user", "content": "Got {{ output }}, want {{ expected }}"},
+                    ],
+                }
+            },
+        }
+    )
+    if tmp_path is not None:
+        cfg._base_dir = tmp_path
+    return cfg
+
+
+def build_judge(config):
+    providers = {m.id: create_provider(m) for m in config.models}
+    return create_scorer(config.scorecard[0].scorer, config, providers)
+
+
+def run_score(scorer, output="the answer", case=None):
+    return asyncio.run(scorer.score(output, case or Case(expected="the answer")))
+
+
+def test_judge_scores_from_json_verdict():
+    verdict = json.dumps({"score": 0.9, "rationale": "close match"})
+    result = run_score(build_judge(judge_config(verdict)))
+    assert result.score == 0.9
+    assert result.passed  # 0.9 >= default pass_at 0.5
+    assert result.detail == "close match"
+
+
+def test_judge_explicit_passed_wins():
+    verdict = json.dumps({"score": 0.9, "passed": False})
+    assert not run_score(build_judge(judge_config(verdict))).passed
+
+
+def test_judge_scale_normalization():
+    verdict = json.dumps({"score": 4})
+    scorer = build_judge(judge_config(verdict, scorer_params={"scale": 5}))
+    result = run_score(scorer)
+    assert result.score == 0.8
+
+
+def test_judge_score_clamped():
+    verdict = json.dumps({"score": 9})
+    assert run_score(build_judge(judge_config(verdict))).score == 1.0
+
+
+def test_judge_fenced_json_tolerated():
+    verdict = '```json\n{"score": 1}\n```'
+    assert run_score(build_judge(judge_config(verdict))).passed
+
+
+def test_judge_non_json_raises():
+    with pytest.raises(ScoringError, match="did not return JSON"):
+        run_score(build_judge(judge_config("It looks great!")))
+
+
+def test_judge_missing_score_raises():
+    with pytest.raises(ScoringError, match="numeric 'score'"):
+        run_score(build_judge(judge_config('{"rating": 5}')))
+
+
+def test_rubric_receives_output_expected_and_vars():
+    # mock judge echoes its last user message: prove the rubric rendered
+    config = judge_config(
+        response=None,
+        rubric=[{"role": "user", "content": "O={{ output }} E={{ expected }} Q={{ vars.q }}"}],
+    )
+    # remove fixed response so the judge echoes
+    config.models[1].params.pop("response")
+    scorer = build_judge(config)
+    with pytest.raises(ScoringError, match=r"O=out E=exp Q=hi"):
+        asyncio.run(scorer.score("out", Case(expected="exp", vars={"q": "hi"})))
+
+
+def test_media_rubric_rejected_at_construction():
+    config = judge_config(
+        '{"score": 1}',
+        rubric=[{"role": "user", "content": [{"text": "grade"}, {"image": "x.png"}]}],
+    )
+    with pytest.raises(ScoringError, match="text content only"):
+        build_judge(config)
+
+
+def test_create_scorers_builds_full_scorecard():
+    config = judge_config('{"score": 1}')
+    providers = {m.id: create_provider(m) for m in config.models}
+    scorers = create_scorers(config, providers)
+    assert len(scorers) == 1
+    criterion, scorer = scorers[0]
+    assert criterion.criterion == "quality"
+    assert isinstance(scorer, JudgeScorer)
