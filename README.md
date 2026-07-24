@@ -4,7 +4,12 @@
 
 A command-line tool for comparing prompt variants and models, easily.
 
-> **Status:** early development — not yet ready for use. See [REQUIREMENTS.md](REQUIREMENTS.md) for the current design.
+> **Status:** early development — **alpha testers wanted.** It works end to
+> end and the test suite is thorough, but it hasn't been used in anger by
+> anyone but the author. If you try it, [open an
+> issue](https://github.com/amro/evaling/issues) — rough edges, confusing
+> output, and missing providers are all worth reporting. Expect the config
+> format to shift a little before 1.0.
 
 ## Why
 
