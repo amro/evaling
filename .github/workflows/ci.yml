@@ -24,11 +24,19 @@ jobs:
       - run: uvx pip-audit -r requirements-audit.txt
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          # One Windows job: the command provider, SIGPIPE handling, and path
+          # logic are the POSIX-shaped parts worth guarding.
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
