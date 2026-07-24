@@ -2,7 +2,7 @@
 
 A command-line tool for comparing prompt variants and models, easily.
 
-> **Status:** early development — not yet ready for use. See [requirements.md](requirements.md) for the current design.
+> **Status:** early development — not yet ready for use. See [REQUIREMENTS.md](REQUIREMENTS.md) for the current design.
 
 ## Why
 
