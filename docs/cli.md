@@ -45,12 +45,12 @@ configured thresholds fail, `2` on config errors.
 |---|---|
 | `--model NAME` / `--variant NAME` / `--case ID` | Run a sub-matrix (each repeatable) |
 | `--dry-run` | Validate config, render every prompt, print the request count — no model calls. Exits 2 if anything fails to render. |
-| `--max-cost USD` | Stop issuing model calls once accumulated cost reaches the limit; remaining cells record a skip error |
+| `--max-cost USD` | Stop issuing model calls once accumulated cost reaches the limit; remaining cells record a skip error. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
 | `-y, --yes` | Skip the confirmation shown for 100+ request matrices |
 | `--no-cache` | Bypass the response cache |
-| `--resume RUN` | Finish an interrupted run (same config required) |
+| `--resume RUN` | Finish an interrupted run (same config required; the run keeps its original label — `--label` is ignored) |
 | `--baseline RUN` | Gate against this run's aggregates |
-| `--label NAME` | Name the run for later reference |
+| `--label NAME` | Name the run for later reference (`latest` and `baseline` are reserved) |
 | `--concurrency N` | Max parallel model calls |
 
 With `thresholds.baseline: regression` in the config, the pinned baseline is
