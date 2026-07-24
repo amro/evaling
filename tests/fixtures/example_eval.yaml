@@ -1,0 +1,39 @@
+# The example config from the REQUIREMENTS.md appendix.
+settings:
+  output_dir: .evaling/runs
+  concurrency: 8
+  cache: true
+
+models:
+  - id: claude-sonnet-5
+    provider: anthropic
+    params: {max_tokens: 1024}
+  - id: local-llama
+    provider: openai-compatible
+    base_url: http://localhost:11434/v1
+
+variants:
+  - name: concise
+    prompt: prompts/concise.yaml
+  - name: detailed
+    prompt: prompts/detailed.yaml
+
+cases:
+  file: cases.jsonl
+
+scorecard:
+  - criterion: accuracy
+    weight: 3
+    scorer: {type: llm-judge, judge: quality-judge}
+  - criterion: format
+    weight: 1
+    scorer: {type: json-schema, schema: schemas/answer.json}
+
+judges:
+  quality-judge:
+    model: claude-sonnet-5
+    rubric: prompts/judge-rubric.yaml
+
+thresholds:
+  min_pass_rate: 0.9
+  baseline: regression

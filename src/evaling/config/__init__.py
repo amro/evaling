@@ -1,6 +1,7 @@
 """Config schema, loading, and settings resolution for evaling."""
 
 from evaling.config.errors import ConfigError
+from evaling.config.loader import load_config
 from evaling.config.schema import (
     AudioPart,
     Case,
@@ -38,4 +39,5 @@ __all__ = [
     "TextPart",
     "Thresholds",
     "VariantSpec",
+    "load_config",
 ]
