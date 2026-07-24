@@ -11,10 +11,11 @@ from dataclasses import asdict
 from typing import Any
 
 from evaling.errors import EvalingError
+from evaling.report import render_run_html
 from evaling.scoring import cell_summary, filter_failures
 from evaling.storage import ResultRecord
 
-FORMATS = ("json", "csv", "md")
+FORMATS = ("json", "csv", "md", "html")
 
 
 def _csv_safe(value):
@@ -37,6 +38,8 @@ def export_run(meta: dict[str, Any], records: list[ResultRecord], fmt: str) -> s
         return export_csv(records)
     if fmt == "md":
         return export_md(meta, records)
+    if fmt == "html":
+        return render_run_html(meta, records)
     raise EvalingError(f"unknown export format {fmt!r} (choose from: {', '.join(FORMATS)})")
 
 

@@ -21,6 +21,7 @@ from evaling.engine import dry_run as engine_dry_run
 from evaling.engine import run_eval, select_matrix
 from evaling.errors import EvalingError
 from evaling.export import export_run
+from evaling.report import render_compare_html, render_run_html
 from evaling.scoring import compare_aggregates
 from evaling.storage import RunStore
 
@@ -152,6 +153,13 @@ def main(ctx, config_path, output_dir, cache_dir, no_color, quiet, verbose, json
 )
 @click.option("--label", default=None, help="Human-friendly name for this run.")
 @click.option("--concurrency", type=int, default=None, help="Max parallel model calls.")
+@click.option(
+    "--html",
+    "html_path",
+    type=click.Path(),
+    default=None,
+    help="Write a self-contained HTML report here when the run finishes.",
+)
 @pass_app
 @cli_errors
 def run(
@@ -168,6 +176,7 @@ def run(
     baseline_ref,
     label,
     concurrency,
+    html_path,
 ):
     """Run the eval matrix and print the summary."""
     config = load_config(config_arg or app.config_path or "eval.yaml")
@@ -247,6 +256,12 @@ def run(
         )
 
     gate = asdict(result.gate) if result.gate else None
+    if html_path:
+        # Read the run back from storage so the report is rendered from the
+        # same source of truth as `evaling export`.
+        meta = store.load_meta(result.run_id)
+        Path(html_path).write_text(render_run_html(meta, store.load_results(result.run_id)))
+
     if app.json_output:
         app.echo_json(
             {
@@ -256,6 +271,7 @@ def run(
                 "totals": result.totals,
                 "aggregates": result.aggregates,
                 "gate": gate,
+                **({"html": str(html_path)} if html_path else {}),
             }
         )
     else:
@@ -266,6 +282,8 @@ def run(
             for line in display.gate_lines(gate):
                 app.show(line)
         app.say(f"run [bold]{result.run_id}[/bold] stored in {result.path}")
+        if html_path:
+            app.say(f"report written to [bold]{html_path}[/bold]")
     if gate and not gate["passed"]:
         if app.quiet and not app.json_output:
             app.err.print("[red]gate FAILED[/red]")
@@ -388,9 +406,16 @@ def list_runs(app, limit):
 @main.command()
 @click.argument("ref_a")
 @click.argument("ref_b")
+@click.option(
+    "--html",
+    "html_path",
+    type=click.Path(),
+    default=None,
+    help="Write a self-contained HTML comparison here.",
+)
 @pass_app
 @cli_errors
-def compare(app, ref_a, ref_b):
+def compare(app, ref_a, ref_b, html_path):
     """Compare two runs: per-cell score and pass-rate deltas."""
     store = app.store()
     metas = []
@@ -401,6 +426,8 @@ def compare(app, ref_a, ref_b):
         metas.append(meta)
     meta_a, meta_b = metas
     diff = compare_aggregates(meta_a["aggregates"], meta_b["aggregates"])
+    if html_path:
+        Path(html_path).write_text(render_compare_html(meta_a, meta_b, diff))
 
     if app.json_output:
         app.echo_json({"a": meta_a["id"], "b": meta_b["id"], **diff})
@@ -422,7 +449,7 @@ def compare(app, ref_a, ref_b):
 
 @main.command()
 @click.argument("ref")
-@click.option("--format", "fmt", type=click.Choice(["json", "csv", "md"]), required=True)
+@click.option("--format", "fmt", type=click.Choice(["json", "csv", "md", "html"]), required=True)
 @click.option("--out", type=click.Path(), default=None, help="Write to a file instead of stdout.")
 @pass_app
 @cli_errors

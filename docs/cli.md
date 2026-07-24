@@ -51,6 +51,7 @@ configured thresholds fail, `2` on config errors.
 | `--resume RUN` | Finish an interrupted run (same config required; the run keeps its original label — `--label` is ignored) |
 | `--baseline RUN` | Gate against this run's aggregates |
 | `--label NAME` | Name the run for later reference (`latest` and `baseline` are reserved) |
+| `--html PATH` | Also write a self-contained HTML report when the run finishes |
 | `--concurrency N` | Max parallel model calls |
 
 With `thresholds.baseline: regression` in the config, the pinned baseline is
@@ -66,16 +67,34 @@ reasons via `--failures`, or one case across all variants × models via
 
 Stored runs, newest first (default 20).
 
-### `evaling compare RUN_A RUN_B`
+### `evaling compare RUN_A RUN_B [--html PATH]`
 
 Per variant×model score and pass-rate deltas, with regressions in red, plus
-the overall movement.
+the overall movement. `--html` writes a self-contained comparison page.
 
-### `evaling export RUN --format json|csv|md [--out PATH]`
+### `evaling export RUN --format json|csv|md|html [--out PATH]`
 
 Render a stored run: `json` (full data), `csv` (one row per cell with
-per-criterion columns), `md` (paste-into-a-PR summary). Writes stdout unless
-`--out` is given.
+per-criterion columns), `md` (paste-into-a-PR summary), `html` (see below).
+Writes stdout unless `--out` is given.
+
+## HTML reports
+
+`--html` (on `run` and `compare`) and `--format html` (on `export`) produce a
+**single self-contained file**: styles are inline, there is no JavaScript at
+all, and nothing is fetched from the network — so it opens straight from disk,
+survives any Content-Security-Policy, and can be attached to a PR, emailed, or
+uploaded as a CI artifact.
+
+It contains the summary matrix, the gate verdict with each check, and a
+per-case drill-down where every variant×model cell shows its pass/fail badge,
+score, output (or error), the per-criterion breakdown including judge
+rationales, and a collapsible view of the exact prompt that was sent. Failing
+cases sort first, and a "show failures only" toggle (pure CSS) hides the rest.
+
+Model output is escaped, so a response containing HTML renders as visible text
+rather than markup. Binary inputs are referenced by content hash, never
+inlined, which keeps reports small.
 
 ### `evaling baseline set RUN` / `evaling baseline show`
 

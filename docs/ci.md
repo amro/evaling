@@ -54,12 +54,20 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   - run: evaling run --yes --max-cost 5.00
   ```
 
-- **Publish a report artifact:**
+- **Publish a report artifact** — a single self-contained HTML file, viewable
+  straight from the Actions artifact download:
+
+  ```yaml
+  - run: evaling run --yes --html eval-report.html
+  - uses: actions/upload-artifact@v4
+    if: always()          # publish the report even when the gate fails
+    with: {name: eval-report, path: eval-report.html}
+  ```
+
+  For a PR comment, the markdown export pastes cleanly:
 
   ```yaml
   - run: evaling export latest --format md --out eval-report.md
-  - uses: actions/upload-artifact@v4
-    with: {name: eval-report, path: eval-report.md}
   ```
 
 - **Cache model responses between runs** — persist `.evaling/cache/` with your

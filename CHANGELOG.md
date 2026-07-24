@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- HTML reports: `--html PATH` on `run` and `compare`, and `--format html` on
+  `export`. A single self-contained file — inline styles, no JavaScript, no
+  network — with the summary matrix, gate verdict, and per-case drill-down
+  (outputs, criterion breakdown with judge rationales, and the exact prompt
+  sent). Failing cases first, CSS-only failures-only toggle, model output
+  escaped, media referenced by hash rather than inlined.
 - Real providers: `anthropic` (Messages API), `openai` (chat completions),
   `openai-compatible` (any OpenAI-format endpoint — Ollama, vLLM, LM Studio,
   OpenRouter, Gemini's compatibility endpoint), and `command` (any CLI or
