@@ -71,6 +71,14 @@ class ModelSpec(StrictModel):
     provider: ProviderName
     base_url: str | None = None
     command: str | None = None
+    # Which environment variable holds the API key (providers have sensible
+    # defaults, e.g. ANTHROPIC_API_KEY; set this for OpenAI-compatible
+    # backends like Gemini or OpenRouter with their own key variables).
+    api_key_env: str | None = None
+    # Per-model request timeout in seconds (wired by HTTP providers).
+    timeout_s: float | None = Field(default=None, gt=0)
+    # Per-model retry count for transient failures (attempts = retries + 1).
+    max_retries: int | None = Field(default=None, ge=0)
     params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")

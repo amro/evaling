@@ -452,6 +452,65 @@ def test_select_matrix_unknown_names_rejected(tmp_path):
         select_matrix(config, variants=["ghost"])
 
 
+def test_unsupported_media_fails_at_validation_time(tmp_path, monkeypatch):
+    # A provider that declares no media support must reject an image prompt
+    # before any model call (dry-run and run alike).
+    from evaling.config import ConfigError
+    from evaling.engine import dry_run
+    from evaling.providers import _REGISTRY
+    from evaling.providers.mock import MockProvider
+
+    class TextOnlyProvider(MockProvider):
+        SUPPORTED_MEDIA = frozenset()
+
+    monkeypatch.setitem(_REGISTRY, "mock", TextOnlyProvider)
+    (tmp_path / "img.png").write_bytes(b"png")
+    config = make_config(
+        tmp_path,
+        variants=[{"name": "v1", "prompt": [{"role": "user", "content": [{"image": "img.png"}]}]}],
+    )
+    with pytest.raises(ConfigError, match="uses image content.*does not support"):
+        run_eval(config, make_settings(tmp_path))
+    with pytest.raises(ConfigError, match="uses image content"):
+        dry_run(config)
+    assert not (tmp_path / "runs").exists()  # failed before creating a run
+
+
+def test_per_model_max_retries_override(tmp_path):
+    # max_retries: 0 disables retry, so a single transient failure surfaces
+    config = make_config(
+        tmp_path,
+        models=[
+            {"id": "no-retry", "provider": "mock", "max_retries": 0, "params": {"fail_times": 1}}
+        ],
+        cases=[{"id": "c1", "vars": {"q": "x"}}],
+    )
+    result = run_eval(config, make_settings(tmp_path))
+    assert result.counts["failed"] == 1
+    assert "mock transient failure" in result.records[0].error
+
+
+def test_providers_closed_after_run(tmp_path, monkeypatch):
+    from evaling.providers.mock import MockProvider
+
+    closed = []
+
+    async def tracking_aclose(self):
+        closed.append(self.spec.id)
+
+    monkeypatch.setattr(MockProvider, "aclose", tracking_aclose)
+    run_eval(make_config(tmp_path), make_settings(tmp_path))
+    assert closed == ["m1"]
+
+
+def test_raising_on_result_callback_does_not_abort_run(tmp_path):
+    def bad_callback(record):
+        raise RuntimeError("progress bar exploded")
+
+    result = run_eval(make_config(tmp_path), make_settings(tmp_path), on_result=bad_callback)
+    assert result.counts == {"total": 2, "succeeded": 2, "failed": 0, "cached": 0}
+
+
 def test_dry_run_reports_matrix_and_render_errors(tmp_path):
     from evaling.engine import dry_run
 

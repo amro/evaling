@@ -7,7 +7,7 @@ without engine changes.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from evaling.config.schema import ModelSpec
 from evaling.errors import EvalingError
@@ -42,7 +42,15 @@ class Completion:
 
 
 class Provider(ABC):
-    """One instance is created per configured model for the duration of a run."""
+    """One instance is created per configured model for the duration of a run.
+
+    ``Completion.raw`` is provider debug metadata: it round-trips through the
+    response cache but is deliberately not persisted into run results.
+    """
+
+    #: Media part kinds this provider can send to its API. Declared on the
+    #: class so unsupported parts fail at validation/dry-run time, not mid-run.
+    SUPPORTED_MEDIA: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(self, spec: ModelSpec):
         self.spec = spec
@@ -55,3 +63,6 @@ class Provider(ABC):
         calls on a single event loop (no threads). Any instance state mutated
         across an ``await`` must be guarded by the implementation.
         """
+
+    async def aclose(self) -> None:  # noqa: B027 - optional hook, default no-op
+        """Release resources (HTTP pools etc.). Called once after a run."""

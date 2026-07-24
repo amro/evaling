@@ -6,6 +6,7 @@ interrupted run can be resumed — cells with a record are skipped.
 """
 
 import asyncio
+import contextlib
 import hashlib
 import time
 from collections import defaultdict
@@ -98,6 +99,43 @@ async def run_eval_async(
     max_cost_usd: float | None = None,
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
+    # ALL configured models get providers (judges need theirs); only selected
+    # models get matrix cells.
+    providers = {model.id: create_provider(model) for model in config.models}
+    try:
+        return await _run_eval_impl(
+            config,
+            settings,
+            providers,
+            label=label,
+            resume_run_id=resume_run_id,
+            baseline_run_id=baseline_run_id,
+            model_filter=model_filter,
+            variant_filter=variant_filter,
+            case_filter=case_filter,
+            max_cost_usd=max_cost_usd,
+            on_result=on_result,
+        )
+    finally:
+        await asyncio.gather(
+            *(provider.aclose() for provider in providers.values()), return_exceptions=True
+        )
+
+
+async def _run_eval_impl(
+    config: EvalConfig,
+    settings: Settings | None,
+    providers: dict[str, Any],
+    *,
+    label: str | None,
+    resume_run_id: str | None,
+    baseline_run_id: str | None,
+    model_filter: list[str] | None,
+    variant_filter: list[str] | None,
+    case_filter: list[str] | None,
+    max_cost_usd: float | None,
+    on_result: Callable[[ResultRecord], None] | None,
+) -> RunResult:
     if settings is None:
         settings = resolve_settings(None, config.settings)
 
@@ -107,9 +145,7 @@ async def run_eval_async(
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
-    # ALL configured models get providers (judges need theirs); only selected
-    # models get matrix cells.
-    providers = {model.id: create_provider(model) for model in config.models}
+    _validate_media_support(variants_sel, models_sel, prompts)
     scorecard = create_scorers(config, providers)
     cache = ResponseCache(settings.cache_dir) if settings.cache else None
 
@@ -152,7 +188,9 @@ async def run_eval_async(
             record.error = _describe_error(exc)
         await _append(record)
         if on_result is not None:
-            on_result(record)
+            # A flaky progress callback must not abort an otherwise-healthy run.
+            with contextlib.suppress(Exception):
+                on_result(record)
         return record
 
     async def _execute_cell(
@@ -198,8 +236,11 @@ async def run_eval_async(
         try:
             request = CompletionRequest(model=model, messages=rendered)
             provider = providers[model.id]
+            retry_kwargs = (
+                {} if model.max_retries is None else {"max_attempts": model.max_retries + 1}
+            )
             start = time.perf_counter()
-            completion = await call_with_retries(lambda: provider.complete(request))
+            completion = await call_with_retries(lambda: provider.complete(request), **retry_kwargs)
             record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
             return completion
         finally:
@@ -244,6 +285,39 @@ async def run_eval_async(
         aggregates=aggregates,
         gate=gate,
     )
+
+
+def _validate_media_support(
+    variants_sel: list[VariantSpec],
+    models_sel: list[ModelSpec],
+    prompts: dict[str, list],
+) -> None:
+    """Fail at validation time when a prompt uses media a provider can't send.
+
+    REQUIREMENTS 4.2: unsupported part types error at config-validation time
+    where possible, not mid-run.
+    """
+    from evaling.providers import provider_class
+
+    for variant in variants_sel:
+        kinds: set[str] = set()
+        for message in prompts[variant.name]:
+            content = message.content
+            if isinstance(content, str):
+                continue
+            for part in content:
+                dumped = part.model_dump()
+                if "text" not in dumped:
+                    kinds.add(next(iter(dumped)))
+        if not kinds:
+            continue
+        for model in models_sel:
+            unsupported = kinds - provider_class(model.provider).SUPPORTED_MEDIA
+            if unsupported:
+                raise ConfigError(
+                    f"variant {variant.name!r} uses {', '.join(sorted(unsupported))} content, "
+                    f"which model {model.id!r} (provider {model.provider!r}) does not support"
+                )
 
 
 def _resolve_baseline(store: RunStore, config: EvalConfig, override: str | None) -> str | None:
@@ -466,6 +540,7 @@ def dry_run(
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
+    _validate_media_support(variants_sel, models_sel, prompts)
     providers = {model.id: create_provider(model) for model in config.models}
     create_scorers(config, providers)  # fail fast on bad scorer config
 

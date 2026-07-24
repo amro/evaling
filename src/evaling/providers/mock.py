@@ -20,6 +20,8 @@ from evaling.render import RenderedText
 
 
 class MockProvider(Provider):
+    SUPPORTED_MEDIA = frozenset({"image", "file", "audio", "video"})
+
     def __init__(self, spec):
         super().__init__(spec)
         self._calls = 0

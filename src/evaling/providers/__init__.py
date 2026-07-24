@@ -17,8 +17,18 @@ __all__ = [
 ]
 
 
-def create_provider(spec: ModelSpec) -> Provider:
-    cls = _REGISTRY.get(spec.provider)
+def provider_class(name: str) -> type[Provider]:
+    cls = _REGISTRY.get(name)
     if cls is None:
-        raise ProviderError(f"model {spec.id!r}: provider {spec.provider!r} is not implemented yet")
+        raise ProviderError(f"provider {name!r} is not implemented yet")
+    return cls
+
+
+def create_provider(spec: ModelSpec) -> Provider:
+    try:
+        cls = provider_class(spec.provider)
+    except ProviderError:
+        raise ProviderError(
+            f"model {spec.id!r}: provider {spec.provider!r} is not implemented yet"
+        ) from None
     return cls(spec)
