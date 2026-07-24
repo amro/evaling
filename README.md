@@ -21,6 +21,8 @@ Detailed docs live in [`docs/`](docs/):
 
 - [Configuration](docs/configuration.md) — the `eval.yaml` reference, settings
   layering, and environment variables.
+- [Prompts](docs/prompts.md) — variants, Jinja2 templating, multi-turn
+  messages, multimodal inputs, and case datasets.
 
 ## Development
 

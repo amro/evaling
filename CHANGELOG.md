@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Prompt rendering: Jinja2 templating with strict undefined (typos fail
+  loudly), case vars as top-level names, attachments as `files.<name>`.
+- Multimodal content resolution: images, PDFs, and audio referenced from
+  prompts or cases, typed by extension, validated against the part type, and
+  sha256-hashed by content.
+- Case datasets: CSV/JSONL loading with reserved fields (`id`, `expected`,
+  `human_label`, `files`), the `file://` attachment convention, and generated
+  unique case ids. External prompt files as YAML message lists.
+- `docs/prompts.md` — prompts, templating, multimodal inputs, and datasets.
 - Config schema and loader for `eval.yaml`: strict validation (unknown keys
   rejected), multi-turn messages with typed content parts (text/image/file/audio),
   scorecard with weighted criteria, judge definitions, thresholds, and readable
