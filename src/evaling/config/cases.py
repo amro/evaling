@@ -110,7 +110,7 @@ def _resolve_files(case: Case, base_dir: Path) -> Case:
     if not case.files:
         return case
     resolved = {
-        name: str(path if (path := Path(raw)).is_absolute() else (base_dir / path).resolve())
+        name: str((path if (path := Path(raw)).is_absolute() else base_dir / path).resolve())
         for name, raw in case.files.items()
     }
     return case.model_copy(update={"files": resolved})

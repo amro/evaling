@@ -104,7 +104,9 @@ attachment instead:
 ```
 
 The same conventions apply to CSV columns (all CSV values are strings; empty
-`id`/`expected`/`human_label` cells mean "not provided").
+`id`/`expected`/`human_label` cells mean "not provided"). One JSONL-only
+feature: a `files` key holding a mapping of attachments. CSV cells can't hold
+mappings, so in CSV always use the `file://` prefix on individual columns.
 
 Path resolution: attachment paths in a dataset resolve relative to the dataset
 file; attachment paths in inline cases resolve relative to the config file.
