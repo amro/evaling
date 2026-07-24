@@ -53,7 +53,11 @@ class AudioPart(StrictModel):
     audio: str
 
 
-ContentPart = TextPart | ImagePart | FilePart | AudioPart
+class VideoPart(StrictModel):
+    video: str
+
+
+ContentPart = TextPart | ImagePart | FilePart | AudioPart | VideoPart
 
 
 class Message(StrictModel):

@@ -40,9 +40,9 @@ def test_missing_file_raises_content_error(tmp_path):
 
 
 def test_unknown_extension_lists_supported(tmp_path):
-    (tmp_path / "clip.mov").write_bytes(b"x")
-    with pytest.raises(ContentError, match=r"unsupported image extension '\.mov'.*\.png"):
-        resolve_media("image", "clip.mov", tmp_path)
+    (tmp_path / "pic.tiff").write_bytes(b"x")
+    with pytest.raises(ContentError, match=r"unsupported image extension '\.tiff'.*\.png"):
+        resolve_media("image", "pic.tiff", tmp_path)
 
 
 def test_kind_mismatch_rejected(tmp_path):
@@ -68,6 +68,25 @@ def test_pdf_valid_for_file_part(tmp_path):
 def test_audio_types(tmp_path, name, media_type):
     (tmp_path / name).write_bytes(b"x")
     assert resolve_media("audio", name, tmp_path).media_type == media_type
+
+
+@pytest.mark.parametrize(
+    "name,media_type",
+    [
+        ("a.mp4", "video/mp4"),
+        ("a.mov", "video/quicktime"),
+        ("a.webm", "video/webm"),
+    ],
+)
+def test_video_types(tmp_path, name, media_type):
+    (tmp_path / name).write_bytes(b"x")
+    assert resolve_media("video", name, tmp_path).media_type == media_type
+
+
+def test_video_not_valid_for_audio_part(tmp_path):
+    (tmp_path / "clip.mp4").write_bytes(b"x")
+    with pytest.raises(ContentError, match="video/mp4.*not valid for a 'audio'"):
+        resolve_media("audio", "clip.mp4", tmp_path)
 
 
 def test_uppercase_extension_recognized(tmp_path):

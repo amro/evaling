@@ -20,6 +20,7 @@ from evaling.config.schema import (
     TextPart,
     Thresholds,
     VariantSpec,
+    VideoPart,
 )
 from evaling.config.settings import default_user_config_path, resolve_settings
 
@@ -41,6 +42,7 @@ __all__ = [
     "TextPart",
     "Thresholds",
     "VariantSpec",
+    "VideoPart",
     "default_user_config_path",
     "load_cases",
     "load_config",

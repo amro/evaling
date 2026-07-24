@@ -10,6 +10,7 @@ from evaling.config.schema import (
     ImagePart,
     Message,
     TextPart,
+    VideoPart,
 )
 from evaling.content import MediaKind, MediaRef, resolve_media
 from evaling.templating import build_context, render_text
@@ -67,6 +68,8 @@ def _render_part(part, context, base_dir: Path, where: str) -> RenderedPart:
         kind, expr = "file", part.file
     elif isinstance(part, AudioPart):
         kind, expr = "audio", part.audio
+    elif isinstance(part, VideoPart):
+        kind, expr = "video", part.video
     else:  # pragma: no cover - schema guarantees exhaustiveness
         raise TypeError(f"unknown content part: {part!r}")
     path_str = render_text(expr, context, where)

@@ -45,9 +45,12 @@ shorthand for a single text part — or a list of typed parts:
 | `image` | `.png` `.jpg` `.jpeg` `.gif` `.webp` |
 | `file` | `.pdf` |
 | `audio` | `.mp3` `.wav` `.ogg` `.flac` `.m4a` |
+| `video` | `.mp4` `.mov` `.webm` |
 
 Using a part type a model can't accept (e.g. audio on a text-only model) fails
-with a clear error rather than being silently dropped.
+with a clear error rather than being silently dropped. Video parts are fully
+typed and stored, but no built-in API provider accepts video yet — they work
+with the `mock` and `command` providers today.
 
 ## Templating
 

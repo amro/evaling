@@ -12,7 +12,7 @@ from typing import Literal
 
 from evaling.errors import ContentError
 
-MediaKind = Literal["image", "file", "audio"]
+MediaKind = Literal["image", "file", "audio", "video"]
 
 MEDIA_TYPES: dict[str, str] = {
     ".png": "image/png",
@@ -26,12 +26,16 @@ MEDIA_TYPES: dict[str, str] = {
     ".ogg": "audio/ogg",
     ".flac": "audio/flac",
     ".m4a": "audio/mp4",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
 }
 
 ALLOWED_MEDIA_TYPES: dict[MediaKind, frozenset[str]] = {
     "image": frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"}),
     "file": frozenset({"application/pdf"}),
     "audio": frozenset({"audio/mpeg", "audio/wav", "audio/ogg", "audio/flac", "audio/mp4"}),
+    "video": frozenset({"video/mp4", "video/quicktime", "video/webm"}),
 }
 
 

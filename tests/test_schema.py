@@ -129,15 +129,16 @@ def test_all_content_part_types_parse():
                 {"image": "i.png"},
                 {"file": "d.pdf"},
                 {"audio": "a.mp3"},
+                {"video": "v.mp4"},
             ],
         }
     )
-    assert len(msg.content) == 4
+    assert len(msg.content) == 5
 
 
 def test_invalid_content_part_rejected():
     with pytest.raises(ValidationError):
-        Message.model_validate({"role": "user", "content": [{"video": "v.mp4"}]})
+        Message.model_validate({"role": "user", "content": [{"hologram": "h.holo"}]})
 
 
 def test_invalid_role_rejected():

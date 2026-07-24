@@ -96,10 +96,12 @@ in layers, most specific wins:
         - image: "{{ files.photo }}"
   ```
 
-- **v1 media types: images, PDFs, and audio.** Provider adapters translate parts
-  to each API's native format and must fail with a clear error when a provider or
-  model doesn't support a part type (e.g. audio on a text-only model) — at config
-  validation time where possible, not mid-run.
+- **v1 media types: images, PDFs, audio, and video.** Provider adapters translate
+  parts to each API's native format and must fail with a clear error when a
+  provider or model doesn't support a part type (e.g. audio on a text-only
+  model) — at config validation time where possible, not mid-run. Video is
+  fully typed/stored but supported only by the `mock` and `command` providers
+  until an API provider accepts it.
 - In CSV/JSONL datasets, a `file://` value marks a column as a file reference.
 - Binary files are hashed by content: cache keys include the content hash, and
   run storage keeps binaries content-addressed so repeated runs don't duplicate them.
