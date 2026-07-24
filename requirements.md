@@ -276,6 +276,28 @@ artifacts/             # content-addressed binary inputs/outputs
   supported Python versions. Coverage tracked; target ≥90% on core modules.
 - **Reliability:** a single failing request must not abort a run — record the
   error, continue, and report it in the summary.
+- **Documentation:** documentation is part of every change, not a follow-up task.
+  - `README.md` stays current at all times: what the tool does, install,
+    a minimal working example, and links into `docs/`. Any change that alters
+    user-facing behavior updates the README in the same commit.
+  - Detailed docs live in `docs/` as markdown, one file per topic:
+    - `docs/getting-started.md` — install, first eval, reading results.
+    - `docs/configuration.md` — full `eval.yaml` reference, settings layering,
+      environment variables.
+    - `docs/prompts.md` — variants, Jinja2 templating, multi-turn messages,
+      multimodal content parts.
+    - `docs/providers.md` — built-in providers, the `command` provider, adding
+      a provider.
+    - `docs/scoring.md` — scorers, scorecards, LLM judges, thresholds.
+    - `docs/evaluating-judges.md` — the meta-eval recipe (`human_label` +
+      agreement scorers).
+    - `docs/cli.md` — command and flag reference.
+    - `docs/mcp.md` — MCP server setup and tool reference.
+    - `docs/ci.md` — CI recipes: gating, baselines, HTML report artifacts.
+    - `docs/storage.md` — run directory format, caching, exports.
+  - Each file is created alongside the milestone that implements its topic and
+    updated in the same commit as any behavior change to that topic. Stale docs
+    are treated as bugs.
 - **Distribution:** semantic versioning; changelog; minimal dependency footprint.
 - **License:** MIT (adopted before the repo goes public).
 
