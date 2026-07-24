@@ -43,6 +43,18 @@ def test_inline_relative_files_resolve_against_config_dir(tmp_path):
     assert case.files["photo"] == str((tmp_path / "fixtures/dog.jpg").resolve())
 
 
+def test_absolute_files_are_symlink_resolved(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "dog.jpg").write_bytes(b"x")
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    cfg = config_with([{"files": {"photo": str(link / "dog.jpg")}}], tmp_path)
+    [case] = load_cases(cfg)
+    assert case.files["photo"] == str((real / "dog.jpg").resolve())
+
+
 def test_jsonl_rows_split_reserved_fields_and_vars(tmp_path):
     dataset = tmp_path / "cases.jsonl"
     dataset.write_text(
