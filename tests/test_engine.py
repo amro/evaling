@@ -146,15 +146,25 @@ def test_cache_disabled_never_caches(tmp_path):
     assert not (tmp_path / "cache").exists()
 
 
+def simulate_interruption(run_path, keep_lines=1):
+    """Rewind a finished run to look like a process crash: partial results, status running."""
+    results_path = run_path / "results.jsonl"
+    lines = results_path.read_text().splitlines()
+    kept, removed = lines[:keep_lines], [json.loads(line) for line in lines[keep_lines:]]
+    results_path.write_text("".join(line + "\n" for line in kept))
+    meta_path = run_path / "run.json"
+    meta = json.loads(meta_path.read_text())
+    meta.update(status="running", finished_at=None, counts=None, totals=None)
+    meta_path.write_text(json.dumps(meta))
+    return removed
+
+
 def test_resume_executes_only_missing_cells(tmp_path):
     config = make_config(tmp_path)
     settings = make_settings(tmp_path)
 
     interrupted = run_eval(config, settings)
-    results_path = interrupted.path / "results.jsonl"
-    lines = results_path.read_text().splitlines()
-    kept, removed = lines[0], json.loads(lines[1])
-    results_path.write_text(kept + "\n")
+    [removed] = simulate_interruption(interrupted.path)
 
     resumed = run_eval(config, settings, resume_run_id=interrupted.run_id)
     assert resumed.run_id == interrupted.run_id
@@ -202,3 +212,27 @@ def test_resume_missing_run_raises(tmp_path):
     config = make_config(tmp_path)
     with pytest.raises(StorageError, match="run not found"):
         run_eval(config, make_settings(tmp_path), resume_run_id="ghost")
+
+
+def test_resume_with_mismatched_config_rejected(tmp_path):
+    # Regression: resuming with a different config used to silently mix two
+    # configs' results into one run directory.
+    from evaling.storage import StorageError
+
+    settings = make_settings(tmp_path)
+    interrupted = run_eval(make_config(tmp_path), settings)
+    simulate_interruption(interrupted.path)
+
+    other = make_config(tmp_path, models=[{"id": "other-model", "provider": "mock"}])
+    with pytest.raises(StorageError, match="config does not match"):
+        run_eval(other, settings, resume_run_id=interrupted.run_id)
+
+
+def test_resume_of_complete_run_rejected(tmp_path):
+    from evaling.storage import StorageError
+
+    config = make_config(tmp_path)
+    settings = make_settings(tmp_path)
+    finished = run_eval(config, settings)
+    with pytest.raises(StorageError, match="already complete"):
+        run_eval(config, settings, resume_run_id=finished.run_id)

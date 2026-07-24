@@ -82,6 +82,12 @@ def serialize_messages(
     return serialized
 
 
+def snapshot_config(config: EvalConfig) -> tuple[str, str]:
+    """Canonical YAML serialization of a config and its sha256."""
+    snapshot = yaml.safe_dump(config.model_dump(mode="json"), sort_keys=True)
+    return snapshot, hashlib.sha256(snapshot.encode()).hexdigest()
+
+
 def _read_result_lines(path: Path) -> list[dict[str, Any]]:
     """Parse results.jsonl, tolerating a torn final line.
 
@@ -132,7 +138,7 @@ class RunStore:
             raise StorageError(f"could not allocate a unique run directory in {self.output_dir}")
 
         (path / "artifacts").mkdir()
-        snapshot = yaml.safe_dump(config.model_dump(mode="json"), sort_keys=True)
+        snapshot, config_sha256 = snapshot_config(config)
         (path / "config.snapshot.yaml").write_text(snapshot)
         meta = {
             "id": run_id,
@@ -140,7 +146,7 @@ class RunStore:
             "status": "running",
             "started_at": _utcnow(),
             "finished_at": None,
-            "config_sha256": hashlib.sha256(snapshot.encode()).hexdigest(),
+            "config_sha256": config_sha256,
             "counts": None,
             "totals": None,
         }

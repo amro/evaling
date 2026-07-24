@@ -23,7 +23,13 @@ from evaling.errors import EvalingError
 from evaling.providers import CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
-from evaling.storage import ResultRecord, RunStore, serialize_messages
+from evaling.storage import (
+    ResultRecord,
+    RunStore,
+    StorageError,
+    serialize_messages,
+    snapshot_config,
+)
 
 
 @dataclass
@@ -65,6 +71,14 @@ async def run_eval_async(
     store = RunStore(settings.output_dir)
     if resume_run_id is not None:
         writer = store.open_run(resume_run_id)
+        if writer.meta.get("status") == "complete":
+            raise StorageError(f"run {resume_run_id!r} is already complete; nothing to resume")
+        _, config_sha256 = snapshot_config(config)
+        if config_sha256 != writer.meta.get("config_sha256"):
+            raise StorageError(
+                f"config does not match run {resume_run_id!r} "
+                "(a resumed run must use the exact config it started with)"
+            )
         prior_records = store.load_results(resume_run_id)
         done = {record.key for record in prior_records}
     else:
