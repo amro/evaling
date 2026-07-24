@@ -83,16 +83,46 @@ FILES = {
 }
 
 
-def scaffold_project(root: Path, *, force: bool = False) -> list[str]:
+#: Model block per provider, so `init --provider X` scaffolds something real.
+MODEL_BLOCKS = {
+    "mock": """models:
+  - id: mock
+    provider: mock
+""",
+    "anthropic": """models:
+  # Reads ANTHROPIC_API_KEY from the environment or .evaling.secrets.yaml
+  - id: claude-sonnet-5
+    provider: anthropic
+    params: {max_tokens: 1024}
+""",
+    "openai": """models:
+  # Reads OPENAI_API_KEY from the environment or .evaling.secrets.yaml
+  - id: gpt-5.2
+    provider: openai
+""",
+    "openai-compatible": """models:
+  # Any OpenAI-format endpoint: Ollama, vLLM, LM Studio, OpenRouter, Gemini.
+  - id: llama3.1:8b
+    provider: openai-compatible
+    base_url: http://localhost:11434/v1
+""",
+}
+
+
+def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock") -> list[str]:
     """Write the example files under root; refuse to clobber without force."""
-    existing = [name for name in FILES if (root / name).exists()]
+    files = dict(FILES)
+    if provider != "mock":
+        files["eval.yaml"] = EVAL_YAML.replace(MODEL_BLOCKS["mock"], MODEL_BLOCKS[provider])
+
+    existing = [name for name in files if (root / name).exists()]
     if existing and not force:
         raise EvalingError(
             f"refusing to overwrite existing file(s): {', '.join(existing)} "
             "(use --force to overwrite)"
         )
     created = []
-    for name, content in FILES.items():
+    for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)

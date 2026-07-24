@@ -114,7 +114,8 @@ def failure_lines(records: list[ResultRecord]) -> list[str]:
                 for name, entry in record.scores.items()
                 if entry.get("passed") is not True
             ]
-            lines.append(f"{key} — [red]failed:[/red] {snip('; '.join(failed), 100)}")
+            # 100 chars truncated an LLM judge's rationale to uselessness.
+            lines.append(f"{key} — [red]failed:[/red] {snip('; '.join(failed), 300)}")
     return lines
 
 

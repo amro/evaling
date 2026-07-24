@@ -79,6 +79,10 @@ class ModelSpec(StrictModel):
     timeout_s: float | None = Field(default=None, gt=0)
     # Per-model retry count for transient failures (attempts = retries + 1).
     max_retries: int | None = Field(default=None, ge=0)
+    # Cap in-flight calls to this model (composes with settings.concurrency).
+    max_concurrency: int | None = Field(default=None, ge=1)
+    # Proactive rate limit: requests per rolling minute for this model.
+    requests_per_minute: int | None = Field(default=None, ge=1)
     params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")

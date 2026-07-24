@@ -17,6 +17,7 @@ import os
 import secrets
 import shutil
 import time
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -252,8 +253,27 @@ class RunStore:
         return self.open_run(run_id, for_write=False).meta
 
     def load_results(self, run_id: str) -> list[ResultRecord]:
+        return list(self.iter_results(run_id))
+
+    def iter_results(self, run_id: str) -> "Iterator[ResultRecord]":
+        """Stream records without holding the whole run in memory.
+
+        Prefer this for scanning or paginating a large run; load_results is
+        the convenience wrapper for when you genuinely want the list.
+        """
         path = self.output_dir / run_id / "results.jsonl"
-        return [record_from_dict(data) for data in _read_result_lines(path)]
+        if not path.is_file():
+            return
+        with path.open() as handle:
+            lines = [line for line in handle if line.strip()]
+        for index, line in enumerate(lines):
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError as exc:
+                if index == len(lines) - 1:
+                    return  # torn tail from a crash mid-write
+                raise StorageError(f"{path}: corrupt record at line {index + 1}") from exc
+            yield record_from_dict(data)
 
     @property
     def _baseline_path(self) -> Path:

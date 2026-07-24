@@ -32,6 +32,7 @@ from evaling.config.schema import (
 from evaling.config.settings import resolve_settings
 from evaling.content import MediaRef
 from evaling.errors import EvalingError
+from evaling.limits import limiter_for
 from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
@@ -186,6 +187,7 @@ async def _run_eval_impl(
     budget = _CostBudget(
         max_cost_usd, spent=sum(r.cost_usd for r in prior_records if r.cost_usd) or 0.0
     )
+    limiters = {model.id: limiter_for(model) for model in config.models}
 
     async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
@@ -241,6 +243,12 @@ async def _run_eval_impl(
             record.scores[criterion.criterion] = entry
 
     async def _timed_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
+        # Per-model limits first: don't hold a cost-budget slot while queued
+        # behind this model's own rate limit.
+        async with limiters[model.id]:
+            return await _budgeted_call(record, model, rendered)
+
+    async def _budgeted_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
         await budget.acquire()
         completion = None
         try:

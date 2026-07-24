@@ -224,15 +224,30 @@ def run(
             console=app.console,
         )
         task = progress.add_task("evaluating", total=count)
+        live = {"cost": 0.0, "failed": 0}
 
         def on_result(record):
-            progress.advance(task)
+            live["cost"] += record.cost_usd or 0.0
+            live["failed"] += 1 if record.error else 0
+            label_bits = []
+            if live["cost"]:
+                label_bits.append(f"${live['cost']:.4f}")
+            if live["failed"]:
+                label_bits.append(f"{live['failed']} failed")
+            progress.update(
+                task,
+                advance=1,
+                description="evaluating" + (f" · {' · '.join(label_bits)}" if label_bits else ""),
+            )
             if app.verbose:
                 status = (
-                    f"[red]{record.error}[/red]" if record.error else display.snip(record.output)
+                    f"[red]{display.snip(record.error)}[/red]"
+                    if record.error
+                    else display.snip(record.output)
                 )
                 progress.console.print(
-                    f"  {record.variant} × {record.model} × {record.case_id}: {status}"
+                    f"  {display.safe(record.variant)} × {display.safe(record.model)} × "
+                    f"{display.safe(record.case_id)}: {status}"
                 )
 
     else:
@@ -506,6 +521,69 @@ def baseline_show(app):
 
 
 @main.command()
+@click.argument("config_arg", required=False, type=click.Path())
+@click.option("--model", "models", multiple=True, help="Only these models (repeatable).")
+@click.option("--variant", "variants", multiple=True, help="Only these variants (repeatable).")
+@click.option("--case", "case_ids", multiple=True, help="Only these case ids (repeatable).")
+@pass_app
+@cli_errors
+def validate(app, config_arg, models, variants, case_ids):
+    """Check the config and render every prompt without calling any model.
+
+    The same work as `run --dry-run`, named so it's findable.
+    """
+    config = load_config(config_arg or app.config_path or "eval.yaml")
+    _do_dry_run(app, config, list(models) or None, list(variants) or None, list(case_ids) or None)
+
+
+@main.group()
+def cache():
+    """Inspect or clear the response cache."""
+
+
+@cache.command(name="info")
+@pass_app
+@cli_errors
+def cache_info(app):
+    """Show where the cache lives, how many entries it holds, and its size."""
+    from evaling.cache import ResponseCache
+
+    stats = ResponseCache(app.settings().cache_dir).stats()
+    if app.json_output:
+        app.echo_json(stats)
+        return
+    megabytes = stats["bytes"] / 1_048_576
+    app.console.print(f"{stats['entries']} entries · {megabytes:.1f} MB · {stats['path']}")
+
+
+@cache.command(name="clear")
+@click.option(
+    "--older-than",
+    type=float,
+    default=None,
+    metavar="DAYS",
+    help="Only remove entries older than this many days.",
+)
+@click.option("-y", "--yes", is_flag=True, help="Skip the confirmation.")
+@pass_app
+@cli_errors
+def cache_clear(app, older_than, yes):
+    """Delete cached responses (all, or just the stale ones)."""
+    from evaling.cache import ResponseCache
+
+    store = ResponseCache(app.settings().cache_dir)
+    stats = store.stats()
+    if not stats["entries"]:
+        app.console.print("cache is already empty")
+        return
+    scope = "everything" if older_than is None else f"entries older than {older_than} days"
+    if not yes and sys.stdin.isatty():
+        click.confirm(f"Delete {scope} from {stats['path']}?", abort=True)
+    removed = store.prune(older_than)
+    app.console.print(f"removed [bold]{removed}[/bold] cached response(s)")
+
+
+@main.command()
 @pass_app
 @cli_errors
 def mcp(app):
@@ -519,11 +597,17 @@ def mcp(app):
 
 @main.command()
 @click.option("--force", is_flag=True, help="Overwrite existing scaffold files.")
+@click.option(
+    "--provider",
+    type=click.Choice(["mock", "anthropic", "openai", "openai-compatible"]),
+    default="mock",
+    help="Scaffold for this provider (default: mock, which runs offline).",
+)
 @pass_app
 @cli_errors
-def init(app, force):
-    """Scaffold a working example eval (runs offline with the mock provider)."""
-    created = scaffold_project(Path.cwd(), force=force)
+def init(app, force, provider):
+    """Scaffold a working example eval (offline by default, via the mock provider)."""
+    created = scaffold_project(Path.cwd(), force=force, provider=provider)
     for path in created:
         app.console.print(f"created [bold]{path}[/bold]")
     app.say("\ntry it:  [bold]evaling run[/bold]")

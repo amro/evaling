@@ -10,8 +10,10 @@ import contextlib
 import hashlib
 import json
 import os
+import time
 from dataclasses import asdict, fields
 from pathlib import Path
+from typing import Any
 
 from evaling.config.schema import ModelSpec
 from evaling.providers.base import Completion
@@ -72,6 +74,46 @@ class ResponseCache:
             return Completion(**{k: v for k, v in data.items() if k in known})
         except TypeError:
             return None
+
+    def stats(self) -> dict[str, Any]:
+        """Entry count, total bytes, and age of the oldest entry."""
+        entries = list(self.cache_dir.rglob("*.json")) if self.cache_dir.is_dir() else []
+        total = 0
+        oldest: float | None = None
+        for path in entries:
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            total += stat.st_size
+            oldest = stat.st_mtime if oldest is None else min(oldest, stat.st_mtime)
+        return {
+            "path": str(self.cache_dir),
+            "entries": len(entries),
+            "bytes": total,
+            "oldest_mtime": oldest,
+        }
+
+    def prune(self, older_than_days: float | None = None) -> int:
+        """Delete entries (optionally only those older than N days). Returns the count."""
+        if not self.cache_dir.is_dir():
+            return 0
+        cutoff = None if older_than_days is None else time.time() - older_than_days * 86400
+        removed = 0
+        for path in self.cache_dir.rglob("*.json"):
+            try:
+                if cutoff is not None and path.stat().st_mtime >= cutoff:
+                    continue
+                path.unlink()
+                removed += 1
+            except OSError:
+                continue
+        # tidy now-empty shard directories
+        for shard in sorted(self.cache_dir.glob("*"), reverse=True):
+            if shard.is_dir():
+                with contextlib.suppress(OSError):
+                    shard.rmdir()
+        return removed
 
     def put(self, key: str, completion: Completion) -> None:
         """Write an entry. Failures are swallowed: a cache problem must never
