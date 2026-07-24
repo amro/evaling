@@ -223,6 +223,80 @@ def test_run_result_totals_sum_tokens(tmp_path):
     assert result.totals["output_tokens"] > 0
 
 
+def test_records_carry_scores_and_run_json_aggregates(tmp_path):
+    # 'plain' echoes the question so exact-vs-expected passes when expected==question
+    config = make_config(
+        tmp_path,
+        cases=[
+            {"id": "c1", "vars": {"q": "alpha"}, "expected": "alpha"},
+            {"id": "c2", "vars": {"q": "beta"}, "expected": "GAMMA"},
+        ],
+    )
+    result = run_eval(config, make_settings(tmp_path))
+    by_case = {r.case_id: r for r in result.records}
+    assert by_case["c1"].scores["acc"]["passed"] is True
+    assert by_case["c2"].scores["acc"]["passed"] is False
+    assert by_case["c2"].scores["acc"]["detail"] == "expected 'GAMMA'"
+
+    assert result.aggregates["overall"] == {
+        "cases": 2,
+        "score": 0.5,
+        "pass_rate": 0.5,
+        "errors": 0,
+    }
+    meta = json.loads((result.path / "run.json").read_text())
+    assert meta["aggregates"]["overall"]["pass_rate"] == 0.5
+
+
+def test_gate_from_thresholds(tmp_path):
+    config = make_config(
+        tmp_path,
+        cases=[{"id": "c1", "vars": {"q": "alpha"}, "expected": "alpha"}],
+    )
+    config.thresholds.min_pass_rate = 0.9
+    result = run_eval(config, make_settings(tmp_path))
+    assert result.gate.passed
+
+    config.thresholds.min_pass_rate = None
+    config.thresholds.min_score = 2.0  # unreachable
+    failed = run_eval(config, make_settings(tmp_path))
+    assert not failed.gate.passed
+    meta = json.loads((failed.path / "run.json").read_text())
+    assert meta["gate"]["passed"] is False
+
+
+def test_no_thresholds_no_gate(tmp_path):
+    result = run_eval(make_config(tmp_path), make_settings(tmp_path))
+    assert result.gate is None
+
+
+def test_baseline_run_id_gates_regression(tmp_path):
+    settings = make_settings(tmp_path)
+    good = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "alpha"}, "expected": "alpha"}])
+    baseline = run_eval(good, settings)
+
+    worse = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "alpha"}, "expected": "WRONG"}])
+    result = run_eval(worse, settings, baseline_run_id=baseline.run_id)
+    assert not result.gate.passed
+    assert result.gate.checks[0]["name"] == "baseline"
+
+    same = run_eval(good, settings, baseline_run_id=baseline.run_id)
+    assert same.gate.passed
+
+
+def test_scorer_crash_fails_criterion_not_run(tmp_path):
+    config = make_config(
+        tmp_path,
+        cases=[{"id": "c1", "vars": {"q": "alpha"}}],  # no expected -> exact scorer raises
+    )
+    result = run_eval(config, make_settings(tmp_path))
+    assert result.counts["failed"] == 0  # the model call itself succeeded
+    entry = result.records[0].scores["acc"]
+    assert entry["passed"] is False
+    assert "expected" in entry["error"]
+    assert result.aggregates["overall"]["pass_rate"] == 0.0
+
+
 def test_resume_missing_run_raises(tmp_path):
     from evaling.storage import StorageError
 

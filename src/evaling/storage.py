@@ -231,11 +231,19 @@ class RunWriter:
             shutil.copyfile(ref.path, dest)
         return f"artifacts/{name}"
 
-    def finalize(self, counts: dict[str, int], totals: dict[str, Any]) -> None:
+    def finalize(
+        self,
+        counts: dict[str, int],
+        totals: dict[str, Any],
+        aggregates: dict[str, Any] | None = None,
+        gate: dict[str, Any] | None = None,
+    ) -> None:
         self.meta.update(
             status="complete",
             finished_at=_utcnow(),
             counts=counts,
             totals=totals,
+            aggregates=aggregates,
+            gate=gate,
         )
         _write_json(self.path / "run.json", self.meta)

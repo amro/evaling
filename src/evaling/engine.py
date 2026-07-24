@@ -8,7 +8,7 @@ interrupted run can be resumed — cells with a record are skipped.
 import asyncio
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -24,6 +24,8 @@ from evaling.errors import EvalingError
 from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
+from evaling.scorers import create_scorers
+from evaling.scoring import GateResult, aggregate, evaluate_gate
 from evaling.storage import (
     ResultRecord,
     RunStore,
@@ -40,6 +42,8 @@ class RunResult:
     records: list[ResultRecord]
     counts: dict[str, int]
     totals: dict[str, Any]
+    aggregates: dict[str, Any]
+    gate: GateResult | None
 
 
 def run_eval(
@@ -48,8 +52,17 @@ def run_eval(
     *,
     label: str | None = None,
     resume_run_id: str | None = None,
+    baseline_run_id: str | None = None,
 ) -> RunResult:
-    return asyncio.run(run_eval_async(config, settings, label=label, resume_run_id=resume_run_id))
+    return asyncio.run(
+        run_eval_async(
+            config,
+            settings,
+            label=label,
+            resume_run_id=resume_run_id,
+            baseline_run_id=baseline_run_id,
+        )
+    )
 
 
 async def run_eval_async(
@@ -58,6 +71,7 @@ async def run_eval_async(
     *,
     label: str | None = None,
     resume_run_id: str | None = None,
+    baseline_run_id: str | None = None,
 ) -> RunResult:
     if settings is None:
         settings = resolve_settings(None, config.settings)
@@ -67,6 +81,7 @@ async def run_eval_async(
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in config.variants
     }
     providers = {model.id: create_provider(model) for model in config.models}
+    scorecard = create_scorers(config, providers)
     cache = ResponseCache(settings.cache_dir) if settings.cache else None
 
     store = RunStore(settings.output_dir)
@@ -128,6 +143,17 @@ async def run_eval_async(
         record.output_tokens = completion.output_tokens
         record.cost_usd = completion.cost_usd
 
+        for criterion, scorer in scorecard:
+            entry: dict[str, Any] = {"weight": criterion.weight}
+            try:
+                result = await scorer.score(record.output, case)
+                entry.update(score=result.score, passed=result.passed)
+                if result.detail is not None:
+                    entry["detail"] = result.detail
+            except Exception as exc:  # noqa: BLE001 - a broken scorer fails the criterion, not the run
+                entry.update(score=0.0, passed=False, error=_describe_error(exc))
+            record.scores[criterion.criterion] = entry
+
     async def _timed_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
         request = CompletionRequest(model=model, messages=rendered)
         provider = providers[model.id]
@@ -161,10 +187,39 @@ async def run_eval_async(
         "output_tokens": _total(records, "output_tokens"),
         "cost_usd": _total(records, "cost_usd"),
     }
-    writer.finalize(counts, totals)
-    return RunResult(
-        run_id=writer.run_id, path=writer.path, records=records, counts=counts, totals=totals
+
+    aggregates = aggregate(records)
+    baseline_overall = _load_baseline_overall(
+        store, baseline_run_id or _baseline_from_thresholds(config)
     )
+    gate = evaluate_gate(config.thresholds, aggregates["overall"], baseline_overall)
+    writer.finalize(counts, totals, aggregates, asdict(gate) if gate else None)
+    return RunResult(
+        run_id=writer.run_id,
+        path=writer.path,
+        records=records,
+        counts=counts,
+        totals=totals,
+        aggregates=aggregates,
+        gate=gate,
+    )
+
+
+def _baseline_from_thresholds(config: EvalConfig) -> str | None:
+    # "regression" means "the pinned baseline" — resolved by the CLI layer,
+    # which passes an explicit baseline_run_id. A literal run id works here.
+    baseline = config.thresholds.baseline
+    return baseline if baseline and baseline != "regression" else None
+
+
+def _load_baseline_overall(store: RunStore, run_id: str | None) -> dict[str, Any] | None:
+    if run_id is None:
+        return None
+    meta = store.load_meta(run_id)
+    aggregates = meta.get("aggregates")
+    if not aggregates:
+        raise StorageError(f"baseline run {run_id!r} has no aggregates (did it finish?)")
+    return aggregates["overall"]
 
 
 def _total(records: list[ResultRecord], attr: str) -> int | float:
