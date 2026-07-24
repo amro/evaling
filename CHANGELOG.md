@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Real providers: `anthropic` (Messages API), `openai` (chat completions),
+  `openai-compatible` (any OpenAI-format endpoint — Ollama, vLLM, LM Studio,
+  OpenRouter, Gemini's compatibility endpoint), and `command` (any CLI or
+  script, request on stdin / response on stdout). All over httpx, tested
+  against a faked transport — the suite still makes no network calls.
+- Cost tracking: built-in per-model pricing for Anthropic models, plus
+  `params.pricing` to supply or override rates for any model.
+- `docs/providers.md` — every provider, per-model options, pricing, errors and
+  retries, and how to add a provider.
 - The CLI: `run` (progress, matrix filters, `--dry-run`, `--max-cost`,
   `--resume`, baseline gating, large-matrix confirmation), `show`
   (summary/failures/case drill-down), `list`, `compare` (per-cell deltas),

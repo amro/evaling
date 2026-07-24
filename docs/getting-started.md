@@ -29,11 +29,6 @@ API keys and no network. You'll see a live progress bar, then the summary:
 
 ## Point it at real models
 
-> **Status:** real providers land in the next milestone — today only the
-> built-in `mock` provider is implemented, and the configs below will report
-> "provider … is not implemented yet". This section previews the settled
-> design.
-
 Edit the scaffolded `eval.yaml`'s `models:` block:
 
 ```yaml
@@ -42,10 +37,15 @@ models:
     provider: anthropic        # reads ANTHROPIC_API_KEY
   - id: gpt-5.2
     provider: openai           # reads OPENAI_API_KEY
+  - id: llama3.1:8b            # local, no key needed
+    provider: openai-compatible
+    base_url: http://localhost:11434/v1
 ```
 
-Keys come from environment variables only. Before spending money, preview
-what a run will do:
+Keys come from environment variables only. See
+[providers.md](providers.md) for every provider, including running local
+models and evaluating your own scripts. Before spending money, preview what a
+run will do:
 
 ```sh
 evaling run --dry-run          # validates config, renders every prompt, counts requests

@@ -47,10 +47,11 @@ shorthand for a single text part — or a list of typed parts:
 | `audio` | `.mp3` `.wav` `.ogg` `.flac` `.m4a` |
 | `video` | `.mp4` `.mov` `.webm` |
 
-Using a part type a model can't accept (e.g. audio on a text-only model) fails
-with a clear error rather than being silently dropped. Video parts are fully
-typed and stored, but no built-in API provider accepts video yet — today they
-work with the `mock` provider (and with the `command` provider once it lands).
+Using a part type a provider can't accept fails at validation time — before any
+model call — rather than being silently dropped. Support by provider:
+`anthropic` takes images and PDFs; `openai` and `openai-compatible` add audio;
+`command` and `mock` accept everything. No API provider accepts video yet, so
+video parts work with `command` and `mock` today.
 
 ## Templating
 

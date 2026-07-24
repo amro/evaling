@@ -40,6 +40,9 @@ Detailed docs live in [`docs/`](docs/):
   artifacts.
 - [Configuration](docs/configuration.md) — the `eval.yaml` reference, settings
   layering, and environment variables.
+- [Providers](docs/providers.md) — Anthropic, OpenAI, OpenAI-compatible (local
+  models, Gemini, OpenRouter), the `command` provider, pricing, and adding your
+  own.
 - [Prompts](docs/prompts.md) — variants, Jinja2 templating, multi-turn
   messages, multimodal inputs, and case datasets.
 - [Scoring](docs/scoring.md) — scorers, scorecards, LLM judges, and CI
