@@ -1,0 +1,52 @@
+"""The provider interface: how evaling calls models.
+
+Providers are async and pluggable: the engine only ever sees this interface,
+so new transports (HTTP APIs, subprocesses, future MCP sampling) slot in
+without engine changes.
+"""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
+
+from evaling.config.schema import ModelSpec
+from evaling.errors import EvalingError
+from evaling.render import RenderedMessage
+
+
+class ProviderError(EvalingError):
+    """A model call failed.
+
+    ``retryable`` distinguishes transient failures (rate limits, timeouts,
+    5xx) worth retrying from permanent ones (bad request, auth) that are not.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
+
+
+@dataclass
+class CompletionRequest:
+    model: ModelSpec
+    messages: list[RenderedMessage]
+
+
+@dataclass
+class Completion:
+    text: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+class Provider(ABC):
+    """One instance is created per configured model for the duration of a run."""
+
+    def __init__(self, spec: ModelSpec):
+        self.spec = spec
+
+    @abstractmethod
+    async def complete(self, request: CompletionRequest) -> Completion:
+        """Run one model call. Raise ProviderError on failure."""
