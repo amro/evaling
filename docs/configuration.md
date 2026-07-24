@@ -66,6 +66,15 @@ settled v1 design and land next):
 | `command` | Requires `command`. Shells out: request on stdin, response on stdout. |
 | `mock` | Deterministic fake model, for dry runs and tests. |
 
+Per-model options (all optional):
+
+- `api_key_env` — which environment variable holds the API key, for backends
+  with their own key variables (e.g. `GEMINI_API_KEY` on an OpenAI-compatible
+  endpoint). Providers default sensibly (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+- `timeout_s` — per-model request timeout (wired by the HTTP providers).
+- `max_retries` — transient-failure retries for this model (attempts =
+  retries + 1; default 2 retries).
+
 API keys are read from environment variables only — never put keys in config
 files.
 
