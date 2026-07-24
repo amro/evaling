@@ -15,6 +15,14 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
 
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv export --no-dev --no-emit-project --format requirements-txt -o requirements-audit.txt
+      - run: uvx pip-audit -r requirements-audit.txt
+
   test:
     runs-on: ubuntu-latest
     strategy:
