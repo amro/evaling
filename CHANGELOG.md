@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The CLI: `run` (progress, matrix filters, `--dry-run`, `--max-cost`,
+  `--resume`, baseline gating, large-matrix confirmation), `show`
+  (summary/failures/case drill-down), `list`, `compare` (per-cell deltas),
+  `export` (json/csv/md), `baseline set/show`, and `init` (offline runnable
+  scaffold). Global `-c/-o/--cache-dir/--no-color/-q/-v/--json` flags; exit
+  code 1 on gate failure, 2 on config errors. Run references: id, label,
+  `latest`, `baseline`.
+- `EVALING_USER_CONFIG` env var to relocate the user config file.
+- `docs/getting-started.md`, `docs/cli.md`, and `docs/ci.md`.
 - Scoring: built-in scorers (`exact`, `contains`, `not-contains`, `regex`,
   `json-valid`, `json-schema`, `python`, `agreement`) plus `llm-judge`
   autoraters — text rubrics receiving `output`/`expected`/`vars`, JSON verdicts

@@ -1,0 +1,79 @@
+# Using evaling in CI
+
+`evaling run` is CI-native: its exit code is the verdict (`0` pass, `1` gate
+failed, `2` config error), runs never prompt when stdin isn't a TTY, and
+`--json`/`export` produce machine-readable artifacts.
+
+## Gate on absolute quality
+
+```yaml
+# eval.yaml
+thresholds:
+  min_pass_rate: 0.9
+  min_score: 0.8
+```
+
+```yaml
+# .github/workflows/evals.yml
+- run: evaling run --yes
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+## Gate on regressions against a baseline
+
+Pin a blessed run once (e.g. after a release), then gate future runs against
+it:
+
+```sh
+evaling run --label v1.4-release
+evaling baseline set v1.4-release
+```
+
+```yaml
+# eval.yaml
+thresholds:
+  baseline: regression   # fail if score or pass rate drops below the pinned run
+```
+
+The pin lives in the output directory (`.evaling/runs/baseline`), so CI needs
+a persisted output dir (a cache step, an artifact, or a shared volume) — or
+pass an explicit run with `evaling run --baseline <run-id>`.
+
+## Useful patterns
+
+- **Lint eval configs on every PR** (free, no model calls):
+
+  ```yaml
+  - run: evaling run --dry-run
+  ```
+
+- **Cost ceiling** so a bad matrix can't burn the budget:
+
+  ```yaml
+  - run: evaling run --yes --max-cost 5.00
+  ```
+
+- **Publish a report artifact:**
+
+  ```yaml
+  - run: evaling export latest --format md --out eval-report.md
+  - uses: actions/upload-artifact@v4
+    with: {name: eval-report, path: eval-report.md}
+  ```
+
+- **Cache model responses between runs** — persist `.evaling/cache/` with your
+  CI cache; unchanged cells then cost nothing:
+
+  ```yaml
+  - uses: actions/cache@v4
+    with:
+      path: .evaling/cache
+      key: evaling-cache-${{ hashFiles('eval.yaml', 'prompts/**', 'cases.jsonl') }}
+  ```
+
+- **Script against results** with `--json`:
+
+  ```sh
+  evaling --json run | jq -e '.gate.passed'
+  ```

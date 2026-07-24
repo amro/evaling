@@ -17,10 +17,27 @@ When you're iterating on a prompt, you want fast answers to questions like:
 `evaling` runs your prompt variants against your chosen models over a set of test
 cases, scores the outputs, and shows you a comparison — all from the terminal.
 
+## Quick taste
+
+```sh
+evaling init      # scaffold a working example (offline, mock provider)
+evaling run       # run it: progress bar, summary matrix, pass/fail gate
+evaling show latest --failures
+evaling compare <run-a> <run-b>
+evaling export latest --format md
+```
+
+See [getting started](docs/getting-started.md).
+
 ## Documentation
 
 Detailed docs live in [`docs/`](docs/):
 
+- [Getting started](docs/getting-started.md) — install, first eval, reading
+  results.
+- [CLI reference](docs/cli.md) — commands, flags, run references, exit codes.
+- [CI recipes](docs/ci.md) — gating, baselines, cost ceilings, report
+  artifacts.
 - [Configuration](docs/configuration.md) — the `eval.yaml` reference, settings
   layering, and environment variables.
 - [Prompts](docs/prompts.md) — variants, Jinja2 templating, multi-turn
