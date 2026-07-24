@@ -18,6 +18,7 @@ import yaml
 from pydantic import ValidationError
 
 from evaling.config.errors import ConfigError
+from evaling.config.loader import _format_validation_error
 from evaling.config.schema import Settings
 
 ENV_VARS = {
@@ -83,9 +84,7 @@ def _load_user_config(path: Path) -> Settings | None:
     try:
         return Settings.model_validate(data)
     except ValidationError as exc:
-        first = exc.errors()[0]
-        loc = ".".join(str(part) for part in first["loc"]) or "<top level>"
-        raise ConfigError(f"{path}: invalid user config: {loc}: {first['msg']}") from exc
+        raise ConfigError(_format_validation_error(path, exc)) from exc
 
 
 def _from_env(env: Mapping[str, str]) -> dict[str, Any]:
