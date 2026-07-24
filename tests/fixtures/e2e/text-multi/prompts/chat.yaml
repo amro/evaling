@@ -1,0 +1,9 @@
+# A scripted multi-turn conversation: system + user + assistant history + follow-up.
+- role: system
+  content: "You are a {{ persona }}."
+- role: user
+  content: "{{ opening }}"
+- role: assistant
+  content: "Understood. Tell me more."
+- role: user
+  content: "{{ followup }}"

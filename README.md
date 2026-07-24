@@ -42,6 +42,11 @@ uv run ruff format . # format
 
 Changes are documented in the [CHANGELOG](CHANGELOG.md).
 
+Complete sample evals (text and multimodal, single- and multi-turn) live in
+[`tests/fixtures/e2e/`](tests/fixtures/e2e/) — the test suite runs them end to
+end against the built-in mock provider, and they double as worked examples of
+the config format.
+
 ## License
 
 [MIT](LICENSE)

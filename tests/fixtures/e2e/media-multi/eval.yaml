@@ -1,0 +1,33 @@
+# E2E scenario: multi-turn with media spread across turns (image in the first
+# user turn, PDF + text in the second). Matrix: 1 x 1 x 2 = 2 cells.
+models:
+  - id: mock-echo
+    provider: mock
+
+variants:
+  - name: doc-qa
+    prompt:
+      - role: system
+        content: You answer questions about documents and images.
+      - role: user
+        content:
+          - text: "First, look at this image:"
+          - image: "{{ files.photo }}"
+      - role: assistant
+        content: "I see it. What next?"
+      - role: user
+        content:
+          - text: "Now answer using this document: {{ question }}"
+          - file: "{{ files.doc }}"
+
+cases:
+  - id: q1
+    vars: {question: "What is the title?"}
+    files: {photo: data/pixel.png, doc: data/doc.pdf}
+  - id: q2
+    vars: {question: "Who is the author?"}
+    files: {photo: data/pixel.png, doc: data/doc.pdf}
+
+scorecard:
+  - criterion: coverage
+    scorer: {type: contains}

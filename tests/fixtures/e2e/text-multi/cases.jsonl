@@ -1,0 +1,3 @@
+{"id": "trip", "persona": "travel agent", "opening": "I want a vacation.", "followup": "Somewhere warm in December.", "expected": "warm"}
+{"id": "menu", "persona": "chef", "opening": "Dinner ideas?", "followup": "Something vegetarian with mushrooms.", "expected": "mushrooms"}
+{"id": "code", "persona": "programmer", "opening": "My tests are flaky.", "followup": "The failures only happen in CI.", "expected": "CI"}

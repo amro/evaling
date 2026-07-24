@@ -1,0 +1,3 @@
+id,instruction,photo,doc,clip,movie
+all-media,Describe every attachment.,file://data/pixel.png,file://data/doc.pdf,file://data/clip.mp3,file://data/movie.mp4
+same-again,Summarize the attachments.,file://data/pixel.png,file://data/doc.pdf,file://data/clip.mp3,file://data/movie.mp4

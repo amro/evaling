@@ -1,0 +1,16 @@
+# E2E scenario: text-only, multi-turn conversation, external prompt file,
+# cases from a JSONL dataset. Matrix: 1 x 1 x 3 = 3 cells.
+models:
+  - id: mock-echo
+    provider: mock
+
+variants:
+  - name: chat
+    prompt: prompts/chat.yaml
+
+cases:
+  file: cases.jsonl
+
+scorecard:
+  - criterion: coverage
+    scorer: {type: contains}

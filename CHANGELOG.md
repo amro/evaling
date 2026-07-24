@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `video` content part type (`.mp4`, `.mov`, `.webm`) — typed and stored like
+  other media; currently supported by the mock and command providers only.
+- End-to-end fixture evals (`tests/fixtures/e2e/`): four complete sample
+  projects — text single-turn, text multi-turn, media single-turn (image, PDF,
+  audio, video via CSV `file://`), media multi-turn — run through the real
+  engine in tests, including full-cache re-runs and artifact dedup checks.
 - Run engine: executes the variants × models × cases matrix with bounded
   concurrency, retries, per-cell failure isolation, and resume for interrupted
   runs. Exported as the `evaling.run_eval` programmatic API.

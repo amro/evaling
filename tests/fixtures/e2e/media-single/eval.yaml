@@ -1,0 +1,23 @@
+# E2E scenario: single-turn with every media kind (image, PDF, audio, video),
+# cases from a CSV using the file:// convention. Matrix: 1 x 1 x 2 = 2 cells.
+models:
+  - id: mock-echo
+    provider: mock
+
+variants:
+  - name: describe-all
+    prompt:
+      - role: user
+        content:
+          - text: "{{ instruction }}"
+          - image: "{{ files.photo }}"
+          - file: "{{ files.doc }}"
+          - audio: "{{ files.clip }}"
+          - video: "{{ files.movie }}"
+
+cases:
+  file: cases.csv
+
+scorecard:
+  - criterion: coverage
+    scorer: {type: contains}

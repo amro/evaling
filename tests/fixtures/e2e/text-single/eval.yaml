@@ -1,0 +1,32 @@
+# E2E scenario: text-only, single-turn, inline prompts and cases.
+# Matrix: 2 variants x 2 models x 2 cases = 8 cells.
+models:
+  - id: mock-echo
+    provider: mock
+  - id: mock-fixed
+    provider: mock
+    params: {response: "FIXED ANSWER"}
+
+variants:
+  - name: plain
+    prompt:
+      - role: user
+        content: "{{ question }}"
+  - name: instructed
+    prompt:
+      - role: system
+        content: Answer briefly.
+      - role: user
+        content: "Q: {{ question }}"
+
+cases:
+  - id: greeting
+    vars: {question: "hello?"}
+    expected: "hello?"
+  - id: math
+    vars: {question: "what is 2+2?"}
+    expected: "4"
+
+scorecard:
+  - criterion: accuracy
+    scorer: {type: exact}
