@@ -15,6 +15,20 @@ When you're iterating on a prompt, you want fast answers to questions like:
 `evaling` runs your prompt variants against your chosen models over a set of test
 cases, scores the outputs, and shows you a comparison — all from the terminal.
 
+## Development
+
+Requires [uv](https://docs.astral.sh/uv/).
+
+```sh
+uv sync              # create the venv and install dependencies
+uv run evaling       # run the CLI
+uv run pytest        # run the test suite
+uv run ruff check .  # lint
+uv run ruff format . # format
+```
+
+Changes are documented in the [CHANGELOG](CHANGELOG.md).
+
 ## License
 
 [MIT](LICENSE)
