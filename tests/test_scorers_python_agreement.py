@@ -98,6 +98,38 @@ class TestPython:
         with pytest.raises(ScoringError, match="returned str"):
             score(PythonScorer({"file": "my_scorer.py"}, base), "x")
 
+    def test_direct_scoreresult_with_nan_rejected(self, tmp_path):
+        # Regression: a ScoreResult built by the user's scorer bypassed range
+        # validation; NaN corrupted aggregates and broke JSON exports.
+        body = (
+            "from evaling.scorers.base import ScoreResult\n"
+            "def score(output, case):\n"
+            "    return ScoreResult(score=float('nan'), passed=True)\n"
+        )
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        with pytest.raises(ScoringError, match=r"finite number in \[0, 1\]"):
+            score(scorer, "x")
+
+    def test_direct_scoreresult_out_of_range_rejected(self, tmp_path):
+        body = (
+            "from evaling.scorers.base import ScoreResult\n"
+            "def score(output, case):\n"
+            "    return ScoreResult(score=5.0, passed=True)\n"
+        )
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        with pytest.raises(ScoringError, match=r"finite number in \[0, 1\]"):
+            score(scorer, "x")
+
+    def test_user_scoring_error_not_double_wrapped(self, tmp_path):
+        body = (
+            "from evaling.scorers.base import ScoringError\n"
+            "def score(output, case):\n"
+            "    raise ScoringError('custom clean message')\n"
+        )
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        with pytest.raises(ScoringError, match="^custom clean message$"):
+            score(scorer, "x")
+
 
 class TestAgreement:
     def test_exact_agreement_with_judge_json(self):

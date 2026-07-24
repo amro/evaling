@@ -1,6 +1,7 @@
 """The scorer interface: grade one model output for one case."""
 
 import json
+import math
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -17,11 +18,26 @@ class ScoringError(EvalingError):
 
 @dataclass(frozen=True)
 class ScoreResult:
-    """A normalized grade: score in [0, 1], an explicit pass/fail, optional detail."""
+    """A normalized grade: score in [0, 1], an explicit pass/fail, optional detail.
+
+    The bounds are enforced at construction: an out-of-range or non-finite
+    score (e.g. NaN from a custom scorer) would otherwise corrupt run
+    aggregates, flip threshold gates, and emit invalid JSON exports.
+    """
 
     score: float
     passed: bool
     detail: str | None = None
+
+    def __post_init__(self):
+        score = self.score
+        if (
+            isinstance(score, bool)
+            or not isinstance(score, (int, float))
+            or not math.isfinite(score)
+            or not 0.0 <= float(score) <= 1.0
+        ):
+            raise ScoringError(f"score must be a finite number in [0, 1], got {score!r}")
 
 
 class Scorer(ABC):

@@ -11,6 +11,7 @@ import inspect
 from numbers import Real
 
 from evaling.config.schema import Case
+from evaling.errors import EvalingError
 from evaling.scorers.base import Scorer, ScoreResult, ScoringError
 
 
@@ -41,6 +42,8 @@ class PythonScorer(Scorer):
             result = self.fn(output, case.model_dump())
             if inspect.isawaitable(result):
                 result = await result
+        except EvalingError:
+            raise  # already a clean user-facing message
         except Exception as exc:
             raise ScoringError(f"python scorer raised {type(exc).__name__}: {exc}") from exc
         return self._coerce(result)

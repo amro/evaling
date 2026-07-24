@@ -74,7 +74,12 @@ def resolve_settings(
         if value is not None:
             values[name] = value
 
-    return Settings(**values)
+    try:
+        return Settings(**values)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        loc = ".".join(str(part) for part in first["loc"]) or "<settings>"
+        raise ConfigError(f"invalid settings: {loc}: {first['msg']}") from exc
 
 
 def _load_user_config(path: Path) -> Settings | None:

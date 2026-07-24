@@ -128,6 +128,18 @@ def test_default_user_config_path_is_under_home():
     assert default_user_config_path().name == "config.yaml"
 
 
+def test_out_of_range_env_value_is_config_error():
+    # Regression: EVALING_CONCURRENCY=0 leaked a raw pydantic ValidationError
+    # (traceback, exit 1) instead of a clean ConfigError (exit 2).
+    with pytest.raises(ConfigError, match="invalid settings: concurrency"):
+        resolve(env={"EVALING_CONCURRENCY": "0"})
+
+
+def test_out_of_range_cli_value_is_config_error():
+    with pytest.raises(ConfigError, match="invalid settings: concurrency"):
+        resolve(cli={"concurrency": -3})
+
+
 def test_user_config_path_from_env(tmp_path):
     user = tmp_path / "custom.yaml"
     user.write_text("concurrency: 3\n")
