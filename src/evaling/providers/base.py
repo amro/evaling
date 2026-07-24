@@ -19,11 +19,14 @@ class ProviderError(EvalingError):
 
     ``retryable`` distinguishes transient failures (rate limits, timeouts,
     5xx) worth retrying from permanent ones (bad request, auth) that are not.
+    ``retry_after`` carries a server-supplied wait (seconds) when there is one,
+    so backoff can respect a rate limiter instead of guessing.
     """
 
-    def __init__(self, message: str, *, retryable: bool = False):
+    def __init__(self, message: str, *, retryable: bool = False, retry_after: float | None = None):
         super().__init__(message)
         self.retryable = retryable
+        self.retry_after = retry_after
 
 
 @dataclass

@@ -82,6 +82,31 @@ class ModelSpec(StrictModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
+    def _pricing_override(self) -> "ModelSpec":
+        """Validate params.pricing at load time, before any spend.
+
+        A malformed override is worse than no override: a negative rate would
+        shrink tracked spend (defeating --max-cost), and a non-numeric one used
+        to raise mid-run, after the API call was already billed.
+        """
+        pricing = self.params.get("pricing")
+        if pricing is None:
+            return self
+        if not isinstance(pricing, dict) or {"input", "output"} - pricing.keys():
+            raise ValueError(
+                f"model {self.id!r}: params.pricing needs numeric 'input' and 'output' "
+                "(USD per million tokens)"
+            )
+        for field in ("input", "output"):
+            value = pricing[field]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                raise ValueError(
+                    f"model {self.id!r}: params.pricing.{field} must be a "
+                    f"non-negative number, got {value!r}"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _provider_fields(self) -> "ModelSpec":
         if self.provider == "openai-compatible" and not self.base_url:
             raise ValueError(f"model {self.id!r}: provider 'openai-compatible' requires 'base_url'")

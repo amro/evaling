@@ -101,15 +101,40 @@ class HttpProvider(Provider):
 
     def _status_error(self, response: httpx.Response) -> ProviderError:
         status = response.status_code
-        detail = _error_detail(response)
+        detail = self._redact(_error_detail(response))
         # 408/409/429 and 5xx are transient; other 4xx are caller errors.
         retryable = status in (408, 409, 429) or status >= 500
         hint = ""
         if status in (401, 403):
             hint = f" (check {self.api_key_env})" if self.api_key_env else ""
         return ProviderError(
-            f"model {self.spec.id!r}: HTTP {status}{hint}: {detail}", retryable=retryable
+            f"model {self.spec.id!r}: HTTP {status}{hint}: {detail}",
+            retryable=retryable,
+            retry_after=_retry_after(response) if retryable else None,
         )
+
+    def _redact(self, text: str) -> str:
+        """Never let a key reach an error message, a log, or results.jsonl.
+
+        Nothing here echoes the key, but a misconfigured gateway that reflects
+        request headers into its error body would otherwise persist it.
+        """
+        key = self._env.get(self.api_key_env) if self.api_key_env else None
+        if key and len(key) >= 8 and key in text:
+            return text.replace(key, "<redacted>")
+        return text
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    """Seconds from a Retry-After header, when the server sends a numeric one."""
+    raw = response.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        seconds = float(raw.strip())
+    except ValueError:
+        return None  # HTTP-date form: fall back to exponential backoff
+    return seconds if seconds >= 0 else None
 
 
 def _error_detail(response: httpx.Response) -> str:

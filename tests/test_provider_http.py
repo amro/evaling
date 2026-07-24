@@ -347,6 +347,48 @@ class TestErrorMapping:
             run(provider, make_request(provider.spec, tmp_path=tmp_path))
         assert exc_info.value.retryable is True
 
+    def test_api_key_redacted_from_error_detail(self, tmp_path):
+        # A gateway that reflects request headers into its error body must not
+        # get the key persisted into results.jsonl.
+        key = "sk-super-secret-value"
+        provider = build(
+            OpenAIProvider, {"id": "gpt-5.2", "provider": "openai"}, env={"OPENAI_API_KEY": key}
+        )
+        body = {"error": {"message": f"upstream rejected Authorization: Bearer {key}"}}
+        install(provider, json_response(body, status=400))
+        with pytest.raises(ProviderError) as exc_info:
+            run(provider, make_request(provider.spec, tmp_path=tmp_path))
+        assert key not in str(exc_info.value)
+        assert "<redacted>" in str(exc_info.value)
+
+    def test_retry_after_header_is_honored(self, tmp_path):
+        provider = build(
+            OpenAIProvider, {"id": "gpt-5.2", "provider": "openai"}, env={"OPENAI_API_KEY": "k"}
+        )
+        install(
+            provider,
+            lambda request: httpx.Response(
+                429, json={"error": {"message": "slow down"}}, headers={"retry-after": "30"}
+            ),
+        )
+        with pytest.raises(ProviderError) as exc_info:
+            run(provider, make_request(provider.spec, tmp_path=tmp_path))
+        assert exc_info.value.retry_after == 30.0
+
+    def test_http_date_retry_after_ignored(self, tmp_path):
+        provider = build(
+            OpenAIProvider, {"id": "gpt-5.2", "provider": "openai"}, env={"OPENAI_API_KEY": "k"}
+        )
+        install(
+            provider,
+            lambda request: httpx.Response(
+                503, json={}, headers={"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}
+            ),
+        )
+        with pytest.raises(ProviderError) as exc_info:
+            run(provider, make_request(provider.spec, tmp_path=tmp_path))
+        assert exc_info.value.retry_after is None  # falls back to exponential backoff
+
     def test_non_json_body_is_fatal(self, tmp_path):
         provider = build(
             OpenAIProvider, {"id": "gpt-5.2", "provider": "openai"}, env={"OPENAI_API_KEY": "k"}

@@ -45,10 +45,21 @@ PRICES: dict[str, Price] = {
 
 
 def price_for(model: str, params: dict[str, Any] | None = None) -> Price | None:
-    """Resolve pricing for a model: config override first, then the table."""
+    """Resolve pricing for a model: config override first, then the table.
+
+    The config schema validates overrides at load time; this stays defensive
+    anyway, because a pricing problem must never destroy a response the user
+    has already paid for.
+    """
     override = (params or {}).get("pricing")
     if isinstance(override, dict) and "input" in override and "output" in override:
-        return Price(float(override["input"]), float(override["output"]))
+        try:
+            price = Price(float(override["input"]), float(override["output"]))
+        except (TypeError, ValueError):
+            return PRICES.get(model)
+        if price.input >= 0 and price.output >= 0:
+            return price
+        return PRICES.get(model)
     return PRICES.get(model)
 
 
@@ -58,11 +69,16 @@ def estimate_cost(
     output_tokens: int | None,
     params: dict[str, Any] | None = None,
 ) -> float | None:
-    """Cost in USD, or None when pricing or usage is unknown."""
+    """Cost in USD, or None when pricing or usage is unknown.
+
+    A priced model that reports no usage at all yields None, not 0.0 — an
+    endpoint that omits usage means the cost is unknown, and reporting $0
+    would be a guess that silently under-counts spend.
+    """
     price = price_for(model, params)
     if price is None:
         return None
-    tokens_in = input_tokens or 0
-    tokens_out = output_tokens or 0
-    cost = (tokens_in * price.input + tokens_out * price.output) / 1_000_000
+    if input_tokens is None and output_tokens is None:
+        return None
+    cost = ((input_tokens or 0) * price.input + (output_tokens or 0) * price.output) / 1_000_000
     return round(cost, 8)

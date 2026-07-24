@@ -70,7 +70,14 @@ class JudgeScorer(Scorer):
             )
 
         request = CompletionRequest(model=self.model, messages=rendered)
-        completion = await call_with_retries(lambda: self.provider.complete(request))
+        # Honor the judge model's own max_retries, like the engine does for
+        # matrix models — a judge is a model too.
+        retry_kwargs = (
+            {} if self.model.max_retries is None else {"max_attempts": self.model.max_retries + 1}
+        )
+        completion = await call_with_retries(
+            lambda: self.provider.complete(request), **retry_kwargs
+        )
         return self._parse_verdict(completion.text)
 
     def _parse_verdict(self, text: str) -> ScoreResult:

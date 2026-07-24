@@ -82,6 +82,43 @@ def test_non_provider_errors_propagate_immediately():
         run(call_with_retries(explode, sleep=make_sleep_recorder([])))
 
 
+def test_retry_after_overrides_exponential_backoff():
+    delays = []
+
+    class RateLimited:
+        def __init__(self):
+            self.calls = 0
+
+        async def __call__(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise ProviderError("429", retryable=True, retry_after=30.0)
+            return "ok"
+
+    result = run(call_with_retries(RateLimited(), sleep=make_sleep_recorder(delays)))
+    assert result == "ok"
+    # honors the server's ask instead of guessing 0.5s and burning attempts
+    assert delays == [30.0]
+
+
+def test_retry_after_capped():
+    delays = []
+
+    async def always_rate_limited():
+        raise ProviderError("429", retryable=True, retry_after=3600.0)
+
+    with pytest.raises(ProviderError):
+        run(
+            call_with_retries(
+                always_rate_limited,
+                max_attempts=2,
+                max_retry_after=60.0,
+                sleep=make_sleep_recorder(delays),
+            )
+        )
+    assert delays == [60.0]  # a run must not hang for an hour
+
+
 def test_zero_attempts_rejected():
     with pytest.raises(ValueError, match="max_attempts"):
         run(call_with_retries(Flaky(0), max_attempts=0))

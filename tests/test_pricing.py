@@ -31,9 +31,28 @@ def test_partial_override_ignored():
     assert price_for("claude-opus-5", {"pricing": {"input": 1.0}}) == PRICES["claude-opus-5"]
 
 
-def test_missing_usage_treated_as_zero():
-    assert estimate_cost("claude-opus-5", None, None) == 0.0
+def test_absent_usage_is_unknown_not_free():
+    # A priced model whose endpoint reports no usage costs an unknown amount.
+    # Calling it $0 would silently under-count spend against --max-cost.
+    assert estimate_cost("claude-opus-5", None, None) is None
     assert estimate_cost("claude-opus-5", 1_000_000, None) == pytest.approx(5.0)
+
+
+@pytest.mark.parametrize(
+    "pricing",
+    [
+        {"input": -5, "output": 10},  # negative would shrink tracked spend
+        {"input": "free", "output": 1},  # non-numeric used to raise mid-run
+        {"input": None, "output": None},
+    ],
+)
+def test_malformed_override_never_crashes_or_goes_negative(pricing):
+    # The schema rejects these at load time; price_for stays defensive so a
+    # pricing problem can never destroy an already-paid-for response.
+    price = price_for("claude-opus-5", {"pricing": pricing})
+    assert price == PRICES["claude-opus-5"]
+    cost = estimate_cost("claude-opus-5", 1000, 1000, {"pricing": pricing})
+    assert cost is not None and cost > 0
 
 
 def test_table_entries_are_positive():

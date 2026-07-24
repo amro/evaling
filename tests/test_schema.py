@@ -98,6 +98,31 @@ def test_command_provider_requires_command():
         ModelSpec.model_validate({"id": "m", "provider": "command"})
 
 
+@pytest.mark.parametrize(
+    "pricing",
+    [
+        {"input": -1, "output": 5},
+        {"input": 5, "output": -1},
+        {"input": "cheap", "output": 5},
+        {"input": 5},
+        {"input": True, "output": 5},
+        "free",
+    ],
+)
+def test_malformed_pricing_rejected_at_load(pricing):
+    # Fails before any spend: a negative rate would shrink tracked spend and
+    # defeat --max-cost.
+    with pytest.raises(ValidationError, match="pricing"):
+        ModelSpec.model_validate({"id": "m", "provider": "mock", "params": {"pricing": pricing}})
+
+
+def test_valid_pricing_accepted():
+    spec = ModelSpec.model_validate(
+        {"id": "m", "provider": "mock", "params": {"pricing": {"input": 1.25, "output": 10}}}
+    )
+    assert spec.params["pricing"]["output"] == 10
+
+
 def test_command_only_valid_for_command_provider():
     with pytest.raises(ValidationError, match="only valid"):
         ModelSpec.model_validate({"id": "m", "provider": "mock", "command": "echo"})

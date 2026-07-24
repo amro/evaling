@@ -89,6 +89,10 @@ models:
     timeout_s: 600
 ```
 
+`command` runs through a shell, so pipes and redirection work. It is a static
+config value — no case or template data is ever interpolated into it — but
+treat it like any other command you commit to a repo.
+
 The stdin payload is `{"model": ..., "params": {...}, "messages": [...]}`, where
 each message has `role` and `parts`; media parts carry their resolved path,
 media type, and content hash so your script can read the files.
@@ -141,7 +145,12 @@ models:
 ```
 
 A config `pricing` block always wins over the built-in table, so you can
-correct a stale rate without waiting for a release.
+correct a stale rate without waiting for a release. Rates must be non-negative
+numbers and are validated when the config loads, before any spend.
+
+If a priced model's endpoint reports no token usage at all, cost is recorded as
+unknown rather than `$0` — calling it free would silently under-count spend
+against `--max-cost`.
 
 ## Errors and retries
 
@@ -149,9 +158,13 @@ Failures map to two classes:
 
 - **Retryable** — 408/409/429, any 5xx, timeouts, connection errors, and
   non-zero exits from `command`. The engine retries these with exponential
-  backoff (`max_retries`, default 2 retries).
+  backoff (`max_retries`, default 2 retries). A numeric `Retry-After` header is
+  honored instead of the guessed backoff, capped at 60s so a run can't hang.
 - **Fatal** — other 4xx, unparseable responses, missing API keys, refusals.
   Recorded on the cell immediately; no retry.
+
+API keys are redacted from error messages before they reach the terminal or
+`results.jsonl`, in case an upstream gateway reflects request headers.
 
 Either way the failure is isolated to its cell: the run continues and reports
 the error in the summary.
