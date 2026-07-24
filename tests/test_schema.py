@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -27,7 +29,7 @@ def test_minimal_config_valid_with_defaults():
     assert cfg.settings == Settings()
     assert cfg.settings.cache is True
     assert cfg.settings.concurrency == 8
-    assert str(cfg.settings.output_dir) == ".evaling/runs"
+    assert cfg.settings.output_dir == Path(".evaling/runs")
     assert cfg.judges == {}
     assert cfg.thresholds.baseline is None
     assert cfg.scorecard[0].weight == 1.0

@@ -100,7 +100,7 @@ def _read_result_lines(path: Path) -> list[dict[str, Any]]:
     """
     if not path.is_file():
         return []
-    lines = [line for line in path.read_text().splitlines() if line.strip()]
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     records = []
     for index, line in enumerate(lines):
         try:
@@ -130,7 +130,9 @@ def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
     """
     tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
     try:
-        tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        tmp.write_text(
+            json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        )
         tmp.replace(path)  # atomic within a filesystem
     finally:
         tmp.unlink(missing_ok=True)
@@ -194,7 +196,7 @@ class RunStore:
         (path / "artifacts").mkdir()
         snapshot, snapshot_sha256 = snapshot_config(config)
         config_sha256 = config_sha256 or snapshot_sha256
-        (path / "config.snapshot.yaml").write_text(snapshot)
+        (path / "config.snapshot.yaml").write_text(snapshot, encoding="utf-8", newline="\n")
         meta = {
             "format_version": FORMAT_VERSION,
             "id": run_id,
@@ -223,7 +225,7 @@ class RunStore:
         if not meta_path.is_file():
             raise StorageError(f"run not found: {run_id!r} (no {meta_path})")
         try:
-            meta = json.loads(meta_path.read_text())
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise StorageError(f"{meta_path}: run metadata is corrupt") from exc
         writer = RunWriter(path, meta)
@@ -241,7 +243,7 @@ class RunStore:
             if not meta_path.is_file():
                 continue
             try:
-                runs.append(json.loads(meta_path.read_text()))
+                runs.append(json.loads(meta_path.read_text(encoding="utf-8")))
             except (OSError, json.JSONDecodeError):
                 # A half-written run (killed mid-create) must not poison the
                 # listing of every other run.
@@ -264,7 +266,7 @@ class RunStore:
         path = self.output_dir / run_id / "results.jsonl"
         if not path.is_file():
             return
-        with path.open() as handle:
+        with path.open(encoding="utf-8") as handle:
             lines = [line for line in handle if line.strip()]
         for index, line in enumerate(lines):
             try:
@@ -283,12 +285,12 @@ class RunStore:
         """Pin a run as the baseline for regression gating."""
         self.load_meta(run_id)  # verify it exists
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._baseline_path.write_text(run_id + "\n")
+        self._baseline_path.write_text(run_id + "\n", encoding="utf-8", newline="\n")
 
     def get_baseline(self) -> str | None:
         if not self._baseline_path.is_file():
             return None
-        return self._baseline_path.read_text().strip() or None
+        return self._baseline_path.read_text(encoding="utf-8").strip() or None
 
     def resolve_ref(self, ref: str) -> str:
         """Resolve a run reference to a run id.
@@ -332,7 +334,7 @@ class RunWriter:
         return self.path / "results.jsonl"
 
     def append_result(self, record: ResultRecord) -> None:
-        with self.results_path.open("a") as handle:
+        with self.results_path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(asdict(record), sort_keys=True) + "\n")
 
     def completed_keys(self) -> set[tuple[str, str, str]]:
@@ -350,11 +352,15 @@ class RunWriter:
         """
         if not self.results_path.is_file():
             return
-        raw_lines = [line for line in self.results_path.read_text().splitlines() if line.strip()]
+        raw_lines = [
+            line
+            for line in self.results_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
         good = _read_result_lines(self.results_path)
         if len(good) < len(raw_lines):
             content = "".join(json.dumps(data, sort_keys=True) + "\n" for data in good)
-            self.results_path.write_text(content)
+            self.results_path.write_text(content, encoding="utf-8", newline="\n")
 
     def store_artifact(self, ref: MediaRef) -> str:
         """Copy a media file into artifacts/, content-addressed. Idempotent."""

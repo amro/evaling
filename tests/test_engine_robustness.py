@@ -6,6 +6,7 @@ can't come back quietly.
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -148,19 +149,21 @@ class TestCacheCompatibility:
         messages = self.rendered(tmp_path)
         assert cache.key_for(base, messages) != cache.key_for(changed, messages)
 
-    def test_put_failure_does_not_raise(self, tmp_path):
-        # A read-only cache dir must not cost the caller a paid-for response.
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir()
-        cache_dir.chmod(0o500)
-        try:
-            cache = ResponseCache(cache_dir)
-            spec = ModelSpec.model_validate({"id": "m", "provider": "mock"})
-            key = cache.key_for(spec, self.rendered(tmp_path))
-            cache.put(key, Completion(text="hi"))  # must not raise
-            assert cache.get(key) is None
-        finally:
-            cache_dir.chmod(0o700)
+    def test_put_failure_does_not_raise(self, tmp_path, monkeypatch):
+        # An unwritable cache must not cost the caller a paid-for response.
+        # The failure is injected rather than staged with chmod: directory
+        # permissions don't deny writes on Windows, and the behaviour under
+        # test is our handling of the error, not the OS that raises it.
+        def explode(*args, **kwargs):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(Path, "write_text", explode)
+        cache = ResponseCache(tmp_path / "cache")
+        spec = ModelSpec.model_validate({"id": "m", "provider": "mock"})
+        key = cache.key_for(spec, self.rendered(tmp_path))
+        cache.put(key, Completion(text="hi"))  # must not raise
+        monkeypatch.undo()
+        assert cache.get(key) is None
 
 
 class TestStorageDurability:

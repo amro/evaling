@@ -52,7 +52,7 @@ def _load_dataset(path: Path) -> list[Case]:
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     try:
-        lines = path.read_text().splitlines()
+        lines = path.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:
         raise ConfigError(f"case file not found: {path}") from None
     rows = []
@@ -71,7 +71,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _read_csv(path: Path) -> list[dict[str, Any]]:
     try:
-        with path.open(newline="") as handle:
+        with path.open(newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             if reader.fieldnames is None:
                 return []

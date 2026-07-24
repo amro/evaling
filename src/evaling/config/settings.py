@@ -86,7 +86,7 @@ def _load_user_config(path: Path) -> Settings | None:
     if not path.exists():
         return None
     try:
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
     if data is None:

@@ -65,12 +65,20 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
+# Preview is on solely for PLW1514; nothing else from preview is selected.
+preview = true
+explicit-preview-rules = true
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "UP",  # pyupgrade
-    "B",   # bugbear
-    "SIM", # simplify
+    "E",       # pycodestyle errors
+    "W",       # pycodestyle warnings
+    "F",       # pyflakes
+    "I",       # isort
+    "UP",      # pyupgrade
+    "B",       # bugbear
+    "SIM",     # simplify
+    "PLW1514", # text I/O must name its encoding (cp1252 defaults break Windows)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests read and write their own fixtures; the encoding rule guards shipped code.
+"tests/*" = ["PLW1514"]

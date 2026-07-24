@@ -17,7 +17,7 @@ def load_config(path: str | Path) -> EvalConfig:
     """
     path = Path(path)
     try:
-        raw = path.read_text()
+        raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise ConfigError(f"config file not found: {path}") from None
     except OSError as exc:
@@ -53,7 +53,7 @@ def load_project_settings(path: str | Path) -> "Settings | None":
     if not path.is_file():
         return None
     try:
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
         raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
     if not isinstance(data, dict) or "settings" not in data:
@@ -68,7 +68,7 @@ def load_prompt(path: str | Path) -> list[Message]:
     """Load an external prompt file: a YAML list of messages."""
     path = Path(path)
     try:
-        raw = path.read_text()
+        raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise ConfigError(f"prompt file not found: {path}") from None
     except OSError as exc:

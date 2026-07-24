@@ -94,7 +94,7 @@ class JsonSchemaScorer(Scorer):
         if isinstance(schema, str):
             path = base_dir / schema
             try:
-                schema = json.loads(path.read_text())
+                schema = json.loads(path.read_text(encoding="utf-8"))
             except FileNotFoundError:
                 raise ScoringError(f"json-schema scorer: schema file not found: {path}") from None
             except json.JSONDecodeError as exc:

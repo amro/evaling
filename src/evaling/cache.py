@@ -62,7 +62,7 @@ class ResponseCache:
         if not path.is_file():
             return None
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None  # unreadable cache entries are misses, never fatal
         if not isinstance(data, dict):
@@ -123,7 +123,9 @@ class ResponseCache:
             path.parent.mkdir(parents=True, exist_ok=True)
             # temp + rename, so a concurrent reader never sees a partial entry
             tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
-            tmp.write_text(json.dumps(asdict(completion), sort_keys=True))
+            tmp.write_text(
+                json.dumps(asdict(completion), sort_keys=True), encoding="utf-8", newline="\n"
+            )
             tmp.replace(path)
         except OSError:
             with contextlib.suppress(OSError):

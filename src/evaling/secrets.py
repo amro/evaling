@@ -60,7 +60,7 @@ def candidate_paths(
 
 def _load_file(path: Path) -> dict[str, str]:
     try:
-        raw = path.read_text()
+        raw = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise SecretsError(f"could not read secrets file {path}: {exc}") from exc
     try:
@@ -84,7 +84,14 @@ def _load_file(path: Path) -> dict[str, str]:
 
 
 def world_readable(path: Path) -> bool:
-    """True when a secrets file is readable by group or other."""
+    """True when a secrets file is readable by group or other.
+
+    POSIX only. Windows reports synthesized mode bits that always look
+    group- and world-readable, so checking them there would warn on every
+    run while saying nothing about the real ACL.
+    """
+    if os.name != "posix":
+        return False
     try:
         mode = path.stat().st_mode
     except OSError:  # pragma: no cover - raced away between checks

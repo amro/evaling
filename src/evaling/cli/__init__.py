@@ -281,7 +281,9 @@ def run(
         # Read the run back from storage so the report is rendered from the
         # same source of truth as `evaling export`.
         meta = store.load_meta(result.run_id)
-        Path(html_path).write_text(render_run_html(meta, store.load_results(result.run_id)))
+        Path(html_path).write_text(
+            render_run_html(meta, store.load_results(result.run_id)), encoding="utf-8", newline="\n"
+        )
 
     if app.json_output:
         app.echo_json(
@@ -451,7 +453,9 @@ def compare(app, ref_a, ref_b, html_path):
     meta_a, meta_b = metas
     diff = compare_aggregates(meta_a["aggregates"], meta_b["aggregates"])
     if html_path:
-        Path(html_path).write_text(render_compare_html(meta_a, meta_b, diff))
+        Path(html_path).write_text(
+            render_compare_html(meta_a, meta_b, diff), encoding="utf-8", newline="\n"
+        )
 
     if app.json_output:
         app.echo_json({"a": meta_a["id"], "b": meta_b["id"], **diff})
@@ -483,7 +487,7 @@ def export(app, ref, fmt, out):
     run_id = store.resolve_ref(ref)
     text = export_run(store.load_meta(run_id), store.load_results(run_id), fmt)
     if out:
-        Path(out).write_text(text)
+        Path(out).write_text(text, encoding="utf-8", newline="\n")
         app.say(f"wrote {out}")
     else:
         click.echo(text)
