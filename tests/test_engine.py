@@ -328,6 +328,21 @@ def test_max_cost_guard_skips_cells_over_limit(tmp_path):
     assert result.totals["cost_usd"] == 3.0
 
 
+def test_max_cost_not_overshot_by_concurrency(tmp_path):
+    # Regression: N in-flight calls could all pass the cost check before any
+    # cost landed, spending concurrency x the limit. The budget admits one
+    # pilot call until a cost is known, so overspend is bounded.
+    config = make_config(
+        tmp_path,
+        models=[{"id": "pricey", "provider": "mock", "params": {"cost": 1.0}}],
+        cases=[{"id": f"c{i}", "vars": {"q": f"q{i}"}} for i in range(5)],
+    )
+    result = run_eval(config, make_settings(tmp_path, concurrency=5), max_cost_usd=1.0)
+    assert result.totals["cost_usd"] == 1.0
+    assert result.counts["succeeded"] == 1
+    assert result.counts["failed"] == 4
+
+
 def test_case_filter_limits_matrix(tmp_path):
     result = run_eval(make_config(tmp_path), make_settings(tmp_path), case_filter=["c2"])
     assert [r.case_id for r in result.records] == ["c2"]
@@ -340,8 +355,8 @@ def test_case_filter_unknown_id_rejected(tmp_path):
         run_eval(make_config(tmp_path), make_settings(tmp_path), case_filter=["ghost"])
 
 
-def test_filter_config_models_and_variants(tmp_path):
-    from evaling.engine import filter_config
+def test_select_matrix_filters_models_and_variants(tmp_path):
+    from evaling.engine import select_matrix
 
     config = make_config(
         tmp_path,
@@ -351,15 +366,15 @@ def test_filter_config_models_and_variants(tmp_path):
             {"name": "v2", "prompt": [{"role": "user", "content": "b"}]},
         ],
     )
-    narrowed = filter_config(config, models=["m2"], variants=["v1"])
-    assert [m.id for m in narrowed.models] == ["m2"]
-    assert [v.name for v in narrowed.variants] == ["v1"]
-    assert narrowed.base_dir == config.base_dir
+    variants_sel, models_sel, cases_sel = select_matrix(
+        config, models=["m2"], variants=["v1"], cases=["c1"]
+    )
+    assert [m.id for m in models_sel] == ["m2"]
+    assert [v.name for v in variants_sel] == ["v1"]
+    assert [c.id for c in cases_sel] == ["c1"]
 
 
-def test_filter_config_keeps_judge_models(tmp_path):
-    from evaling.engine import filter_config
-
+def judge_matrix_config(tmp_path):
     config = EvalConfig.model_validate(
         {
             "models": [
@@ -378,19 +393,37 @@ def test_filter_config_keeps_judge_models(tmp_path):
             },
         }
     )
-    narrowed = filter_config(config, models=["main"])
-    assert {m.id for m in narrowed.models} == {"main", "judge-model"}
+    config._base_dir = tmp_path
+    return config
 
 
-def test_filter_config_unknown_names_rejected(tmp_path):
+def test_model_filter_excludes_judge_from_matrix_but_judging_works(tmp_path):
+    # Regression: filtering to one model used to re-add the judge model as a
+    # full matrix participant, spending judge-model calls on every cell.
+    config = judge_matrix_config(tmp_path)
+    result = run_eval(config, make_settings(tmp_path), model_filter=["main"])
+    assert [r.key for r in result.records] == [("v1", "main", "c1")]
+    # the judge (a filtered-out model) still scored the cell
+    assert result.records[0].scores["q"]["passed"] is True
+
+
+def test_unfiltered_judge_config_runs_judge_model_cells_too(tmp_path):
+    # Without filters, every configured model is a matrix member — including
+    # one that also serves as a judge.
+    config = judge_matrix_config(tmp_path)
+    result = run_eval(config, make_settings(tmp_path))
+    assert {r.model for r in result.records} == {"main", "other", "judge-model"}
+
+
+def test_select_matrix_unknown_names_rejected(tmp_path):
     from evaling.config import ConfigError
-    from evaling.engine import filter_config
+    from evaling.engine import select_matrix
 
     config = make_config(tmp_path)
     with pytest.raises(ConfigError, match="unknown model"):
-        filter_config(config, models=["ghost"])
+        select_matrix(config, models=["ghost"])
     with pytest.raises(ConfigError, match="unknown variant"):
-        filter_config(config, variants=["ghost"])
+        select_matrix(config, variants=["ghost"])
 
 
 def test_dry_run_reports_matrix_and_render_errors(tmp_path):

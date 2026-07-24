@@ -17,6 +17,19 @@ from evaling.storage import ResultRecord
 FORMATS = ("json", "csv", "md")
 
 
+def _csv_safe(value):
+    """Neutralize spreadsheet formula injection (CWE-1236) in text cells."""
+    if isinstance(value, str) and value.lstrip()[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def _md_safe(text: str) -> str:
+    """Make untrusted model text inert inside markdown list items."""
+    flat = " ".join(str(text).split())  # newlines would escape the bullet
+    return flat.replace("<", "\\<").replace("[", "\\[")
+
+
 def export_run(meta: dict[str, Any], records: list[ResultRecord], fmt: str) -> str:
     if fmt == "json":
         return export_json(meta, records)
@@ -69,8 +82,8 @@ def export_csv(records: list[ResultRecord]) -> str:
             "input_tokens": record.input_tokens,
             "output_tokens": record.output_tokens,
             "cost_usd": record.cost_usd,
-            "error": record.error,
-            "output": record.output,
+            "error": _csv_safe(record.error),
+            "output": _csv_safe(record.output),
         }
         for name in criteria:
             entry = record.scores.get(name)
@@ -126,10 +139,10 @@ def export_md(meta: dict[str, Any], records: list[ResultRecord]) -> str:
         for record in failures[:20]:
             key = f"{record.variant} × {record.model} × {record.case_id}"
             if record.error:
-                lines.append(f"- **{key}** — error: {record.error}")
+                lines.append(f"- **{key}** — error: {_md_safe(record.error)}")
             else:
                 failed = [
-                    f"{name} ({entry.get('detail') or entry.get('error') or 'failed'})"
+                    f"{name} ({_md_safe(entry.get('detail') or entry.get('error') or 'failed')})"
                     for name, entry in record.scores.items()
                     if entry.get("passed") is not True
                 ]

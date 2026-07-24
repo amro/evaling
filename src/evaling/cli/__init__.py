@@ -15,9 +15,10 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 from evaling import __version__
 from evaling.cli import render
 from evaling.cli.scaffold import scaffold_project
-from evaling.config import load_cases, load_config, resolve_settings
+from evaling.config import load_config, resolve_settings
+from evaling.config.loader import load_project_settings
 from evaling.engine import dry_run as engine_dry_run
-from evaling.engine import filter_config, run_eval
+from evaling.engine import run_eval, select_matrix
 from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.storage import RunStore
@@ -44,7 +45,14 @@ class App:
             cli["concurrency"] = concurrency
         if cache is not None:
             cli["cache"] = cache
-        return resolve_settings(cli, config.settings if config is not None else None)
+        if config is not None:
+            eval_settings = config.settings
+        else:
+            # Commands that don't need the full eval (show, list, baseline …)
+            # still honor the project's settings block, so every command
+            # resolves the same output/cache directories as `run`.
+            eval_settings = load_project_settings(self.config_path or "eval.yaml")
+        return resolve_settings(cli, eval_settings)
 
     def store(self, settings=None) -> RunStore:
         return RunStore((settings or self.settings()).output_dir)
@@ -72,7 +80,7 @@ def cli_errors(fn):
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
-        except EvalingError as exc:
+        except (EvalingError, OSError) as exc:
             Console(stderr=True, highlight=False).print(f"[red]error:[/red] {exc}")
             raise SystemExit(2) from exc
 
@@ -162,23 +170,26 @@ def run(
 ):
     """Run the eval matrix and print the summary."""
     config = load_config(config_arg or app.config_path or "eval.yaml")
-    config = filter_config(config, list(models) or None, list(variants) or None)
+    model_filter = list(models) or None
+    variant_filter = list(variants) or None
     case_filter = list(case_ids) or None
 
     if dry:
-        _do_dry_run(app, config, case_filter)
+        _do_dry_run(app, config, model_filter, variant_filter, case_filter)
         return
 
     settings = app.settings(config, concurrency=concurrency, cache=False if no_cache else None)
     store = RunStore(settings.output_dir)
 
-    cases = load_cases(config)
-    if case_filter:
-        cases = [case for case in cases if case.id in set(case_filter)]
-    count = len(config.variants) * len(config.models) * len(cases)
+    # The same selection the engine will execute — filters validate here,
+    # before any progress display.
+    variants_sel, models_sel, cases_sel = select_matrix(
+        config, models=model_filter, variants=variant_filter, cases=case_filter
+    )
+    count = len(variants_sel) * len(models_sel) * len(cases_sel)
     app.say(
         f"Running [bold]{count}[/bold] requests "
-        f"({len(config.variants)} variants × {len(config.models)} models × {len(cases)} cases)"
+        f"({len(variants_sel)} variants × {len(models_sel)} models × {len(cases_sel)} cases)"
     )
     if count >= CONFIRM_THRESHOLD and not yes and sys.stdin.isatty():
         click.confirm(f"That is {count} model calls — continue?", abort=True)
@@ -211,6 +222,16 @@ def run(
                     f"  {record.variant} × {record.model} × {record.case_id}: {status}"
                 )
 
+    else:
+        on_result = None
+        progress = None
+
+    filters = {
+        "model_filter": model_filter,
+        "variant_filter": variant_filter,
+        "case_filter": case_filter,
+    }
+    if progress is not None:
         with progress:
             result = _execute(
                 config,
@@ -218,13 +239,13 @@ def run(
                 label,
                 resume_run_id,
                 baseline_run_id,
-                case_filter,
+                filters,
                 max_cost,
                 on_result,
             )
     else:
         result = _execute(
-            config, settings, label, resume_run_id, baseline_run_id, case_filter, max_cost, None
+            config, settings, label, resume_run_id, baseline_run_id, filters, max_cost, None
         )
 
     gate = asdict(result.gate) if result.gate else None
@@ -253,18 +274,16 @@ def run(
         raise SystemExit(1)
 
 
-def _execute(
-    config, settings, label, resume_run_id, baseline_run_id, case_filter, max_cost, on_result
-):
+def _execute(config, settings, label, resume_run_id, baseline_run_id, filters, max_cost, on_result):
     return run_eval(
         config,
         settings,
         label=label,
         resume_run_id=resume_run_id,
         baseline_run_id=baseline_run_id,
-        case_filter=case_filter,
         max_cost_usd=max_cost,
         on_result=on_result,
+        **filters,
     )
 
 
@@ -277,8 +296,13 @@ def _say_totals(app, counts, totals):
     )
 
 
-def _do_dry_run(app, config, case_filter):
-    report = engine_dry_run(config, case_filter)
+def _do_dry_run(app, config, model_filter, variant_filter, case_filter):
+    report = engine_dry_run(
+        config,
+        model_filter=model_filter,
+        variant_filter=variant_filter,
+        case_filter=case_filter,
+    )
     if app.json_output:
         app.echo_json({"requests": report.requests, "cells": report.cells})
     else:

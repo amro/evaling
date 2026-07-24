@@ -19,7 +19,7 @@ from evaling.concurrency import bounded_gather
 from evaling.config.cases import load_cases
 from evaling.config.errors import ConfigError
 from evaling.config.loader import resolve_prompt
-from evaling.config.schema import Case, EvalConfig, ModelSpec, Settings
+from evaling.config.schema import Case, EvalConfig, ModelSpec, Settings, VariantSpec
 from evaling.config.settings import resolve_settings
 from evaling.content import MediaRef
 from evaling.errors import EvalingError
@@ -55,6 +55,8 @@ def run_eval(
     label: str | None = None,
     resume_run_id: str | None = None,
     baseline_run_id: str | None = None,
+    model_filter: list[str] | None = None,
+    variant_filter: list[str] | None = None,
     case_filter: list[str] | None = None,
     max_cost_usd: float | None = None,
     on_result: Callable[[ResultRecord], None] | None = None,
@@ -66,6 +68,8 @@ def run_eval(
             label=label,
             resume_run_id=resume_run_id,
             baseline_run_id=baseline_run_id,
+            model_filter=model_filter,
+            variant_filter=variant_filter,
             case_filter=case_filter,
             max_cost_usd=max_cost_usd,
             on_result=on_result,
@@ -80,6 +84,8 @@ async def run_eval_async(
     label: str | None = None,
     resume_run_id: str | None = None,
     baseline_run_id: str | None = None,
+    model_filter: list[str] | None = None,
+    variant_filter: list[str] | None = None,
     case_filter: list[str] | None = None,
     max_cost_usd: float | None = None,
     on_result: Callable[[ResultRecord], None] | None = None,
@@ -87,10 +93,14 @@ async def run_eval_async(
     if settings is None:
         settings = resolve_settings(None, config.settings)
 
-    cases = _filter_cases(load_cases(config), case_filter)
+    variants_sel, models_sel, cases = select_matrix(
+        config, models=model_filter, variants=variant_filter, cases=case_filter
+    )
     prompts = {
-        variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in config.variants
+        variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
+    # ALL configured models get providers (judges need theirs); only selected
+    # models get matrix cells.
     providers = {model.id: create_provider(model) for model in config.models}
     scorecard = create_scorers(config, providers)
     cache = ResponseCache(settings.cache_dir) if settings.cache else None
@@ -118,7 +128,9 @@ async def run_eval_async(
     # second waiter finds the first's response in the cache instead of paying
     # for a duplicate provider call.
     key_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
-    cost_spent = sum(r.cost_usd for r in prior_records if r.cost_usd) or 0.0
+    budget = _CostBudget(
+        max_cost_usd, spent=sum(r.cost_usd for r in prior_records if r.cost_usd) or 0.0
+    )
 
     async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
@@ -169,19 +181,17 @@ async def run_eval_async(
             record.scores[criterion.criterion] = entry
 
     async def _timed_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
-        nonlocal cost_spent
-        if max_cost_usd is not None and cost_spent >= max_cost_usd:
-            raise EvalingError(
-                f"skipped: max cost limit reached (${cost_spent:.4f} spent, "
-                f"limit ${max_cost_usd:.4f})"
-            )
-        request = CompletionRequest(model=model, messages=rendered)
-        provider = providers[model.id]
-        start = time.perf_counter()
-        completion = await call_with_retries(lambda: provider.complete(request))
-        record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
-        cost_spent += completion.cost_usd or 0.0
-        return completion
+        await budget.acquire()
+        completion = None
+        try:
+            request = CompletionRequest(model=model, messages=rendered)
+            provider = providers[model.id]
+            start = time.perf_counter()
+            completion = await call_with_retries(lambda: provider.complete(request))
+            record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
+            return completion
+        finally:
+            await budget.release(completion.cost_usd if completion else None)
 
     async def _append(record: ResultRecord) -> None:
         async with lock:
@@ -189,8 +199,8 @@ async def run_eval_async(
 
     factories = [
         partial(execute, variant.name, model, case)
-        for variant in config.variants
-        for model in config.models
+        for variant in variants_sel
+        for model in models_sel
         for case in cases
         if (variant.name, model.id, case.id) not in done
     ]
@@ -247,6 +257,52 @@ def _total(records: list[ResultRecord], attr: str) -> int | float:
     return sum(value for r in records if (value := getattr(r, attr)) is not None)
 
 
+class _CostBudget:
+    """Admission control for --max-cost under concurrency.
+
+    Naive check-then-call lets every in-flight coroutine pass the check before
+    any cost lands, overshooting by concurrency × call cost. This bounds the
+    overshoot: until the first call's cost is known, exactly one call may be
+    in flight; afterwards a call is admitted only when spent + in-flight,
+    projected at the costliest observed call, stays under the limit.
+    """
+
+    def __init__(self, limit: float | None, spent: float = 0.0):
+        self.limit = limit
+        self.spent = spent
+        self.in_flight = 0
+        self.max_call_cost = 0.0
+        self.any_landed = False
+        self._cond = asyncio.Condition()
+
+    async def acquire(self) -> None:
+        if self.limit is None:
+            return
+        async with self._cond:
+            while True:
+                if self.spent >= self.limit:
+                    raise EvalingError(
+                        f"skipped: max cost limit reached (${self.spent:.4f} spent, "
+                        f"limit ${self.limit:.4f})"
+                    )
+                projected = self.spent + self.in_flight * self.max_call_cost
+                if self.in_flight == 0 or (self.any_landed and projected < self.limit):
+                    self.in_flight += 1
+                    return
+                await self._cond.wait()
+
+    async def release(self, cost: float | None) -> None:
+        if self.limit is None:
+            return
+        async with self._cond:
+            self.in_flight -= 1
+            if cost is not None:
+                self.spent += cost
+                self.max_call_cost = max(self.max_call_cost, cost)
+                self.any_landed = True
+            self._cond.notify_all()
+
+
 def _describe_error(exc: Exception) -> str:
     # EvalingErrors are already user-facing; anything else keeps its type for context.
     if isinstance(exc, EvalingError):
@@ -254,54 +310,54 @@ def _describe_error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def _filter_cases(cases: list[Case], case_filter: list[str] | None) -> list[Case]:
-    if not case_filter:
-        return cases
-    known = {case.id for case in cases}
-    unknown = [case_id for case_id in case_filter if case_id not in known]
-    if unknown:
-        raise ConfigError(
-            f"unknown case id(s): {', '.join(sorted(unknown))} "
-            f"(available: {', '.join(sorted(known))})"
-        )
-    wanted = set(case_filter)
-    return [case for case in cases if case.id in wanted]
-
-
-def filter_config(
+def select_matrix(
     config: EvalConfig,
+    *,
     models: list[str] | None = None,
     variants: list[str] | None = None,
-) -> EvalConfig:
-    """Restrict the matrix to the named models/variants.
+    cases: list[str] | None = None,
+) -> tuple[list[VariantSpec], list[ModelSpec], list[Case]]:
+    """Validate filters and return exactly what the matrix will execute.
 
-    Models referenced by judges are always retained (they don't add matrix
-    cells beyond their own if also selected — judges need their providers).
+    The single authority for matrix membership: the engine, dry runs, and the
+    CLI's request count all use this, so they cannot disagree. Filtering
+    models here does NOT remove judge providers — judges are not matrix
+    members in the first place.
     """
-    filtered = config
+    variant_specs = config.variants
     if variants:
-        known = {v.name for v in config.variants}
+        known = {v.name for v in variant_specs}
         unknown = sorted(set(variants) - known)
         if unknown:
             raise ConfigError(
                 f"unknown variant(s): {', '.join(unknown)} (available: {', '.join(sorted(known))})"
             )
-        filtered = filtered.model_copy(
-            update={"variants": [v for v in filtered.variants if v.name in set(variants)]}
-        )
+        wanted = set(variants)
+        variant_specs = [v for v in variant_specs if v.name in wanted]
+
+    model_specs = config.models
     if models:
-        known = {m.id for m in config.models}
+        known = {m.id for m in model_specs}
         unknown = sorted(set(models) - known)
         if unknown:
             raise ConfigError(
                 f"unknown model(s): {', '.join(unknown)} (available: {', '.join(sorted(known))})"
             )
-        keep = set(models) | {judge.model for judge in config.judges.values()}
-        filtered = filtered.model_copy(
-            update={"models": [m for m in filtered.models if m.id in keep]}
-        )
-    filtered._base_dir = config.base_dir
-    return filtered
+        wanted = set(models)
+        model_specs = [m for m in model_specs if m.id in wanted]
+
+    case_list = load_cases(config)
+    if cases:
+        known = {case.id for case in case_list}
+        unknown = sorted(set(cases) - known)
+        if unknown:
+            raise ConfigError(
+                f"unknown case id(s): {', '.join(unknown)} (available: {', '.join(sorted(known))})"
+            )
+        wanted = set(cases)
+        case_list = [case for case in case_list if case.id in wanted]
+
+    return variant_specs, model_specs, case_list
 
 
 @dataclass
@@ -316,19 +372,27 @@ class DryRunReport:
         return [cell for cell in self.cells if cell["error"] is not None]
 
 
-def dry_run(config: EvalConfig, case_filter: list[str] | None = None) -> DryRunReport:
+def dry_run(
+    config: EvalConfig,
+    *,
+    model_filter: list[str] | None = None,
+    variant_filter: list[str] | None = None,
+    case_filter: list[str] | None = None,
+) -> DryRunReport:
     """Validate everything a run needs — prompts, cases, scorers, rendering —
     without calling any model."""
-    cases = _filter_cases(load_cases(config), case_filter)
+    variants_sel, models_sel, cases = select_matrix(
+        config, models=model_filter, variants=variant_filter, cases=case_filter
+    )
     prompts = {
-        variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in config.variants
+        variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
     providers = {model.id: create_provider(model) for model in config.models}
     create_scorers(config, providers)  # fail fast on bad scorer config
 
     cells = []
-    for variant in config.variants:
-        for model in config.models:
+    for variant in variants_sel:
+        for model in models_sel:
             for case in cases:
                 error = None
                 try:

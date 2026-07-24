@@ -123,7 +123,13 @@ class RunStore:
     def __init__(self, output_dir: str | Path):
         self.output_dir = Path(output_dir)
 
+    RESERVED_LABELS = frozenset({"latest", "baseline"})
+
     def create_run(self, config: EvalConfig, *, label: str | None = None) -> "RunWriter":
+        if label in self.RESERVED_LABELS:
+            raise StorageError(
+                f"label {label!r} is reserved as a run reference; choose another label"
+            )
         self.output_dir.mkdir(parents=True, exist_ok=True)
         for _ in range(20):
             now = datetime.now(timezone.utc)

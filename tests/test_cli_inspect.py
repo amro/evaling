@@ -131,3 +131,17 @@ def test_regression_gate_without_pinned_baseline_exits_2(two_runs):
 def test_baseline_show_unpinned(two_runs):
     result = cli(two_runs, "baseline", "show")
     assert "no baseline pinned" in result.output
+
+
+def test_export_out_to_missing_directory_exits_2_cleanly(two_runs):
+    result = cli(
+        two_runs,
+        "export",
+        "good",
+        "--format",
+        "md",
+        "--out",
+        str(two_runs / "nonexistent-dir" / "report.md"),
+    )
+    assert result.exit_code == 2
+    assert "Traceback" not in result.output

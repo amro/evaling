@@ -6,7 +6,7 @@ import yaml
 from pydantic import ValidationError
 
 from evaling.config.errors import ConfigError
-from evaling.config.schema import EvalConfig, Message
+from evaling.config.schema import EvalConfig, Message, Settings
 
 
 def load_config(path: str | Path) -> EvalConfig:
@@ -38,6 +38,30 @@ def load_config(path: str | Path) -> EvalConfig:
 
     config._base_dir = path.resolve().parent
     return config
+
+
+def load_project_settings(path: str | Path) -> "Settings | None":
+    """Read only the ``settings:`` block of an eval config, if the file exists.
+
+    Lets commands that don't need the full eval (list, show, baseline …)
+    honor the project's output/cache directories without requiring a fully
+    valid config. Returns None when the file is absent or has no settings.
+    Invalid YAML or an invalid settings block is still an error — silently
+    ignoring it would make commands look in the wrong directory.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return None
+    try:
+        data = yaml.safe_load(path.read_text())
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+    if not isinstance(data, dict) or "settings" not in data:
+        return None
+    try:
+        return Settings.model_validate(data["settings"])
+    except ValidationError as exc:
+        raise ConfigError(_format_validation_error(path, exc)) from exc
 
 
 def load_prompt(path: str | Path) -> list[Message]:

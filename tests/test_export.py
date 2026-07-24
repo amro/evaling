@@ -64,3 +64,37 @@ def test_unknown_format_rejected(finished_run):
     meta, records = finished_run
     with pytest.raises(EvalingError, match="unknown export format"):
         export_run(meta, records, "xml")
+
+
+def test_csv_neutralizes_formula_injection(tmp_path):
+    # Regression (CWE-1236): outputs starting with =+-@ open as live formulas
+    # in spreadsheets unless prefixed.
+    config = make_config(
+        tmp_path,
+        models=[{"id": "m1", "provider": "mock", "params": {"response": "=1+1"}}],
+        cases=[{"id": "c1", "vars": {"q": "x"}, "expected": "=1+1"}],
+    )
+    settings = make_settings(tmp_path)
+    result = run_eval(config, settings)
+    store = RunStore(settings.output_dir)
+    text = export_run(store.load_meta(result.run_id), store.load_results(result.run_id), "csv")
+    row = next(csv.DictReader(io.StringIO(text)))
+    assert row["output"] == "'=1+1"
+
+
+def test_md_sanitizes_untrusted_error_text(tmp_path):
+    config = make_config(
+        tmp_path,
+        models=[{"id": "m1", "provider": "mock", "params": {"response": "nope"}}],
+        cases=[{"id": "c1", "vars": {"q": "x"}, "expected": "line1\n<script>[link]"}],
+    )
+    settings = make_settings(tmp_path)
+    result = run_eval(config, settings)
+    store = RunStore(settings.output_dir)
+    text = export_run(store.load_meta(result.run_id), store.load_results(result.run_id), "md")
+    failures_section = text.split("## Failures")[1]
+    assert "\\<script>" in failures_section
+    assert "\\[link]" in failures_section
+    # the multi-line detail stays inside one bullet line
+    bullet_lines = [line for line in failures_section.splitlines() if line.startswith("- ")]
+    assert len(bullet_lines) == 1

@@ -111,3 +111,60 @@ def test_config_flag_alternative_location(tmp_path):
     (tmp_path / "custom.yaml").write_text(CONFIG)
     result = invoke(tmp_path, "-c", str(tmp_path / "custom.yaml"), "run", config=None)
     assert result.exit_code == 0, result.output
+
+
+def test_unknown_case_filter_fails_before_progress(tmp_path):
+    # Regression: the CLI used to print "Running 0 requests" and a 0/0 bar
+    # before the engine rejected the bogus id.
+    result = invoke(tmp_path, *run_args(tmp_path, "--case", "bogus"))
+    assert result.exit_code == 2
+    assert "unknown case id" in result.output
+    assert "Running" not in result.output
+
+
+def test_reserved_label_rejected(tmp_path):
+    result = invoke(tmp_path, *run_args(tmp_path, "--label", "latest"))
+    assert result.exit_code == 2
+    assert "reserved" in result.output
+
+
+def test_config_settings_output_dir_respected_by_all_commands(tmp_path, monkeypatch):
+    # Regression: run honored settings.output_dir from eval.yaml but
+    # show/list/baseline resolved the default dir and found nothing.
+    monkeypatch.chdir(tmp_path)
+    config = CONFIG + "settings: {output_dir: custom_runs}\n"
+    (tmp_path / "eval.yaml").write_text(config)
+    runner_args = ["run", "eval.yaml"]
+
+    from click.testing import CliRunner
+
+    from evaling.cli import main as cli_main
+
+    assert CliRunner().invoke(cli_main, ["-q", *runner_args], env=ENV).exit_code == 0
+    assert (tmp_path / "custom_runs").is_dir()
+
+    listed = CliRunner().invoke(cli_main, ["--json", "list"], env=ENV)
+    assert len(json.loads(listed.output)) == 1
+
+    shown = CliRunner().invoke(cli_main, ["show", "latest"], env=ENV)
+    assert shown.exit_code == 0, shown.output
+
+    pinned = CliRunner().invoke(cli_main, ["baseline", "set", "latest"], env=ENV)
+    assert pinned.exit_code == 0, pinned.output
+    assert (tmp_path / "custom_runs" / "baseline").is_file()
+
+
+def test_max_cost_flag_reaches_engine(tmp_path):
+    config = CONFIG.replace(
+        "models: [{id: mock, provider: mock}]",
+        "models: [{id: mock, provider: mock, params: {cost: 1.0}}]",
+    )
+    result = invoke(
+        tmp_path,
+        "--json",
+        *run_args(tmp_path, "--max-cost", "1.0", "--concurrency", "1"),
+        config=config,
+    )
+    payload = json.loads(result.output)
+    assert payload["counts"]["failed"] == 1  # second cell skipped by the budget
+    assert payload["totals"]["cost_usd"] == 1.0
