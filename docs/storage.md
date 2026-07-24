@@ -56,6 +56,16 @@ finished so far. Resuming (`--resume <run-id>`) re-executes only the cells with
 no recorded result. Cells that completed *with an error* are not re-executed —
 resume means "finish what was interrupted", not "retry failures".
 
+Guarantees and limits:
+
+- A truncated final `results.jsonl` line (the artifact of a process killed
+  mid-write) is detected and dropped on open; corruption anywhere else in the
+  file is a hard error.
+- Resume requires the **exact config the run started with** (verified against
+  the run's recorded config hash) and refuses runs already marked complete.
+- One process per run directory: resuming the same run from two processes at
+  once is unsupported and can record duplicate cells.
+
 ## Artifacts
 
 Binary inputs (images, PDFs, audio) are copied into `artifacts/` named by their
@@ -75,6 +85,8 @@ after an interruption costs nothing for already-answered cells.
 - Cached results have `"cached": true` and no latency.
 - Bypass with `--no-cache` or `EVALING_CACHE=false`; unreadable cache entries
   degrade to misses, never errors.
+- Identical requests in the same run are single-flighted: duplicates wait for
+  the first call and reuse its cached response instead of paying again.
 
 ## Programmatic access
 
