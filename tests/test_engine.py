@@ -458,6 +458,48 @@ def test_resume_with_mismatched_config_rejected(tmp_path):
         run_eval(other, settings, resume_run_id=interrupted.run_id)
 
 
+def test_resume_detects_edited_prompt_file(tmp_path):
+    # Regression: the resume guard hashed only the config (which holds the
+    # prompt file's *path*), so editing the file's content mid-resume silently
+    # mixed two prompt versions in one run.
+    from evaling.storage import StorageError
+
+    (tmp_path / "prompt.yaml").write_text('- role: user\n  content: "{{ q }} v1"\n')
+    config = make_config(tmp_path, variants=[{"name": "v1", "prompt": "prompt.yaml"}])
+    settings = make_settings(tmp_path)
+    interrupted = run_eval(config, settings)
+    simulate_interruption(interrupted.path)
+
+    (tmp_path / "prompt.yaml").write_text('- role: user\n  content: "{{ q }} v2-MUTATED"\n')
+    mutated = make_config(tmp_path, variants=[{"name": "v1", "prompt": "prompt.yaml"}])
+    with pytest.raises(StorageError, match="config does not match"):
+        run_eval(mutated, settings, resume_run_id=interrupted.run_id)
+
+    # restoring the original content makes resume work again
+    (tmp_path / "prompt.yaml").write_text('- role: user\n  content: "{{ q }} v1"\n')
+    restored = make_config(tmp_path, variants=[{"name": "v1", "prompt": "prompt.yaml"}])
+    resumed = run_eval(restored, settings, resume_run_id=interrupted.run_id)
+    assert {r.output for r in resumed.records} <= {"alpha v1", "beta v1"}
+
+
+def test_resume_detects_edited_attachment(tmp_path):
+    from evaling.storage import StorageError
+
+    (tmp_path / "img.png").write_bytes(b"original")
+    config = make_config(
+        tmp_path,
+        variants=[{"name": "v1", "prompt": [{"role": "user", "content": [{"image": "img.png"}]}]}],
+        cases=[{"id": "c1"}, {"id": "c2"}],
+    )
+    settings = make_settings(tmp_path)
+    interrupted = run_eval(config, settings)
+    simulate_interruption(interrupted.path)
+
+    (tmp_path / "img.png").write_bytes(b"tampered")
+    with pytest.raises(StorageError, match="config does not match"):
+        run_eval(config, settings, resume_run_id=interrupted.run_id)
+
+
 def test_resume_of_complete_run_rejected(tmp_path):
     from evaling.storage import StorageError
 

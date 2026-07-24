@@ -6,6 +6,7 @@ interrupted run can be resumed — cells with a record are skipped.
 """
 
 import asyncio
+import hashlib
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -19,7 +20,14 @@ from evaling.concurrency import bounded_gather
 from evaling.config.cases import load_cases
 from evaling.config.errors import ConfigError
 from evaling.config.loader import resolve_prompt
-from evaling.config.schema import Case, EvalConfig, ModelSpec, Settings, VariantSpec
+from evaling.config.schema import (
+    Case,
+    CaseFileRef,
+    EvalConfig,
+    ModelSpec,
+    Settings,
+    VariantSpec,
+)
 from evaling.config.settings import resolve_settings
 from evaling.content import MediaRef
 from evaling.errors import EvalingError
@@ -106,20 +114,21 @@ async def run_eval_async(
     cache = ResponseCache(settings.cache_dir) if settings.cache else None
 
     store = RunStore(settings.output_dir)
+    fingerprint = config_fingerprint(config)
     if resume_run_id is not None:
         writer = store.open_run(resume_run_id)
         if writer.meta.get("status") == "complete":
             raise StorageError(f"run {resume_run_id!r} is already complete; nothing to resume")
-        _, config_sha256 = snapshot_config(config)
-        if config_sha256 != writer.meta.get("config_sha256"):
+        if fingerprint != writer.meta.get("config_sha256"):
             raise StorageError(
                 f"config does not match run {resume_run_id!r} "
-                "(a resumed run must use the exact config it started with)"
+                "(a resumed run must use the exact config — including referenced prompt, "
+                "case, and attachment files — it started with)"
             )
         prior_records = store.load_results(resume_run_id)
         done = {record.key for record in prior_records}
     else:
-        writer = store.create_run(config, label=label)
+        writer = store.create_run(config, label=label, config_sha256=fingerprint)
         prior_records = []
         done = set()
 
@@ -308,6 +317,67 @@ def _describe_error(exc: Exception) -> str:
     if isinstance(exc, EvalingError):
         return str(exc)
     return f"{type(exc).__name__}: {exc}"
+
+
+def config_fingerprint(config: EvalConfig) -> str:
+    """Hash of the config AND the content of every file it references.
+
+    The resume guard compares this, so editing a referenced prompt file, case
+    dataset, or attachment between run and resume is caught — the plain config
+    snapshot only contains those files' paths.
+    """
+    snapshot, _ = snapshot_config(config)
+    digest = hashlib.sha256(snapshot.encode())
+    for path in _referenced_files(config):
+        try:
+            digest.update(hashlib.sha256(Path(path).read_bytes()).digest())
+        except FileNotFoundError:
+            # The file will fail loudly at render time; for fingerprinting,
+            # its absence is itself part of the state.
+            digest.update(b"<missing>")
+        except OSError as exc:
+            raise ConfigError(f"could not read referenced file {path}: {exc}") from exc
+    return digest.hexdigest()
+
+
+def _referenced_files(config: EvalConfig) -> list[str]:
+    paths: set[str] = set()
+    for variant in config.variants:
+        if isinstance(variant.prompt, str):
+            paths.add(str((config.base_dir / variant.prompt).resolve()))
+        for message in resolve_prompt(variant.prompt, config.base_dir):
+            paths.update(_literal_media_paths(message, config.base_dir))
+    for judge in config.judges.values():
+        if isinstance(judge.rubric, str):
+            paths.add(str((config.base_dir / judge.rubric).resolve()))
+    if isinstance(config.cases, CaseFileRef):
+        paths.add(str((config.base_dir / config.cases.file).resolve()))
+    for case in load_cases(config):
+        paths.update(case.files.values())
+    return sorted(paths)
+
+
+def _literal_media_paths(message, base_dir: Path) -> set[str]:
+    """Media parts with literal (non-templated) paths, resolved.
+
+    Templated expressions like ``{{ files.photo }}`` resolve per case and are
+    covered by the case-attachment hashes instead.
+    """
+    paths: set[str] = set()
+    content = message.content
+    if isinstance(content, str):
+        return paths
+    for part in content:
+        dumped = part.model_dump()
+        if "text" in dumped:
+            continue
+        [expr] = dumped.values()
+        if "{{" not in expr:
+            candidate = Path(expr)
+            if not candidate.is_absolute():
+                candidate = base_dir / candidate
+            paths.add(str(candidate.resolve()))
+    return paths
 
 
 def select_matrix(

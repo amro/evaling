@@ -126,7 +126,19 @@ class RunStore:
 
     RESERVED_LABELS = frozenset({"latest", "baseline"})
 
-    def create_run(self, config: EvalConfig, *, label: str | None = None) -> "RunWriter":
+    def create_run(
+        self,
+        config: EvalConfig,
+        *,
+        label: str | None = None,
+        config_sha256: str | None = None,
+    ) -> "RunWriter":
+        """Create a run directory.
+
+        ``config_sha256`` overrides the recorded config hash — the engine
+        passes a content fingerprint covering referenced files; the default is
+        the hash of the config snapshot alone.
+        """
         if label in self.RESERVED_LABELS:
             raise StorageError(
                 f"label {label!r} is reserved as a run reference; choose another label"
@@ -148,7 +160,8 @@ class RunStore:
             raise StorageError(f"could not allocate a unique run directory in {self.output_dir}")
 
         (path / "artifacts").mkdir()
-        snapshot, config_sha256 = snapshot_config(config)
+        snapshot, snapshot_sha256 = snapshot_config(config)
+        config_sha256 = config_sha256 or snapshot_sha256
         (path / "config.snapshot.yaml").write_text(snapshot)
         meta = {
             "id": run_id,
