@@ -15,6 +15,7 @@ import hashlib
 import json
 import secrets
 import shutil
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -154,6 +155,9 @@ class RunStore:
             "label": label,
             "status": "running",
             "started_at": _utcnow(),
+            # Authoritative creation order: id timestamps only have millisecond
+            # precision, so two rapid runs' ids may sort by their random suffix.
+            "created_ns": time.time_ns(),
             "finished_at": None,
             "config_sha256": config_sha256,
             "counts": None,
@@ -174,14 +178,15 @@ class RunStore:
         return writer
 
     def list_runs(self) -> list[dict[str, Any]]:
-        """Metadata of all runs, oldest first (ids are timestamp-sortable)."""
+        """Metadata of all runs, oldest first (by creation time, id as tiebreak)."""
         if not self.output_dir.is_dir():
             return []
         runs = []
-        for entry in sorted(self.output_dir.iterdir()):
+        for entry in self.output_dir.iterdir():
             meta_path = entry / "run.json"
             if meta_path.is_file():
                 runs.append(json.loads(meta_path.read_text()))
+        runs.sort(key=lambda meta: (meta.get("created_ns") or 0, meta["id"]))
         return runs
 
     def load_meta(self, run_id: str) -> dict[str, Any]:

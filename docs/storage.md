@@ -17,7 +17,9 @@ Runs live under the output directory (default `.evaling/runs/`, see
 ```
 
 Run ids are timestamp-prefixed with millisecond precision
-(`20260724T141530042-9f2a`), so runs sort chronologically by id.
+(`20260724T141530042-9f2a`). Ordering (for `list` and the `latest` reference)
+comes from the nanosecond creation time recorded in `run.json`, so two runs
+created in the same millisecond still order correctly.
 
 ## `run.json`
 

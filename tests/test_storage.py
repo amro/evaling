@@ -39,11 +39,14 @@ def test_create_run_writes_meta_and_snapshot(tmp_path, config):
     assert snapshot["models"][0]["id"] == "m1"
 
 
-def test_run_ids_are_unique_and_sortable(tmp_path, config):
+def test_runs_list_in_creation_order(tmp_path, config):
+    # Regression: back-to-back runs usually share a millisecond timestamp, so
+    # lexicographic id order left "latest" to the random suffix. Creation
+    # order must come from created_ns, not the id string.
     store = RunStore(tmp_path)
-    ids = [store.create_run(config).run_id for _ in range(5)]
-    assert len(set(ids)) == 5
-    assert [run["id"] for run in store.list_runs()] == sorted(ids)
+    ids = [store.create_run(config).run_id for _ in range(10)]
+    assert len(set(ids)) == 10
+    assert [run["id"] for run in store.list_runs()] == ids
 
 
 def test_append_and_load_results_roundtrip(tmp_path, config):
@@ -173,7 +176,7 @@ class TestRunRefs:
     def test_latest_resolves_newest(self, tmp_path, config):
         store = RunStore(tmp_path)
         ids = [store.create_run(config).run_id for _ in range(3)]
-        assert store.resolve_ref("latest") == sorted(ids)[-1]
+        assert store.resolve_ref("latest") == ids[-1]
 
     def test_latest_with_no_runs_raises(self, tmp_path):
         with pytest.raises(StorageError, match="no runs found"):
