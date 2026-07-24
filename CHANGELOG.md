@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Provider interface: async, pluggable `Provider` abstraction with a registry,
+  typed completions (text, token usage, cost), and retryable-vs-fatal errors.
+- Deterministic mock provider for tests and dry runs: echoes the last user
+  message (with media hash markers), fixed responses, and simulated
+  transient/fatal failures.
+- Retry with exponential backoff for transient provider failures, and
+  bounded-concurrency execution for parallel model calls.
+- CI status badge in the README.
 - Prompt rendering: Jinja2 templating with strict undefined (typos fail
   loudly), case vars as top-level names, attachments as `files.<name>`.
 - Multimodal content resolution: images, PDFs, and audio referenced from
