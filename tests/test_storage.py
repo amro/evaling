@@ -167,3 +167,55 @@ def test_load_results_empty_when_no_records(tmp_path, config):
 
 def test_list_runs_empty_output_dir(tmp_path):
     assert RunStore(tmp_path / "missing").list_runs() == []
+
+
+class TestRunRefs:
+    def test_latest_resolves_newest(self, tmp_path, config):
+        store = RunStore(tmp_path)
+        ids = [store.create_run(config).run_id for _ in range(3)]
+        assert store.resolve_ref("latest") == sorted(ids)[-1]
+
+    def test_latest_with_no_runs_raises(self, tmp_path):
+        with pytest.raises(StorageError, match="no runs found"):
+            RunStore(tmp_path).resolve_ref("latest")
+
+    def test_run_id_passes_through(self, tmp_path, config):
+        store = RunStore(tmp_path)
+        run_id = store.create_run(config).run_id
+        assert store.resolve_ref(run_id) == run_id
+
+    def test_label_resolves_most_recent_match(self, tmp_path, config):
+        store = RunStore(tmp_path)
+        store.create_run(config, label="candidate")
+        second = store.create_run(config, label="candidate")
+        assert store.resolve_ref("candidate") == second.run_id
+
+    def test_baseline_set_get_resolve(self, tmp_path, config):
+        store = RunStore(tmp_path)
+        run_id = store.create_run(config).run_id
+        assert store.get_baseline() is None
+        store.set_baseline(run_id)
+        assert store.get_baseline() == run_id
+        assert store.resolve_ref("baseline") == run_id
+
+    def test_baseline_unpinned_raises(self, tmp_path, config):
+        store = RunStore(tmp_path)
+        store.create_run(config)
+        with pytest.raises(StorageError, match="no baseline pinned"):
+            store.resolve_ref("baseline")
+
+    def test_set_baseline_requires_existing_run(self, tmp_path):
+        with pytest.raises(StorageError, match="run not found"):
+            RunStore(tmp_path).set_baseline("ghost")
+
+    def test_unknown_ref_raises(self, tmp_path, config):
+        store = RunStore(tmp_path)
+        store.create_run(config)
+        with pytest.raises(StorageError, match="no run matches 'nope'"):
+            store.resolve_ref("nope")
+
+    def test_baseline_file_ignored_by_list_runs(self, tmp_path, config):
+        store = RunStore(tmp_path)
+        run_id = store.create_run(config).run_id
+        store.set_baseline(run_id)
+        assert [run["id"] for run in store.list_runs()] == [run_id]

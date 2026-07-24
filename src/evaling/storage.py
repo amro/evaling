@@ -182,6 +182,46 @@ class RunStore:
         path = self.output_dir / run_id / "results.jsonl"
         return [ResultRecord(**data) for data in _read_result_lines(path)]
 
+    @property
+    def _baseline_path(self) -> Path:
+        return self.output_dir / "baseline"
+
+    def set_baseline(self, run_id: str) -> None:
+        """Pin a run as the baseline for regression gating."""
+        self.load_meta(run_id)  # verify it exists
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._baseline_path.write_text(run_id + "\n")
+
+    def get_baseline(self) -> str | None:
+        if not self._baseline_path.is_file():
+            return None
+        return self._baseline_path.read_text().strip() or None
+
+    def resolve_ref(self, ref: str) -> str:
+        """Resolve a run reference to a run id.
+
+        Accepts: a run id, ``latest``, ``baseline`` (the pinned run), or a
+        run label (most recent match wins).
+        """
+        if ref == "latest":
+            runs = self.list_runs()
+            if not runs:
+                raise StorageError("no runs found")
+            return runs[-1]["id"]
+        if ref == "baseline":
+            baseline = self.get_baseline()
+            if baseline is None:
+                raise StorageError(
+                    "no baseline pinned (use `evaling baseline set <run>` to pin one)"
+                )
+            return baseline
+        if (self.output_dir / ref / "run.json").is_file():
+            return ref
+        labeled = [run for run in self.list_runs() if run.get("label") == ref]
+        if labeled:
+            return labeled[-1]["id"]
+        raise StorageError(f"no run matches {ref!r} (not an id, label, 'latest', or 'baseline')")
+
 
 class RunWriter:
     """Appends results and artifacts to one run directory."""
