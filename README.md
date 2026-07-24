@@ -17,4 +17,4 @@ cases, scores the outputs, and shows you a comparison — all from the terminal.
 
 ## License
 
-TBD (will be chosen before the repo is opened up).
+[MIT](LICENSE)
