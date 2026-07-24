@@ -64,6 +64,19 @@ No feature may be implemented in the CLI or MCP layer if it belongs in the core.
 - API keys come from environment variables (e.g. `ANTHROPIC_API_KEY`), never from
   config files.
 
+**Eval definition vs workspace settings.** The eval config (models, variants,
+cases, scorecard, judges, thresholds) is portable and version-controlled: anyone
+who clones the repo gets the same eval. Workspace settings (output directory,
+cache directory, concurrency, cache on/off) are machine/user concerns and resolve
+in layers, most specific wins:
+
+1. CLI flags (e.g. `--output-dir`)
+2. Environment variables (`EVALING_OUTPUT_DIR`, `EVALING_CACHE_DIR`,
+   `EVALING_CONCURRENCY`, …)
+3. `settings:` block in the eval config (shareable project defaults)
+4. User config at `~/.config/evaling/config.yaml`
+5. Built-in defaults (runs in `.evaling/runs/`, cache in `.evaling/cache/`)
+
 ### 4.2 Messages and multimodal inputs
 
 - Prompts are **multi-turn**: an ordered list of `{role, content}` messages
@@ -154,32 +167,63 @@ scorers, and a documented recipe/example in the repo.
 
 ### 4.5 CLI
 
+**Global flags** (all commands): `-c/--config PATH`, `-o/--output-dir PATH`,
+`--cache-dir PATH`, `--no-color`, `-q/--quiet`, `-v/--verbose`, `--json`
+(machine-readable stdout for scripting).
+
+**Commands:**
+
 - `evaling init` — scaffold an example `eval.yaml` and directory layout.
-- `evaling run [config]` — run the eval matrix; stream progress; print summary.
-- `evaling compare <run-a> <run-b>` — diff two runs (e.g. before/after a prompt change).
-- `evaling show <run>` — re-render a stored run (summary, per-case detail, failures only).
-- `evaling list` — list stored runs.
-- `evaling export <run> --format json|csv|md|html` — render a stored run (4.8).
-- `evaling --mcp` — start the MCP server (4.6).
+- `evaling run [CONFIG]` — run the eval matrix; stream progress; print summary.
+  - Matrix filtering: `--model NAME`, `--variant NAME`, `--case ID` — each
+    repeatable, to run any sub-matrix.
+  - `--dry-run` — validate config, render all prompts, print request count and
+    cost estimate; makes no model calls. (Doubles as a CI lint for eval configs.)
+  - `--max-cost USD` and `-y/--yes` (skip the large-matrix confirmation).
+  - `--no-cache` (bypass cache), `--resume RUN_ID` (continue an interrupted run).
+  - `--baseline RUN_ID` (override the regression-gate baseline).
+  - `--label NAME` — human-friendly run name.
+  - `--html PATH` — write the HTML report at the end of the run.
+  - `--concurrency N`.
+- `evaling show <run> [--failures] [--case ID]` — re-render a stored run.
+- `evaling compare <run-a> <run-b> [--html PATH]` — diff two runs.
+- `evaling list [--limit N]` — list stored runs.
+- `evaling export <run> --format json|csv|md|html [--out PATH]` — render a stored run (4.8).
+- `evaling baseline set <run>` — pin the blessed baseline run.
+- `evaling mcp` — start the MCP server (4.6).
+
+**Run references:** anywhere a command takes a run, accept: full run id
+(timestamp-sortable, e.g. `2026-07-24T1530-a1b2`), a `--label` name, `latest`,
+or `baseline` (the pinned baseline).
 
 UX requirements:
 
 - Summary view: matrix of variants × models with aggregate scorecard scores,
   cost, latency.
 - Detail view: drill into a single case's output(s) side by side.
-- `--filter` flags to re-run or view subsets (one model, failing cases only, etc.).
 - Exit code reflects pass/fail thresholds (4.7) so `evaling run` works as a CI gate.
 - Show estimated request count before a run; `--max-cost` guard for large matrices.
 - Respect `NO_COLOR`; degrade gracefully in non-TTY environments.
 
 ### 4.6 MCP server mode
 
-- `evaling --mcp` starts an MCP server exposing the core operations as tools:
-  at minimum `run_eval`, `get_run`, `compare_runs`, `list_runs`.
+- `evaling mcp` starts an MCP server (stdio) exposing core operations as tools.
 - Primary use case: **agent-driven prompt iteration** — an MCP client
   (e.g. Claude Code) tweaks a prompt, runs the eval, reads scores, and iterates.
 - CI is explicitly *not* the target for MCP mode; CI uses the CLI
   (exit codes + JSON/HTML exports).
+- Design principle: **the consumer is an LLM — responses must be token-frugal.**
+  Summaries by default; drill-down on demand; pagination on anything unbounded.
+- Tools (v1):
+  - `run_eval(config_path, models?, variants?, cases?, label?, no_cache?, max_cost?)`
+    — **blocking**: runs to completion, emitting MCP progress notifications, and
+    returns the summary (run id, aggregate matrix, failure count, cost).
+  - `get_run(run_id, detail=summary|failures|full, filters?, page?)`.
+  - `get_case_result(run_id, variant, model, case_id)` — full detail for one cell.
+  - `compare_runs(run_a, run_b)` — per-cell deltas, regressions highlighted.
+  - `list_runs(limit?)`, `set_baseline(run_id)`.
+  - `render_prompt(config_path, variant, case_id)` — fully-rendered messages,
+    no model calls (same core function as `--dry-run`).
 - The MCP layer contains no logic beyond tool schemas and calls into the core
   library.
 
@@ -249,4 +293,51 @@ artifacts/             # content-addressed binary inputs/outputs
 | CI gating | Both absolute thresholds and regression-vs-baseline |
 | HTML report | Yes — single self-contained file, for `export` and `compare` |
 | Autorater evaluation | Meta-evals via `human_label` + agreement scorers |
+| Settings resolution | flags > env (`EVALING_*`) > config `settings:` > user config > defaults |
+| Output directory | Configurable at every layer; default `.evaling/runs/` |
+| MCP entry point | `evaling mcp` subcommand (stdio) |
+| MCP `run_eval` | Blocking, with progress notifications; async deferred |
 | License | MIT |
+
+## Appendix: example `eval.yaml`
+
+```yaml
+settings:            # project defaults; all overridable by env/flags
+  output_dir: .evaling/runs
+  concurrency: 8
+  cache: true
+
+models:
+  - id: claude-sonnet-5
+    provider: anthropic
+    params: {max_tokens: 1024}
+  - id: local-llama
+    provider: openai-compatible
+    base_url: http://localhost:11434/v1
+
+variants:
+  - name: concise
+    prompt: prompts/concise.yaml
+  - name: detailed
+    prompt: prompts/detailed.yaml
+
+cases:
+  file: cases.jsonl
+
+scorecard:
+  - criterion: accuracy
+    weight: 3
+    scorer: {type: llm-judge, judge: quality-judge}
+  - criterion: format
+    weight: 1
+    scorer: {type: json-schema, schema: schemas/answer.json}
+
+judges:
+  quality-judge:
+    model: claude-sonnet-5
+    rubric: prompts/judge-rubric.yaml
+
+thresholds:
+  min_pass_rate: 0.9
+  baseline: regression   # fail if worse than pinned baseline
+```
