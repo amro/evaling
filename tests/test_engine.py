@@ -308,6 +308,109 @@ def test_resume_missing_run_raises(tmp_path):
         run_eval(config, make_settings(tmp_path), resume_run_id="ghost")
 
 
+def test_on_result_callback_sees_every_cell(tmp_path):
+    seen = []
+    run_eval(make_config(tmp_path), make_settings(tmp_path), on_result=seen.append)
+    assert sorted(r.case_id for r in seen) == ["c1", "c2"]
+
+
+def test_max_cost_guard_skips_cells_over_limit(tmp_path):
+    config = make_config(
+        tmp_path,
+        models=[{"id": "pricey", "provider": "mock", "params": {"cost": 1.0}}],
+        cases=[{"id": f"c{i}", "vars": {"q": f"q{i}"}} for i in range(4)],
+    )
+    result = run_eval(config, make_settings(tmp_path, concurrency=1), max_cost_usd=2.5)
+    assert result.counts["succeeded"] == 3
+    assert result.counts["failed"] == 1
+    [skipped] = [r for r in result.records if r.error]
+    assert "max cost limit reached" in skipped.error
+    assert result.totals["cost_usd"] == 3.0
+
+
+def test_case_filter_limits_matrix(tmp_path):
+    result = run_eval(make_config(tmp_path), make_settings(tmp_path), case_filter=["c2"])
+    assert [r.case_id for r in result.records] == ["c2"]
+
+
+def test_case_filter_unknown_id_rejected(tmp_path):
+    from evaling.config import ConfigError
+
+    with pytest.raises(ConfigError, match="unknown case id"):
+        run_eval(make_config(tmp_path), make_settings(tmp_path), case_filter=["ghost"])
+
+
+def test_filter_config_models_and_variants(tmp_path):
+    from evaling.engine import filter_config
+
+    config = make_config(
+        tmp_path,
+        models=[{"id": "m1", "provider": "mock"}, {"id": "m2", "provider": "mock"}],
+        variants=[
+            {"name": "v1", "prompt": [{"role": "user", "content": "a"}]},
+            {"name": "v2", "prompt": [{"role": "user", "content": "b"}]},
+        ],
+    )
+    narrowed = filter_config(config, models=["m2"], variants=["v1"])
+    assert [m.id for m in narrowed.models] == ["m2"]
+    assert [v.name for v in narrowed.variants] == ["v1"]
+    assert narrowed.base_dir == config.base_dir
+
+
+def test_filter_config_keeps_judge_models(tmp_path):
+    from evaling.engine import filter_config
+
+    config = EvalConfig.model_validate(
+        {
+            "models": [
+                {"id": "main", "provider": "mock"},
+                {"id": "other", "provider": "mock"},
+                {"id": "judge-model", "provider": "mock", "params": {"response": '{"score": 1}'}},
+            ],
+            "variants": [{"name": "v1", "prompt": [{"role": "user", "content": "hi"}]}],
+            "cases": [{"id": "c1"}],
+            "scorecard": [{"criterion": "q", "scorer": {"type": "llm-judge", "judge": "j"}}],
+            "judges": {
+                "j": {
+                    "model": "judge-model",
+                    "rubric": [{"role": "user", "content": "grade {{ output }}"}],
+                }
+            },
+        }
+    )
+    narrowed = filter_config(config, models=["main"])
+    assert {m.id for m in narrowed.models} == {"main", "judge-model"}
+
+
+def test_filter_config_unknown_names_rejected(tmp_path):
+    from evaling.config import ConfigError
+    from evaling.engine import filter_config
+
+    config = make_config(tmp_path)
+    with pytest.raises(ConfigError, match="unknown model"):
+        filter_config(config, models=["ghost"])
+    with pytest.raises(ConfigError, match="unknown variant"):
+        filter_config(config, variants=["ghost"])
+
+
+def test_dry_run_reports_matrix_and_render_errors(tmp_path):
+    from evaling.engine import dry_run
+
+    config = make_config(
+        tmp_path,
+        variants=[
+            {"name": "good", "prompt": [{"role": "user", "content": "{{ q }}"}]},
+            {"name": "bad", "prompt": [{"role": "user", "content": "{{ nope }}"}]},
+        ],
+    )
+    report = dry_run(config)
+    assert report.requests == 4
+    assert len(report.errors) == 2
+    assert all("'nope' is undefined" in cell["error"] for cell in report.errors)
+    # no run directory was created and no model called
+    assert not (tmp_path / "runs").exists()
+
+
 def test_resume_with_mismatched_config_rejected(tmp_path):
     # Regression: resuming with a different config used to silently mix two
     # configs' results into one run directory.

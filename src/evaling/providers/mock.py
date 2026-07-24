@@ -7,6 +7,7 @@ Behavior is controlled by the model's ``params``:
   as ``[<kind>:<sha256 prefix>]`` so tests can verify media plumbing.
 - ``fail_times``: fail the first N calls with a retryable error.
 - ``error: fatal``: always fail with a non-retryable error.
+- ``cost``: report this cost (USD) per call (default 0).
 
 Token usage is a deterministic function of the text (length // 4).
 """
@@ -46,7 +47,7 @@ class MockProvider(Provider):
             text=text,
             input_tokens=prompt_chars // 4,
             output_tokens=len(text) // 4,
-            cost_usd=0.0,
+            cost_usd=float(params.get("cost", 0.0)),
             raw={"mock_calls": self._calls},
         )
 

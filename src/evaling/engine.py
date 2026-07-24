@@ -8,6 +8,7 @@ interrupted run can be resumed — cells with a record are skipped.
 import asyncio
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import Any
 from evaling.cache import ResponseCache
 from evaling.concurrency import bounded_gather
 from evaling.config.cases import load_cases
+from evaling.config.errors import ConfigError
 from evaling.config.loader import resolve_prompt
 from evaling.config.schema import Case, EvalConfig, ModelSpec, Settings
 from evaling.config.settings import resolve_settings
@@ -53,6 +55,9 @@ def run_eval(
     label: str | None = None,
     resume_run_id: str | None = None,
     baseline_run_id: str | None = None,
+    case_filter: list[str] | None = None,
+    max_cost_usd: float | None = None,
+    on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
     return asyncio.run(
         run_eval_async(
@@ -61,6 +66,9 @@ def run_eval(
             label=label,
             resume_run_id=resume_run_id,
             baseline_run_id=baseline_run_id,
+            case_filter=case_filter,
+            max_cost_usd=max_cost_usd,
+            on_result=on_result,
         )
     )
 
@@ -72,11 +80,14 @@ async def run_eval_async(
     label: str | None = None,
     resume_run_id: str | None = None,
     baseline_run_id: str | None = None,
+    case_filter: list[str] | None = None,
+    max_cost_usd: float | None = None,
+    on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
     if settings is None:
         settings = resolve_settings(None, config.settings)
 
-    cases = load_cases(config)
+    cases = _filter_cases(load_cases(config), case_filter)
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in config.variants
     }
@@ -107,6 +118,7 @@ async def run_eval_async(
     # second waiter finds the first's response in the cache instead of paying
     # for a duplicate provider call.
     key_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+    cost_spent = sum(r.cost_usd for r in prior_records if r.cost_usd) or 0.0
 
     async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
@@ -115,6 +127,8 @@ async def run_eval_async(
         except Exception as exc:  # noqa: BLE001 - per-cell isolation: no cell may kill the run
             record.error = _describe_error(exc)
         await _append(record)
+        if on_result is not None:
+            on_result(record)
         return record
 
     async def _execute_cell(
@@ -155,11 +169,18 @@ async def run_eval_async(
             record.scores[criterion.criterion] = entry
 
     async def _timed_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
+        nonlocal cost_spent
+        if max_cost_usd is not None and cost_spent >= max_cost_usd:
+            raise EvalingError(
+                f"skipped: max cost limit reached (${cost_spent:.4f} spent, "
+                f"limit ${max_cost_usd:.4f})"
+            )
         request = CompletionRequest(model=model, messages=rendered)
         provider = providers[model.id]
         start = time.perf_counter()
         completion = await call_with_retries(lambda: provider.complete(request))
         record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
+        cost_spent += completion.cost_usd or 0.0
         return completion
 
     async def _append(record: ResultRecord) -> None:
@@ -231,3 +252,95 @@ def _describe_error(exc: Exception) -> str:
     if isinstance(exc, EvalingError):
         return str(exc)
     return f"{type(exc).__name__}: {exc}"
+
+
+def _filter_cases(cases: list[Case], case_filter: list[str] | None) -> list[Case]:
+    if not case_filter:
+        return cases
+    known = {case.id for case in cases}
+    unknown = [case_id for case_id in case_filter if case_id not in known]
+    if unknown:
+        raise ConfigError(
+            f"unknown case id(s): {', '.join(sorted(unknown))} "
+            f"(available: {', '.join(sorted(known))})"
+        )
+    wanted = set(case_filter)
+    return [case for case in cases if case.id in wanted]
+
+
+def filter_config(
+    config: EvalConfig,
+    models: list[str] | None = None,
+    variants: list[str] | None = None,
+) -> EvalConfig:
+    """Restrict the matrix to the named models/variants.
+
+    Models referenced by judges are always retained (they don't add matrix
+    cells beyond their own if also selected — judges need their providers).
+    """
+    filtered = config
+    if variants:
+        known = {v.name for v in config.variants}
+        unknown = sorted(set(variants) - known)
+        if unknown:
+            raise ConfigError(
+                f"unknown variant(s): {', '.join(unknown)} (available: {', '.join(sorted(known))})"
+            )
+        filtered = filtered.model_copy(
+            update={"variants": [v for v in filtered.variants if v.name in set(variants)]}
+        )
+    if models:
+        known = {m.id for m in config.models}
+        unknown = sorted(set(models) - known)
+        if unknown:
+            raise ConfigError(
+                f"unknown model(s): {', '.join(unknown)} (available: {', '.join(sorted(known))})"
+            )
+        keep = set(models) | {judge.model for judge in config.judges.values()}
+        filtered = filtered.model_copy(
+            update={"models": [m for m in filtered.models if m.id in keep]}
+        )
+    filtered._base_dir = config.base_dir
+    return filtered
+
+
+@dataclass
+class DryRunReport:
+    """What a run would do: the matrix, per-cell render outcomes, no model calls."""
+
+    requests: int
+    cells: list[dict[str, Any]]  # {variant, model, case_id, error: str|None}
+
+    @property
+    def errors(self) -> list[dict[str, Any]]:
+        return [cell for cell in self.cells if cell["error"] is not None]
+
+
+def dry_run(config: EvalConfig, case_filter: list[str] | None = None) -> DryRunReport:
+    """Validate everything a run needs — prompts, cases, scorers, rendering —
+    without calling any model."""
+    cases = _filter_cases(load_cases(config), case_filter)
+    prompts = {
+        variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in config.variants
+    }
+    providers = {model.id: create_provider(model) for model in config.models}
+    create_scorers(config, providers)  # fail fast on bad scorer config
+
+    cells = []
+    for variant in config.variants:
+        for model in config.models:
+            for case in cases:
+                error = None
+                try:
+                    render_messages(prompts[variant.name], case, config.base_dir)
+                except Exception as exc:  # noqa: BLE001 - reported per cell, like the engine
+                    error = _describe_error(exc)
+                cells.append(
+                    {
+                        "variant": variant.name,
+                        "model": model.id,
+                        "case_id": case.id,
+                        "error": error,
+                    }
+                )
+    return DryRunReport(requests=len(cells), cells=cells)
