@@ -25,6 +25,8 @@ Detailed docs live in [`docs/`](docs/):
   layering, and environment variables.
 - [Prompts](docs/prompts.md) — variants, Jinja2 templating, multi-turn
   messages, multimodal inputs, and case datasets.
+- [Storage](docs/storage.md) — the run directory format, resuming interrupted
+  runs, response caching, and programmatic access.
 
 ## Development
 

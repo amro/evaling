@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Run engine: executes the variants × models × cases matrix with bounded
+  concurrency, retries, per-cell failure isolation, and resume for interrupted
+  runs. Exported as the `evaling.run_eval` programmatic API.
+- Run storage: plain-file run directories (`run.json`, config snapshot,
+  append-as-completed `results.jsonl`, content-addressed `artifacts/`).
+- Response cache (on by default): requests keyed by model spec and
+  content-addressed messages, so identical requests — including
+  moved-but-identical media files — are served from disk.
+- `docs/storage.md` — run format, resuming, caching, programmatic access.
 - Provider interface: async, pluggable `Provider` abstraction with a registry,
   typed completions (text, token usage, cost), and retryable-vs-fatal errors.
 - Deterministic mock provider for tests and dry runs: echoes the last user
