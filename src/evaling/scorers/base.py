@@ -1,6 +1,7 @@
 """The scorer interface: grade one model output for one case."""
 
 import json
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,11 +36,36 @@ class Scorer(ABC):
         """Grade one output. Raise ScoringError when grading is impossible."""
 
 
+_FENCED_BLOCK = re.compile(r"```[\w-]*[ \t]*\n?(.*?)```", re.DOTALL)
+
+
 def parse_json_lenient(text: str) -> Any:
-    """Parse JSON, tolerating the markdown code fences models love to add."""
+    """Parse JSON out of model output, tolerating common decorations.
+
+    Handles, in order: clean JSON; a fenced ```json block (with or without
+    surrounding prose); the first balanced object/array embedded in prose.
+    Raises the original JSONDecodeError when nothing parses.
+    """
     stripped = text.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        lines = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-        stripped = "\n".join(lines).strip()
-    return json.loads(stripped)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        first_error = exc
+
+    fence = _FENCED_BLOCK.search(stripped)
+    if fence:
+        try:
+            return json.loads(fence.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(stripped):
+        if char in "{[":
+            try:
+                value, _ = decoder.raw_decode(stripped, index)
+                return value
+            except json.JSONDecodeError:
+                continue
+
+    raise first_error

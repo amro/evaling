@@ -85,6 +85,14 @@ class TestPython:
         with pytest.raises(ScoringError, match=r"expected a score in \[0, 1\]"):
             score(PythonScorer({"file": "my_scorer.py"}, base), "x")
 
+    def test_out_of_range_mapping_score_rejected(self, tmp_path):
+        # Regression: the mapping branch skipped the [0,1] check, letting an
+        # unnormalized score inflate aggregates and flip min_score gates.
+        body = "def score(output, case):\n    return {'score': 5, 'passed': True}\n"
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        with pytest.raises(ScoringError, match=r"expected a score in \[0, 1\]"):
+            score(scorer, "x")
+
     def test_bad_return_type_rejected(self, tmp_path):
         base = write_scorer(tmp_path, "def score(output, case):\n    return 'great'\n")
         with pytest.raises(ScoringError, match="returned str"):
@@ -131,3 +139,16 @@ class TestAgreement:
     def test_unknown_mode_rejected_at_construction(self):
         with pytest.raises(ScoringError, match="unknown mode"):
             AgreementScorer({"mode": "fuzzy"}, BASE)
+
+    def test_bool_verdict_never_agrees_with_numeric_label(self):
+        # Regression: True == 1.0 in Python, so a judge emitting true/false
+        # silently "agreed" with 1/0 labels instead of surfacing the mismatch.
+        scorer = AgreementScorer({}, BASE)
+        assert not score(scorer, '{"score": true}', Case(human_label=1)).passed
+        assert not score(scorer, '{"score": false}', Case(human_label=0)).passed
+        assert score(scorer, '{"score": true}', Case(human_label=True)).passed
+
+    def test_within_rejects_bool_values(self):
+        scorer = AgreementScorer({"mode": "within", "tolerance": 1}, BASE)
+        with pytest.raises(ScoringError, match="needs numeric"):
+            score(scorer, '{"score": true}', Case(human_label=1))

@@ -206,6 +206,9 @@ def test_judge_referencing_unknown_model_rejected():
 def test_threshold_bounds_enforced():
     with pytest.raises(ValidationError):
         EvalConfig.model_validate(minimal_config(thresholds={"min_pass_rate": 1.5}))
+    with pytest.raises(ValidationError):
+        # scores are normalized to [0,1]; a 0-100 assumption must fail loudly
+        EvalConfig.model_validate(minimal_config(thresholds={"min_score": 80}))
 
 
 def test_concurrency_must_be_positive():

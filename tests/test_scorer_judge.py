@@ -105,6 +105,23 @@ def test_rubric_receives_output_expected_and_vars():
         asyncio.run(scorer.score("out", Case(expected="exp", vars={"q": "hi"})))
 
 
+def test_judge_verdict_with_preamble_parses():
+    verdict = 'Here is my assessment:\n```json\n{"score": 0.9}\n```\nLet me know!'
+    assert run_score(build_judge(judge_config(verdict))).score == 0.9
+
+
+def test_invalid_scale_rejected_at_construction():
+    with pytest.raises(ScoringError, match="'scale' must be positive"):
+        build_judge(judge_config('{"score": 1}', scorer_params={"scale": 0}))
+    with pytest.raises(ScoringError, match="'scale' must be positive"):
+        build_judge(judge_config('{"score": 1}', scorer_params={"scale": -5}))
+
+
+def test_invalid_pass_at_rejected_at_construction():
+    with pytest.raises(ScoringError, match=r"'pass_at' must be in \[0, 1\]"):
+        build_judge(judge_config('{"score": 1}', scorer_params={"pass_at": 1.5}))
+
+
 def test_media_rubric_rejected_at_construction():
     config = judge_config(
         '{"score": 1}',

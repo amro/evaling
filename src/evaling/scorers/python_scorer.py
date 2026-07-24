@@ -57,6 +57,8 @@ class PythonScorer(Scorer):
             return ScoreResult(value, value >= float(self.params.get("pass_at", 1.0)))
         if isinstance(result, dict) and isinstance(result.get("score"), Real):
             value = float(result["score"])
+            if not 0.0 <= value <= 1.0:
+                raise ScoringError(f"python scorer returned {value}, expected a score in [0, 1]")
             passed = result.get("passed", value >= float(self.params.get("pass_at", 1.0)))
             if not isinstance(passed, bool):
                 raise ScoringError("python scorer mapping 'passed' must be a bool")

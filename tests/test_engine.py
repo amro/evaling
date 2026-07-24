@@ -257,9 +257,12 @@ def test_gate_from_thresholds(tmp_path):
     result = run_eval(config, make_settings(tmp_path))
     assert result.gate.passed
 
-    config.thresholds.min_pass_rate = None
-    config.thresholds.min_score = 2.0  # unreachable
-    failed = run_eval(config, make_settings(tmp_path))
+    failing = make_config(
+        tmp_path,
+        cases=[{"id": "c1", "vars": {"q": "alpha"}, "expected": "WRONG"}],
+    )
+    failing.thresholds.min_score = 0.8
+    failed = run_eval(failing, make_settings(tmp_path))
     assert not failed.gate.passed
     meta = json.loads((failed.path / "run.json").read_text())
     assert meta["gate"]["passed"] is False

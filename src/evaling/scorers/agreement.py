@@ -33,9 +33,18 @@ class AgreementScorer(Scorer):
         detail = f"predicted={predicted!r} label={label!r}"
 
         if self.mode == "within":
-            if not isinstance(predicted, Real) or not isinstance(label, Real):
+            if (
+                isinstance(predicted, bool)
+                or isinstance(label, bool)
+                or not isinstance(predicted, Real)
+                or not isinstance(label, Real)
+            ):
                 raise ScoringError(f"agreement 'within' needs numeric values ({detail})")
             passed = abs(float(predicted) - float(label)) <= self.tolerance
+        elif isinstance(predicted, bool) != isinstance(label, bool):
+            # bool == 1.0 in Python; a judge emitting true/false must not
+            # silently "agree" with numeric labels
+            passed = False
         else:
             passed = self._normalize(predicted) == self._normalize(label)
         return ScoreResult(1.0 if passed else 0.0, passed, detail)

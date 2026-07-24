@@ -88,6 +88,27 @@ class TestJson:
         assert score(JsonValidScorer({}, BASE), '```json\n{"a": 1}\n```').passed
         assert parse_json_lenient("```\n[1, 2]\n```") == [1, 2]
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            'Sure, here is my evaluation:\n```json\n{"score": 1}\n```',
+            '```json\n{"score": 1}```',  # closing fence glued to content
+            '```json\n{"score": 1}\n```\nHope that helps!',
+            'The verdict is {"score": 1} as requested.',  # no fence at all
+            'Bad brace { first, then {"score": 1}.',
+        ],
+    )
+    def test_json_extracted_from_prose_and_fence_variants(self, text):
+        # Regression: only exact fence-line/json/fence-line used to parse;
+        # judges that add a preamble caused spurious criterion failures.
+        assert parse_json_lenient(text) == {"score": 1}
+
+    def test_unparseable_text_raises_original_error(self):
+        import json as json_module
+
+        with pytest.raises(json_module.JSONDecodeError):
+            parse_json_lenient("no json anywhere")
+
     def test_schema_pass_and_violation(self):
         schema = {
             "type": "object",

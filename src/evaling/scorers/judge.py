@@ -38,6 +38,14 @@ class JudgeScorer(Scorer):
         self.model = model
         self.provider = provider
         self.rubric = rubric
+        self.scale = float(params.get("scale", 1.0))
+        if self.scale <= 0:
+            raise ScoringError(f"judge {judge_name!r}: 'scale' must be positive, got {self.scale}")
+        self.pass_at = float(params.get("pass_at", 0.5))
+        if not 0.0 <= self.pass_at <= 1.0:
+            raise ScoringError(
+                f"judge {judge_name!r}: 'pass_at' must be in [0, 1], got {self.pass_at}"
+            )
         for message in rubric:
             content = message.content
             if not isinstance(content, str) and any(
@@ -77,9 +85,8 @@ class JudgeScorer(Scorer):
                 f"judge {self.judge_name!r} verdict must be JSON with a numeric 'score', "
                 f"got {text[:120]!r}"
             )
-        scale = float(self.params.get("scale", 1.0))
-        normalized = max(0.0, min(1.0, float(data["score"]) / scale))
+        normalized = max(0.0, min(1.0, float(data["score"]) / self.scale))
         passed = data.get("passed")
         if not isinstance(passed, bool):
-            passed = normalized >= float(self.params.get("pass_at", 0.5))
+            passed = normalized >= self.pass_at
         return ScoreResult(normalized, passed, data.get("rationale"))

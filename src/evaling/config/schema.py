@@ -128,7 +128,7 @@ class JudgeSpec(StrictModel):
 
 class Thresholds(StrictModel):
     min_pass_rate: float | None = Field(default=None, ge=0, le=1)
-    min_score: float | None = None
+    min_score: float | None = Field(default=None, ge=0, le=1)
     # "regression" gates against the pinned baseline; a run id gates against that run.
     baseline: str | None = None
 
