@@ -20,6 +20,7 @@ from evaling.config.schema import (
     Thresholds,
     VariantSpec,
 )
+from evaling.config.settings import default_user_config_path, resolve_settings
 
 __all__ = [
     "AudioPart",
@@ -39,5 +40,7 @@ __all__ = [
     "TextPart",
     "Thresholds",
     "VariantSpec",
+    "default_user_config_path",
     "load_config",
+    "resolve_settings",
 ]
