@@ -25,6 +25,10 @@ Detailed docs live in [`docs/`](docs/):
   layering, and environment variables.
 - [Prompts](docs/prompts.md) — variants, Jinja2 templating, multi-turn
   messages, multimodal inputs, and case datasets.
+- [Scoring](docs/scoring.md) — scorers, scorecards, LLM judges, and CI
+  thresholds.
+- [Evaluating judges](docs/evaluating-judges.md) — calibrate autoraters against
+  human labels (meta-evals).
 - [Storage](docs/storage.md) — the run directory format, resuming interrupted
   runs, response caching, and programmatic access.
 

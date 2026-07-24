@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Scoring: built-in scorers (`exact`, `contains`, `not-contains`, `regex`,
+  `json-valid`, `json-schema`, `python`, `agreement`) plus `llm-judge`
+  autoraters — text rubrics receiving `output`/`expected`/`vars`, JSON verdicts
+  with scale normalization. Scorecard aggregation (weighted per-cell scores,
+  overall and per variant×model stats in `run.json`) and threshold gating
+  (`min_pass_rate`, `min_score`, baseline regression).
+- `docs/scoring.md` and `docs/evaluating-judges.md` (the meta-eval recipe).
 - `video` content part type (`.mp4`, `.mov`, `.webm`) — typed and stored like
   other media; currently supported by the mock and command providers only.
 - End-to-end fixture evals (`tests/fixtures/e2e/`): four complete sample
