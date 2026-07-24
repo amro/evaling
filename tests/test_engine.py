@@ -137,6 +137,23 @@ def test_cache_hit_on_second_run(tmp_path):
     assert all(r.latency_ms is None for r in second.records)
 
 
+def test_identical_concurrent_requests_single_flight_through_cache(tmp_path):
+    # Regression: two cells with byte-identical requests used to both miss the
+    # cache and both call the provider. The per-key lock makes the second
+    # waiter hit the first's cached response.
+    config = make_config(
+        tmp_path,
+        cases=[
+            {"id": "c1", "vars": {"q": "same"}},
+            {"id": "c2", "vars": {"q": "same"}},
+            {"id": "c3", "vars": {"q": "same"}},
+        ],
+    )
+    result = run_eval(config, make_settings(tmp_path, cache=True, concurrency=3))
+    assert result.counts["cached"] == 2
+    assert sum(1 for r in result.records if not r.cached) == 1
+
+
 def test_cache_disabled_never_caches(tmp_path):
     config = make_config(tmp_path)
     settings = make_settings(tmp_path, cache=False)

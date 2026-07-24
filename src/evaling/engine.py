@@ -7,6 +7,7 @@ interrupted run can be resumed — cells with a record are skipped.
 
 import asyncio
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -20,7 +21,7 @@ from evaling.config.schema import Case, EvalConfig, ModelSpec, Settings
 from evaling.config.settings import resolve_settings
 from evaling.content import MediaRef
 from evaling.errors import EvalingError
-from evaling.providers import CompletionRequest, create_provider
+from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
 from evaling.storage import (
@@ -87,6 +88,10 @@ async def run_eval_async(
         done = set()
 
     lock = asyncio.Lock()
+    # Per-cache-key locks single-flight identical concurrent requests: the
+    # second waiter finds the first's response in the cache instead of paying
+    # for a duplicate provider call.
+    key_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
@@ -107,25 +112,29 @@ async def run_eval_async(
                 if isinstance(part, MediaRef):
                     writer.store_artifact(part)
 
-        completion = None
         if cache is not None:
             key = cache.key_for(model, rendered)
-            completion = cache.get(key)
-            record.cached = completion is not None
-
-        if completion is None:
-            request = CompletionRequest(model=model, messages=rendered)
-            provider = providers[model.id]
-            start = time.perf_counter()
-            completion = await call_with_retries(lambda: provider.complete(request))
-            record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
-            if cache is not None:
-                cache.put(key, completion)
+            async with key_locks[key]:
+                completion = cache.get(key)
+                record.cached = completion is not None
+                if completion is None:
+                    completion = await _timed_call(record, model, rendered)
+                    cache.put(key, completion)
+        else:
+            completion = await _timed_call(record, model, rendered)
 
         record.output = completion.text
         record.input_tokens = completion.input_tokens
         record.output_tokens = completion.output_tokens
         record.cost_usd = completion.cost_usd
+
+    async def _timed_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
+        request = CompletionRequest(model=model, messages=rendered)
+        provider = providers[model.id]
+        start = time.perf_counter()
+        completion = await call_with_retries(lambda: provider.complete(request))
+        record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
+        return completion
 
     async def _append(record: ResultRecord) -> None:
         async with lock:
