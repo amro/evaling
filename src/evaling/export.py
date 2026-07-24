@@ -11,7 +11,7 @@ from dataclasses import asdict
 from typing import Any
 
 from evaling.errors import EvalingError
-from evaling.scoring import cell_summary
+from evaling.scoring import cell_summary, filter_failures
 from evaling.storage import ResultRecord
 
 FORMATS = ("json", "csv", "md")
@@ -133,7 +133,7 @@ def export_md(meta: dict[str, Any], records: list[ResultRecord]) -> str:
             )
         lines.append("")
 
-    failures = [record for record in records if not cell_summary(record)[1]]
+    failures = filter_failures(records)
     if failures:
         lines += [f"## Failures ({len(failures)})", ""]
         for record in failures[:20]:

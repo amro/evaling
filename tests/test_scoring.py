@@ -60,6 +60,44 @@ class TestAggregate:
         assert aggregate([])["overall"] == {"cases": 0, "score": 0.0, "pass_rate": 0.0, "errors": 0}
 
 
+class TestCompareAggregates:
+    def test_deltas_and_disjoint_groups(self):
+        from evaling.scoring import compare_aggregates
+
+        a = {
+            "overall": {"score": 0.9, "pass_rate": 1.0},
+            "matrix": [
+                {"variant": "v1", "model": "m1", "score": 0.9, "pass_rate": 1.0},
+                {"variant": "v2", "model": "m1", "score": 0.8, "pass_rate": 0.9},
+            ],
+        }
+        b = {
+            "overall": {"score": 0.7, "pass_rate": 0.8},
+            "matrix": [
+                {"variant": "v1", "model": "m1", "score": 0.7, "pass_rate": 0.8},
+                {"variant": "v3", "model": "m1", "score": 0.5, "pass_rate": 0.5},
+            ],
+        }
+        diff = compare_aggregates(a, b)
+        [cell] = diff["cells"]
+        assert cell["variant"] == "v1"
+        assert cell["score_delta"] == -0.2
+        assert cell["pass_rate_delta"] == -0.2
+        assert diff["only_a"] == [{"variant": "v2", "model": "m1"}]
+        assert diff["only_b"] == [{"variant": "v3", "model": "m1"}]
+        assert diff["overall"]["score_delta"] == -0.2
+
+    def test_filter_failures(self):
+        from evaling.scoring import filter_failures
+
+        records = [
+            record("v1", "m1", "c1", scores={"a": entry(1.0, True)}),
+            record("v1", "m1", "c2", scores={"a": entry(0.0, False)}),
+            record("v1", "m1", "c3", error="boom"),
+        ]
+        assert [r.case_id for r in filter_failures(records)] == ["c2", "c3"]
+
+
 class TestGate:
     def test_no_thresholds_returns_none(self):
         overall = {"score": 0.5, "pass_rate": 0.5}

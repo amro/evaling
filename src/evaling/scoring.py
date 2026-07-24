@@ -53,6 +53,53 @@ def aggregate(records: list[ResultRecord]) -> dict[str, Any]:
     }
 
 
+def filter_failures(records: list[ResultRecord]) -> list[ResultRecord]:
+    """Records whose cell did not pass (errored, unscored, or failed criteria)."""
+    return [record for record in records if not cell_summary(record)[1]]
+
+
+def compare_aggregates(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """Structured diff of two runs' aggregates (a → b).
+
+    Core logic shared by the CLI's compare rendering and the MCP
+    ``compare_runs`` tool: per-cell-group deltas, non-overlapping groups, and
+    the overall movement.
+    """
+    groups_a = {(cell["variant"], cell["model"]): cell for cell in a.get("matrix", [])}
+    groups_b = {(cell["variant"], cell["model"]): cell for cell in b.get("matrix", [])}
+
+    cells = []
+    for variant, model in sorted(set(groups_a) & set(groups_b)):
+        cell_a, cell_b = groups_a[(variant, model)], groups_b[(variant, model)]
+        cells.append(
+            {
+                "variant": variant,
+                "model": model,
+                "score_a": cell_a["score"],
+                "score_b": cell_b["score"],
+                "score_delta": round(cell_b["score"] - cell_a["score"], 6),
+                "pass_rate_a": cell_a["pass_rate"],
+                "pass_rate_b": cell_b["pass_rate"],
+                "pass_rate_delta": round(cell_b["pass_rate"] - cell_a["pass_rate"], 6),
+            }
+        )
+
+    overall_a, overall_b = a["overall"], b["overall"]
+    return {
+        "cells": cells,
+        "only_a": [{"variant": v, "model": m} for v, m in sorted(set(groups_a) - set(groups_b))],
+        "only_b": [{"variant": v, "model": m} for v, m in sorted(set(groups_b) - set(groups_a))],
+        "overall": {
+            "score_a": overall_a["score"],
+            "score_b": overall_b["score"],
+            "score_delta": round(overall_b["score"] - overall_a["score"], 6),
+            "pass_rate_a": overall_a["pass_rate"],
+            "pass_rate_b": overall_b["pass_rate"],
+            "pass_rate_delta": round(overall_b["pass_rate"] - overall_a["pass_rate"], 6),
+        },
+    }
+
+
 @dataclass
 class GateResult:
     passed: bool

@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from evaling import __version__
-from evaling.cli import render
+from evaling.cli import display
 from evaling.cli.scaffold import scaffold_project
 from evaling.config import load_config, resolve_settings
 from evaling.config.loader import load_project_settings
@@ -21,6 +21,7 @@ from evaling.engine import dry_run as engine_dry_run
 from evaling.engine import run_eval, select_matrix
 from evaling.errors import EvalingError
 from evaling.export import export_run
+from evaling.scoring import compare_aggregates
 from evaling.storage import RunStore
 
 CONFIRM_THRESHOLD = 100  # request count above which `run` asks before spending
@@ -213,7 +214,7 @@ def run(
             progress.advance(task)
             if app.verbose:
                 status = (
-                    f"[red]{record.error}[/red]" if record.error else render.snip(record.output)
+                    f"[red]{record.error}[/red]" if record.error else display.snip(record.output)
                 )
                 progress.console.print(
                     f"  {record.variant} × {record.model} × {record.case_id}: {status}"
@@ -259,10 +260,10 @@ def run(
         )
     else:
         app.say("")
-        app.show(render.matrix_table(result.aggregates))
+        app.show(display.matrix_table(result.aggregates))
         _say_totals(app, result.counts, result.totals)
         if gate:
-            for line in render.gate_lines(gate):
+            for line in display.gate_lines(gate):
                 app.show(line)
         app.say(f"run [bold]{result.run_id}[/bold] stored in {result.path}")
     if gate and not gate["passed"]:
@@ -342,7 +343,7 @@ def show(app, ref, failures, case_id):
         if not subset:
             raise EvalingError(f"no results for case {case_id!r} in run {run_id}")
         app.console.print(f"[bold]case {case_id}[/bold] in run {run_id}")
-        app.console.print(render.case_table(subset))
+        app.console.print(display.case_table(subset))
         if app.verbose:
             for record in subset:
                 app.console.print(f"\n[bold]{record.variant} × {record.model}[/bold]")
@@ -350,7 +351,7 @@ def show(app, ref, failures, case_id):
         return
 
     if failures:
-        lines = render.failure_lines(records)
+        lines = display.failure_lines(records)
         if not lines:
             app.console.print("[green]no failures[/green]")
         for line in lines:
@@ -360,11 +361,11 @@ def show(app, ref, failures, case_id):
     label = f" ({meta['label']})" if meta.get("label") else ""
     app.console.print(f"[bold]{meta['id']}[/bold]{label} — {meta['status']}")
     if meta.get("aggregates"):
-        app.console.print(render.matrix_table(meta["aggregates"]))
+        app.console.print(display.matrix_table(meta["aggregates"]))
     if meta.get("counts"):
         _say_totals(app, meta["counts"], meta["totals"])
     if meta.get("gate"):
-        for line in render.gate_lines(meta["gate"]):
+        for line in display.gate_lines(meta["gate"]):
             app.console.print(line)
 
 
@@ -381,7 +382,7 @@ def list_runs(app, limit):
     if not runs:
         app.console.print("no runs yet")
         return
-    app.console.print(render.runs_table(runs))
+    app.console.print(display.runs_table(runs))
 
 
 @main.command()
@@ -399,29 +400,23 @@ def compare(app, ref_a, ref_b):
             raise EvalingError(f"run {meta['id']} has no aggregates (did it finish?)")
         metas.append(meta)
     meta_a, meta_b = metas
+    diff = compare_aggregates(meta_a["aggregates"], meta_b["aggregates"])
 
     if app.json_output:
-        app.echo_json(
-            {
-                "a": {"id": meta_a["id"], "aggregates": meta_a["aggregates"]},
-                "b": {"id": meta_b["id"], "aggregates": meta_b["aggregates"]},
-            }
-        )
+        app.echo_json({"a": meta_a["id"], "b": meta_b["id"], **diff})
         return
 
     app.console.print(f"[bold]{meta_a['id']}[/bold] → [bold]{meta_b['id']}[/bold]")
-    table, notes = render.compare_table(
-        meta_a["aggregates"]["matrix"], meta_b["aggregates"]["matrix"]
-    )
+    table, notes = display.compare_table(diff)
     app.console.print(table)
     for note in notes:
         app.console.print(f"[yellow]{note}[/yellow]")
-    overall_a = meta_a["aggregates"]["overall"]
-    overall_b = meta_b["aggregates"]["overall"]
+    overall = diff["overall"]
     app.console.print(
-        f"overall: score {render.score3(overall_a['score'])} → "
-        f"{render.score3(overall_b['score'])}, "
-        f"pass rate {render.pct(overall_a['pass_rate'])} → {render.pct(overall_b['pass_rate'])}"
+        f"overall: score {display.score3(overall['score_a'])} → "
+        f"{display.score3(overall['score_b'])}, "
+        f"pass rate {display.pct(overall['pass_rate_a'])} → "
+        f"{display.pct(overall['pass_rate_b'])}"
     )
 
 

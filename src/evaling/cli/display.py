@@ -4,7 +4,7 @@ from typing import Any
 
 from rich.table import Table
 
-from evaling.scoring import cell_summary
+from evaling.scoring import cell_summary, filter_failures
 from evaling.storage import ResultRecord
 
 
@@ -90,10 +90,7 @@ def case_table(records: list[ResultRecord]) -> Table:
 
 def failure_lines(records: list[ResultRecord]) -> list[str]:
     lines = []
-    for record in records:
-        score, passed = cell_summary(record)
-        if passed:
-            continue
+    for record in filter_failures(records):
         key = f"[bold]{record.variant} × {record.model} × {record.case_id}[/bold]"
         if record.error:
             lines.append(f"{key} — [red]error:[/red] {snip(record.error, 100)}")
@@ -116,37 +113,28 @@ def gate_lines(gate: dict[str, Any]) -> list[str]:
     return lines
 
 
-def compare_table(
-    matrix_a: list[dict[str, Any]], matrix_b: list[dict[str, Any]]
-) -> tuple[Table, list[str]]:
-    """Cell-group comparison table plus notes about non-overlapping groups."""
-    groups_a = {(cell["variant"], cell["model"]): cell for cell in matrix_a}
-    groups_b = {(cell["variant"], cell["model"]): cell for cell in matrix_b}
-    common = sorted(set(groups_a) & set(groups_b))
-
+def compare_table(diff: dict[str, Any]) -> tuple[Table, list[str]]:
+    """Render a core compare_aggregates() diff as a table plus notes."""
     table = Table(header_style="bold")
     for column in ("Variant", "Model", "Score", "Δ score", "Pass rate", "Δ pass rate"):
         table.add_column(column)
-    for key in common:
-        a, b = groups_a[key], groups_b[key]
-        d_score = b["score"] - a["score"]
-        d_rate = b["pass_rate"] - a["pass_rate"]
+    for cell in diff["cells"]:
         table.add_row(
-            key[0],
-            key[1],
-            f"{score3(a['score'])} → {score3(b['score'])}",
-            _delta(d_score, score3),
-            f"{pct(a['pass_rate'])} → {pct(b['pass_rate'])}",
-            _delta(d_rate, pct),
+            cell["variant"],
+            cell["model"],
+            f"{score3(cell['score_a'])} → {score3(cell['score_b'])}",
+            _delta(cell["score_delta"], score3),
+            f"{pct(cell['pass_rate_a'])} → {pct(cell['pass_rate_b'])}",
+            _delta(cell["pass_rate_delta"], pct),
         )
 
     notes = []
-    only_a = sorted(set(groups_a) - set(groups_b))
-    only_b = sorted(set(groups_b) - set(groups_a))
-    if only_a:
-        notes.append("only in first run: " + ", ".join(f"{v}×{m}" for v, m in only_a))
-    if only_b:
-        notes.append("only in second run: " + ", ".join(f"{v}×{m}" for v, m in only_b))
+    if diff["only_a"]:
+        groups = ", ".join(f"{c['variant']}×{c['model']}" for c in diff["only_a"])
+        notes.append(f"only in first run: {groups}")
+    if diff["only_b"]:
+        groups = ", ".join(f"{c['variant']}×{c['model']}" for c in diff["only_b"])
+        notes.append(f"only in second run: {groups}")
     return table, notes
 
 
