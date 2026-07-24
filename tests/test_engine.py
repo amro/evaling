@@ -92,6 +92,28 @@ def test_transient_failures_retried(tmp_path):
     assert result.records[0].output == "x"
 
 
+def test_arbitrary_template_runtime_error_isolated_per_cell(tmp_path):
+    # Regression: a ZeroDivisionError inside a Jinja2 expression must not kill
+    # the run, lose cells, or leave run.json stuck at "running".
+    config = make_config(
+        tmp_path,
+        variants=[
+            {"name": "good", "prompt": [{"role": "user", "content": "{{ q }}"}]},
+            {"name": "bad", "prompt": [{"role": "user", "content": "{{ 1 / q }}"}]},
+        ],
+        cases=[{"id": "c1", "vars": {"q": 0}}, {"id": "c2", "vars": {"q": 2}}],
+    )
+    result = run_eval(config, make_settings(tmp_path))
+    assert result.counts["total"] == 4
+    assert result.counts["failed"] == 1
+    by_key = {r.key: r for r in result.records}
+    assert "ZeroDivisionError" in by_key[("bad", "m1", "c1")].error
+    assert by_key[("bad", "m1", "c2")].output == "0.5"
+
+    meta = json.loads((result.path / "run.json").read_text())
+    assert meta["status"] == "complete"
+
+
 def test_template_error_recorded_per_cell(tmp_path):
     config = make_config(
         tmp_path,

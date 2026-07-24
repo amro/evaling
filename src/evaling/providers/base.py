@@ -49,4 +49,9 @@ class Provider(ABC):
 
     @abstractmethod
     async def complete(self, request: CompletionRequest) -> Completion:
-        """Run one model call. Raise ProviderError on failure."""
+        """Run one model call. Raise ProviderError on failure.
+
+        Concurrency contract: one instance serves many concurrent complete()
+        calls on a single event loop (no threads). Any instance state mutated
+        across an ``await`` must be guarded by the implementation.
+        """

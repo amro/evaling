@@ -77,12 +77,16 @@ async def run_eval_async(
     async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
         try:
-            rendered = render_messages(prompts[variant_name], case, config.base_dir)
-        except EvalingError as exc:
-            record.error = str(exc)
-            await _append(record)
-            return record
+            await _execute_cell(record, variant_name, model, case)
+        except Exception as exc:  # noqa: BLE001 - per-cell isolation: no cell may kill the run
+            record.error = _describe_error(exc)
+        await _append(record)
+        return record
 
+    async def _execute_cell(
+        record: ResultRecord, variant_name: str, model: ModelSpec, case: Case
+    ) -> None:
+        rendered = render_messages(prompts[variant_name], case, config.base_dir)
         record.messages = serialize_messages(rendered)
         for message in rendered:
             for part in message.parts:
@@ -99,12 +103,7 @@ async def run_eval_async(
             request = CompletionRequest(model=model, messages=rendered)
             provider = providers[model.id]
             start = time.perf_counter()
-            try:
-                completion = await call_with_retries(lambda: provider.complete(request))
-            except EvalingError as exc:
-                record.error = str(exc)
-                await _append(record)
-                return record
+            completion = await call_with_retries(lambda: provider.complete(request))
             record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
             if cache is not None:
                 cache.put(key, completion)
@@ -113,8 +112,6 @@ async def run_eval_async(
         record.input_tokens = completion.input_tokens
         record.output_tokens = completion.output_tokens
         record.cost_usd = completion.cost_usd
-        await _append(record)
-        return record
 
     async def _append(record: ResultRecord) -> None:
         async with lock:
@@ -149,3 +146,10 @@ async def run_eval_async(
 
 def _total(records: list[ResultRecord], attr: str) -> int | float:
     return sum(value for r in records if (value := getattr(r, attr)) is not None)
+
+
+def _describe_error(exc: Exception) -> str:
+    # EvalingErrors are already user-facing; anything else keeps its type for context.
+    if isinstance(exc, EvalingError):
+        return str(exc)
+    return f"{type(exc).__name__}: {exc}"

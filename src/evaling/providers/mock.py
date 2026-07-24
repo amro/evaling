@@ -11,6 +11,8 @@ Behavior is controlled by the model's ``params``:
 Token usage is a deterministic function of the text (length // 4).
 """
 
+import asyncio
+
 from evaling.content import MediaRef
 from evaling.providers.base import Completion, CompletionRequest, Provider, ProviderError
 from evaling.render import RenderedText
@@ -22,6 +24,10 @@ class MockProvider(Provider):
         self._calls = 0
 
     async def complete(self, request: CompletionRequest) -> Completion:
+        # Yield to the event loop so tests exercise real interleaving, like an
+        # HTTP provider would. Note ``fail_times`` counts calls per model
+        # instance across ALL cells sharing that model, not per case.
+        await asyncio.sleep(0)
         params = self.spec.params
         self._calls += 1
 
