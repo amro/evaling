@@ -82,6 +82,27 @@ def serialize_messages(
     return serialized
 
 
+def _read_result_lines(path: Path) -> list[dict[str, Any]]:
+    """Parse results.jsonl, tolerating a torn final line.
+
+    A process killed mid-append leaves a truncated last line; that is the
+    normal crash artifact resume exists for, so it reads as end-of-file.
+    Corruption anywhere else is a real error.
+    """
+    if not path.is_file():
+        return []
+    lines = [line for line in path.read_text().splitlines() if line.strip()]
+    records = []
+    for index, line in enumerate(lines):
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            if index == len(lines) - 1:
+                break  # torn tail from a crash mid-write
+            raise StorageError(f"{path}: corrupt record at line {index + 1}") from exc
+    return records
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -133,7 +154,9 @@ class RunStore:
         if not meta_path.is_file():
             raise StorageError(f"run not found: {run_id!r} (no {meta_path})")
         meta = json.loads(meta_path.read_text())
-        return RunWriter(path, meta)
+        writer = RunWriter(path, meta)
+        writer.repair_torn_tail()
+        return writer
 
     def list_runs(self) -> list[dict[str, Any]]:
         """Metadata of all runs, oldest first (ids are timestamp-sortable)."""
@@ -151,13 +174,7 @@ class RunStore:
 
     def load_results(self, run_id: str) -> list[ResultRecord]:
         path = self.output_dir / run_id / "results.jsonl"
-        if not path.is_file():
-            return []
-        records = []
-        for line in path.read_text().splitlines():
-            if line.strip():
-                records.append(ResultRecord(**json.loads(line)))
-        return records
+        return [ResultRecord(**data) for data in _read_result_lines(path)]
 
 
 class RunWriter:
@@ -181,14 +198,24 @@ class RunWriter:
 
     def completed_keys(self) -> set[tuple[str, str, str]]:
         """Keys of already-recorded results (for resume)."""
+        return {
+            (data["variant"], data["model"], data["case_id"])
+            for data in _read_result_lines(self.results_path)
+        }
+
+    def repair_torn_tail(self) -> None:
+        """Drop a truncated final line left by a process killed mid-append.
+
+        Called when opening a run for resume, so subsequent appends never land
+        after a torn line (which would corrupt the middle of the file).
+        """
         if not self.results_path.is_file():
-            return set()
-        keys = set()
-        for line in self.results_path.read_text().splitlines():
-            if line.strip():
-                data = json.loads(line)
-                keys.add((data["variant"], data["model"], data["case_id"]))
-        return keys
+            return
+        raw_lines = [line for line in self.results_path.read_text().splitlines() if line.strip()]
+        good = _read_result_lines(self.results_path)
+        if len(good) < len(raw_lines):
+            content = "".join(json.dumps(data, sort_keys=True) + "\n" for data in good)
+            self.results_path.write_text(content)
 
     def store_artifact(self, ref: MediaRef) -> str:
         """Copy a media file into artifacts/, content-addressed. Idempotent."""

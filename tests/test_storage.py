@@ -114,6 +114,46 @@ def test_serialize_messages_with_and_without_source(tmp_path):
     assert without[0]["parts"][1]["sha256"] == with_source[0]["parts"][1]["sha256"]
 
 
+def test_torn_final_line_tolerated(tmp_path, config):
+    # Regression: a process killed mid-append leaves a truncated last line;
+    # loading and resuming must treat it as end-of-file, not crash.
+    store = RunStore(tmp_path)
+    writer = store.create_run(config)
+    writer.append_result(record())
+    with writer.results_path.open("a") as handle:
+        handle.write('{"variant": "v1", "model": "m1", "case_')  # torn mid-write
+
+    assert len(store.load_results(writer.run_id)) == 1
+    reopened = store.open_run(writer.run_id)
+    assert reopened.completed_keys() == {("v1", "m1", "case-1")}
+
+
+def test_open_run_truncates_torn_tail_before_appending(tmp_path, config):
+    store = RunStore(tmp_path)
+    writer = store.create_run(config)
+    writer.append_result(record())
+    with writer.results_path.open("a") as handle:
+        handle.write('{"torn')
+
+    reopened = store.open_run(writer.run_id)
+    reopened.append_result(record(case_id="case-2"))
+    # every line must now parse: the torn tail was removed, not buried mid-file
+    records = store.load_results(writer.run_id)
+    assert [r.case_id for r in records] == ["case-1", "case-2"]
+
+
+def test_corrupt_middle_line_raises(tmp_path, config):
+    store = RunStore(tmp_path)
+    writer = store.create_run(config)
+    writer.append_result(record())
+    with writer.results_path.open("a") as handle:
+        handle.write("{corrupt}\n")
+    writer.append_result(record(case_id="case-2"))
+
+    with pytest.raises(StorageError, match="corrupt record at line 2"):
+        store.load_results(writer.run_id)
+
+
 def test_open_run_missing_raises(tmp_path):
     with pytest.raises(StorageError, match="run not found"):
         RunStore(tmp_path).open_run("nope")
