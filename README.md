@@ -15,6 +15,13 @@ When you're iterating on a prompt, you want fast answers to questions like:
 `evaling` runs your prompt variants against your chosen models over a set of test
 cases, scores the outputs, and shows you a comparison — all from the terminal.
 
+## Documentation
+
+Detailed docs live in [`docs/`](docs/):
+
+- [Configuration](docs/configuration.md) — the `eval.yaml` reference, settings
+  layering, and environment variables.
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/).

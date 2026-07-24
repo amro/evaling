@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Config schema and loader for `eval.yaml`: strict validation (unknown keys
+  rejected), multi-turn messages with typed content parts (text/image/file/audio),
+  scorecard with weighted criteria, judge definitions, thresholds, and readable
+  error messages naming the file and offending fields.
+- Layered workspace settings: CLI flags > `EVALING_*` environment variables >
+  eval config `settings:` > `~/.config/evaling/config.yaml` > defaults.
+- `docs/configuration.md` — full configuration reference.
 - Project scaffold: uv-managed Python package, `evaling` CLI entry point with
   `--version`, pytest test suite, ruff lint/format, GitHub Actions CI.
 - MIT license.
