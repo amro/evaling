@@ -194,11 +194,8 @@ def run(
     if count >= CONFIRM_THRESHOLD and not yes and sys.stdin.isatty():
         click.confirm(f"That is {count} model calls — continue?", abort=True)
 
-    baseline_run_id = None
-    if baseline_ref:
-        baseline_run_id = store.resolve_ref(baseline_ref)
-    elif config.thresholds.baseline == "regression":
-        baseline_run_id = store.resolve_ref("baseline")
+    # baseline resolution (including thresholds.baseline: regression) is core
+    # logic — the engine handles it; any run reference passes through.
     resume_run_id = store.resolve_ref(resume_ref) if resume_ref else None
 
     show_progress = not (app.quiet or app.json_output)
@@ -238,14 +235,14 @@ def run(
                 settings,
                 label,
                 resume_run_id,
-                baseline_run_id,
+                baseline_ref,
                 filters,
                 max_cost,
                 on_result,
             )
     else:
         result = _execute(
-            config, settings, label, resume_run_id, baseline_run_id, filters, max_cost, None
+            config, settings, label, resume_run_id, baseline_ref, filters, max_cost, None
         )
 
     gate = asdict(result.gate) if result.gate else None
@@ -274,13 +271,13 @@ def run(
         raise SystemExit(1)
 
 
-def _execute(config, settings, label, resume_run_id, baseline_run_id, filters, max_cost, on_result):
+def _execute(config, settings, label, resume_run_id, baseline_ref, filters, max_cost, on_result):
     return run_eval(
         config,
         settings,
         label=label,
         resume_run_id=resume_run_id,
-        baseline_run_id=baseline_run_id,
+        baseline_run_id=baseline_ref,
         max_cost_usd=max_cost,
         on_result=on_result,
         **filters,

@@ -114,6 +114,9 @@ async def run_eval_async(
     cache = ResponseCache(settings.cache_dir) if settings.cache else None
 
     store = RunStore(settings.output_dir)
+    # Resolve the baseline up front: a missing pinned baseline must fail
+    # before any model call, not after the run completes.
+    baseline_id = _resolve_baseline(store, config, baseline_run_id)
     fingerprint = config_fingerprint(config)
     if resume_run_id is not None:
         writer = store.open_run(resume_run_id)
@@ -229,9 +232,7 @@ async def run_eval_async(
     }
 
     aggregates = aggregate(records)
-    baseline_overall = _load_baseline_overall(
-        store, baseline_run_id or _baseline_from_thresholds(config)
-    )
+    baseline_overall = _load_baseline_overall(store, baseline_id)
     gate = evaluate_gate(config.thresholds, aggregates["overall"], baseline_overall)
     writer.finalize(counts, totals, aggregates, asdict(gate) if gate else None)
     return RunResult(
@@ -245,11 +246,19 @@ async def run_eval_async(
     )
 
 
-def _baseline_from_thresholds(config: EvalConfig) -> str | None:
-    # "regression" means "the pinned baseline" — resolved by the CLI layer,
-    # which passes an explicit baseline_run_id. A literal run id works here.
-    baseline = config.thresholds.baseline
-    return baseline if baseline and baseline != "regression" else None
+def _resolve_baseline(store: RunStore, config: EvalConfig, override: str | None) -> str | None:
+    """Resolve the gating baseline to a run id, in core so every entry point
+    (CLI, Python API, MCP) gets identical semantics.
+
+    ``override`` (any run reference) wins; otherwise ``thresholds.baseline``
+    applies, where ``"regression"`` means the pinned baseline.
+    """
+    ref = override or config.thresholds.baseline
+    if not ref:
+        return None
+    if ref == "regression":
+        ref = "baseline"
+    return store.resolve_ref(ref)
 
 
 def _load_baseline_overall(store: RunStore, run_id: str | None) -> dict[str, Any] | None:

@@ -273,6 +273,32 @@ def test_no_thresholds_no_gate(tmp_path):
     assert result.gate is None
 
 
+def test_thresholds_regression_resolves_pinned_baseline_in_core(tmp_path):
+    # Regression (architecture): 'baseline: regression' only worked through
+    # the CLI; core run_eval silently skipped the gate. It must self-gate.
+    from evaling.storage import StorageError
+
+    settings = make_settings(tmp_path)
+    good = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "alpha"}, "expected": "alpha"}])
+    pinned = run_eval(good, settings)
+    RunStore(settings.output_dir).set_baseline(pinned.run_id)
+
+    worse = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "alpha"}, "expected": "NO"}])
+    worse.thresholds.baseline = "regression"
+    result = run_eval(worse, settings)
+    assert result.gate is not None and not result.gate.passed
+
+    # and with no pinned baseline, it fails before any model call
+    empty_settings = make_settings(tmp_path / "fresh")
+    gated = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "alpha"}}])
+    gated.thresholds.baseline = "regression"
+    with pytest.raises(StorageError, match="no baseline pinned"):
+        run_eval(gated, empty_settings)
+    assert not (tmp_path / "fresh" / "runs").exists() or not any(
+        (tmp_path / "fresh" / "runs").iterdir()
+    )
+
+
 def test_baseline_run_id_gates_regression(tmp_path):
     settings = make_settings(tmp_path)
     good = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "alpha"}, "expected": "alpha"}])
