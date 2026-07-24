@@ -49,8 +49,8 @@ shorthand for a single text part — or a list of typed parts:
 
 Using a part type a model can't accept (e.g. audio on a text-only model) fails
 with a clear error rather than being silently dropped. Video parts are fully
-typed and stored, but no built-in API provider accepts video yet — they work
-with the `mock` and `command` providers today.
+typed and stored, but no built-in API provider accepts video yet — today they
+work with the `mock` provider (and with the `command` provider once it lands).
 
 ## Templating
 

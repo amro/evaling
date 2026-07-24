@@ -29,6 +29,11 @@ API keys and no network. You'll see a live progress bar, then the summary:
 
 ## Point it at real models
 
+> **Status:** real providers land in the next milestone — today only the
+> built-in `mock` provider is implemented, and the configs below will report
+> "provider … is not implemented yet". This section previews the settled
+> design.
+
 Edit the scaffolded `eval.yaml`'s `models:` block:
 
 ```yaml

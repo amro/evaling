@@ -55,7 +55,8 @@ models:
     command: ./run-agent.sh
 ```
 
-Providers:
+Providers (**status:** only `mock` is implemented so far; the others are the
+settled v1 design and land next):
 
 | Provider | Notes |
 |---|---|

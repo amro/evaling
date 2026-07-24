@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`min_pass_rate`, `min_score`, baseline regression).
 - `docs/scoring.md` and `docs/evaluating-judges.md` (the meta-eval recipe).
 - `video` content part type (`.mp4`, `.mov`, `.webm`) — typed and stored like
-  other media; currently supported by the mock and command providers only.
+  other media; currently exercised by the mock provider only.
 - End-to-end fixture evals (`tests/fixtures/e2e/`): four complete sample
   projects — text single-turn, text multi-turn, media single-turn (image, PDF,
   audio, video via CSV `file://`), media multi-turn — run through the real
