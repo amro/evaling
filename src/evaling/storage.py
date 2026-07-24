@@ -13,10 +13,11 @@ Stored files are the source of truth; exports and reports are views over them.
 
 import hashlib
 import json
+import os
 import secrets
 import shutil
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -114,8 +115,38 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _write_json(path: Path, data: dict[str, Any]) -> None:
-    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+#: Bumped when the on-disk layout changes incompatibly. Recorded in run.json
+#: so a future evaling can migrate — or refuse — instead of crashing on an
+#: unexpected field.
+FORMAT_VERSION = 1
+
+
+def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
+    """Write JSON via a temp file + rename, so readers never see a partial file.
+
+    A crash mid-write used to leave corrupt JSON, and one corrupt run.json
+    broke listing for every run.
+    """
+    tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
+    try:
+        tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        tmp.replace(path)  # atomic within a filesystem
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _known_fields(cls) -> set[str]:
+    return {f.name for f in fields(cls)}
+
+
+def record_from_dict(data: dict[str, Any]) -> ResultRecord:
+    """Build a ResultRecord, ignoring fields a newer evaling may have added.
+
+    Stored runs are meant to stay readable; an unknown key should not be a
+    TypeError.
+    """
+    known = _known_fields(ResultRecord)
+    return ResultRecord(**{k: v for k, v in data.items() if k in known})
 
 
 class RunStore:
@@ -164,6 +195,7 @@ class RunStore:
         config_sha256 = config_sha256 or snapshot_sha256
         (path / "config.snapshot.yaml").write_text(snapshot)
         meta = {
+            "format_version": FORMAT_VERSION,
             "id": run_id,
             "label": label,
             "status": "running",
@@ -176,18 +208,26 @@ class RunStore:
             "counts": None,
             "totals": None,
         }
-        _write_json(path / "run.json", meta)
+        write_json_atomic(path / "run.json", meta)
         return RunWriter(path, meta)
 
-    def open_run(self, run_id: str) -> "RunWriter":
-        """Open an existing run for resuming."""
+    def open_run(self, run_id: str, *, for_write: bool = True) -> "RunWriter":
+        """Open a run. Only a write-open repairs a torn tail.
+
+        Reads (show, compare, exports, MCP) must not mutate a run directory —
+        two concurrent readers would otherwise race on that repair write.
+        """
         path = self.output_dir / run_id
         meta_path = path / "run.json"
         if not meta_path.is_file():
             raise StorageError(f"run not found: {run_id!r} (no {meta_path})")
-        meta = json.loads(meta_path.read_text())
+        try:
+            meta = json.loads(meta_path.read_text())
+        except json.JSONDecodeError as exc:
+            raise StorageError(f"{meta_path}: run metadata is corrupt") from exc
         writer = RunWriter(path, meta)
-        writer.repair_torn_tail()
+        if for_write:
+            writer.repair_torn_tail()
         return writer
 
     def list_runs(self) -> list[dict[str, Any]]:
@@ -197,17 +237,23 @@ class RunStore:
         runs = []
         for entry in self.output_dir.iterdir():
             meta_path = entry / "run.json"
-            if meta_path.is_file():
+            if not meta_path.is_file():
+                continue
+            try:
                 runs.append(json.loads(meta_path.read_text()))
+            except (OSError, json.JSONDecodeError):
+                # A half-written run (killed mid-create) must not poison the
+                # listing of every other run.
+                continue
         runs.sort(key=lambda meta: (meta.get("created_ns") or 0, meta["id"]))
         return runs
 
     def load_meta(self, run_id: str) -> dict[str, Any]:
-        return self.open_run(run_id).meta
+        return self.open_run(run_id, for_write=False).meta
 
     def load_results(self, run_id: str) -> list[ResultRecord]:
         path = self.output_dir / run_id / "results.jsonl"
-        return [ResultRecord(**data) for data in _read_result_lines(path)]
+        return [record_from_dict(data) for data in _read_result_lines(path)]
 
     @property
     def _baseline_path(self) -> Path:
@@ -304,6 +350,7 @@ class RunWriter:
         totals: dict[str, Any],
         aggregates: dict[str, Any] | None = None,
         gate: dict[str, Any] | None = None,
+        warnings: list[str] | None = None,
     ) -> None:
         self.meta.update(
             status="complete",
@@ -312,5 +359,6 @@ class RunWriter:
             totals=totals,
             aggregates=aggregates,
             gate=gate,
+            warnings=warnings or [],
         )
-        _write_json(self.path / "run.json", self.meta)
+        write_json_atomic(self.path / "run.json", self.meta)

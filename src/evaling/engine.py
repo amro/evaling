@@ -11,7 +11,7 @@ import hashlib
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -55,6 +55,8 @@ class RunResult:
     totals: dict[str, Any]
     aggregates: dict[str, Any]
     gate: GateResult | None
+    #: Non-fatal notices worth showing the user (e.g. an unenforceable cost cap).
+    warnings: list[str] = field(default_factory=list)
 
 
 def run_eval(
@@ -198,19 +200,22 @@ async def _run_eval_impl(
     ) -> None:
         rendered = render_messages(prompts[variant_name], case, config.base_dir)
         record.messages = serialize_messages(rendered)
-        for message in rendered:
-            for part in message.parts:
-                if isinstance(part, MediaRef):
-                    writer.store_artifact(part)
+        # Archiving inputs is bookkeeping: a full disk must not cost the cell.
+        with contextlib.suppress(OSError):
+            for message in rendered:
+                for part in message.parts:
+                    if isinstance(part, MediaRef):
+                        await asyncio.to_thread(writer.store_artifact, part)
 
         if cache is not None:
             key = cache.key_for(model, rendered)
             async with key_locks[key]:
-                completion = cache.get(key)
+                completion = await asyncio.to_thread(cache.get, key)
                 record.cached = completion is not None
                 if completion is None:
                     completion = await _timed_call(record, model, rendered)
-                    cache.put(key, completion)
+                    # cache.put swallows its own I/O errors for the same reason.
+                    await asyncio.to_thread(cache.put, key, completion)
         else:
             completion = await _timed_call(record, model, rendered)
 
@@ -247,8 +252,10 @@ async def _run_eval_impl(
             await budget.release(completion.cost_usd if completion else None)
 
     async def _append(record: ResultRecord) -> None:
+        # Off-thread: appending is the one synchronous write on every cell's
+        # path, and blocking the loop here throttles real concurrency.
         async with lock:
-            writer.append_result(record)
+            await asyncio.to_thread(writer.append_result, record)
 
     factories = [
         partial(execute, variant.name, model, case)
@@ -272,10 +279,18 @@ async def _run_eval_impl(
         "cost_usd": _total(records, "cost_usd"),
     }
 
+    warnings: list[str] = []
+    if max_cost_usd is not None and budget.unknown_cost_seen:
+        warnings.append(
+            "--max-cost could not be enforced for every call: some models "
+            "reported no cost (no built-in pricing and no params.pricing). "
+            "Set params.pricing to track their spend."
+        )
+
     aggregates = aggregate(records)
     baseline_overall = _load_baseline_overall(store, baseline_id)
     gate = evaluate_gate(config.thresholds, aggregates["overall"], baseline_overall)
-    writer.finalize(counts, totals, aggregates, asdict(gate) if gate else None)
+    writer.finalize(counts, totals, aggregates, asdict(gate) if gate else None, warnings)
     return RunResult(
         run_id=writer.run_id,
         path=writer.path,
@@ -284,6 +299,7 @@ async def _run_eval_impl(
         totals=totals,
         aggregates=aggregates,
         gate=gate,
+        warnings=warnings,
     )
 
 
@@ -365,6 +381,7 @@ class _CostBudget:
         self.in_flight = 0
         self.max_call_cost = 0.0
         self.any_landed = False
+        self._unknown_cost = False
         self._cond = asyncio.Condition()
 
     async def acquire(self) -> None:
@@ -383,15 +400,27 @@ class _CostBudget:
                     return
                 await self._cond.wait()
 
+    @property
+    def unknown_cost_seen(self) -> bool:
+        """True once a call completed without a resolvable cost."""
+        return self._unknown_cost
+
     async def release(self, cost: float | None) -> None:
         if self.limit is None:
             return
         async with self._cond:
             self.in_flight -= 1
-            if cost is not None:
+            # A completed call always makes the budget knowable, even when its
+            # cost is unknown: an unpriced model contributes 0 to the
+            # projection, so it must not throttle the run. (Requiring a
+            # *priced* call here silently serialized every run against local or
+            # unpriced models to concurrency 1.)
+            self.any_landed = True
+            if cost is None:
+                self._unknown_cost = True
+            else:
                 self.spent += cost
                 self.max_call_cost = max(self.max_call_cost, cost)
-                self.any_landed = True
             self._cond.notify_all()
 
 
