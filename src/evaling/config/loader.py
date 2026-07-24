@@ -6,7 +6,7 @@ import yaml
 from pydantic import ValidationError
 
 from evaling.config.errors import ConfigError
-from evaling.config.schema import EvalConfig
+from evaling.config.schema import EvalConfig, Message
 
 
 def load_config(path: str | Path) -> EvalConfig:
@@ -38,6 +38,46 @@ def load_config(path: str | Path) -> EvalConfig:
 
     config._base_dir = path.resolve().parent
     return config
+
+
+def load_prompt(path: str | Path) -> list[Message]:
+    """Load an external prompt file: a YAML list of messages."""
+    path = Path(path)
+    try:
+        raw = path.read_text()
+    except FileNotFoundError:
+        raise ConfigError(f"prompt file not found: {path}") from None
+    except OSError as exc:
+        raise ConfigError(f"could not read {path}: {exc}") from exc
+
+    try:
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+
+    if not isinstance(data, list):
+        raise ConfigError(
+            f"{path}: a prompt file must be a YAML list of messages, got {type(data).__name__}"
+        )
+    messages = []
+    for index, item in enumerate(data):
+        try:
+            messages.append(Message.model_validate(item))
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            loc = ".".join(str(part) for part in first["loc"])
+            detail = f"{loc}: {first['msg']}" if loc else first["msg"]
+            raise ConfigError(f"{path}: message {index + 1}: {detail}") from exc
+    if not messages:
+        raise ConfigError(f"{path}: prompt file contains no messages")
+    return messages
+
+
+def resolve_prompt(prompt: str | list[Message], base_dir: Path) -> list[Message]:
+    """Return a prompt's messages, loading the external file if referenced."""
+    if isinstance(prompt, str):
+        return load_prompt(base_dir / prompt)
+    return prompt
 
 
 def _format_validation_error(path: Path, exc: ValidationError) -> str:
