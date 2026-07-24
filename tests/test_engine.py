@@ -54,11 +54,11 @@ def test_runs_full_matrix(tmp_path):
 def test_results_persisted_as_jsonl(tmp_path):
     config = make_config(tmp_path)
     result = run_eval(config, make_settings(tmp_path))
-    lines = (result.path / "results.jsonl").read_text().splitlines()
+    lines = (result.path / "results.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
     assert all("output" in json.loads(line) for line in lines)
 
-    meta = json.loads((result.path / "run.json").read_text())
+    meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
     assert meta["status"] == "complete"
     assert meta["counts"]["total"] == 2
     assert meta["totals"]["cost_usd"] == 0.0
@@ -110,7 +110,7 @@ def test_arbitrary_template_runtime_error_isolated_per_cell(tmp_path):
     assert "ZeroDivisionError" in by_key[("bad", "m1", "c1")].error
     assert by_key[("bad", "m1", "c2")].output == "0.5"
 
-    meta = json.loads((result.path / "run.json").read_text())
+    meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
     assert meta["status"] == "complete"
 
 
@@ -166,13 +166,13 @@ def test_cache_disabled_never_caches(tmp_path):
 def simulate_interruption(run_path, keep_lines=1):
     """Rewind a finished run to look like a process crash: partial results, status running."""
     results_path = run_path / "results.jsonl"
-    lines = results_path.read_text().splitlines()
+    lines = results_path.read_text(encoding="utf-8").splitlines()
     kept, removed = lines[:keep_lines], [json.loads(line) for line in lines[keep_lines:]]
-    results_path.write_text("".join(line + "\n" for line in kept))
+    results_path.write_text("".join(line + "\n" for line in kept), encoding="utf-8")
     meta_path = run_path / "run.json"
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta.update(status="running", finished_at=None, counts=None, totals=None)
-    meta_path.write_text(json.dumps(meta))
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
     return removed
 
 
@@ -244,7 +244,7 @@ def test_records_carry_scores_and_run_json_aggregates(tmp_path):
         "pass_rate": 0.5,
         "errors": 0,
     }
-    meta = json.loads((result.path / "run.json").read_text())
+    meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
     assert meta["aggregates"]["overall"]["pass_rate"] == 0.5
 
 
@@ -264,7 +264,7 @@ def test_gate_from_thresholds(tmp_path):
     failing.thresholds.min_score = 0.8
     failed = run_eval(failing, make_settings(tmp_path))
     assert not failed.gate.passed
-    meta = json.loads((failed.path / "run.json").read_text())
+    meta = json.loads((failed.path / "run.json").read_text(encoding="utf-8"))
     assert meta["gate"]["passed"] is False
 
 
@@ -549,19 +549,25 @@ def test_resume_detects_edited_prompt_file(tmp_path):
     # mixed two prompt versions in one run.
     from evaling.storage import StorageError
 
-    (tmp_path / "prompt.yaml").write_text('- role: user\n  content: "{{ q }} v1"\n')
+    (tmp_path / "prompt.yaml").write_text(
+        '- role: user\n  content: "{{ q }} v1"\n', encoding="utf-8"
+    )
     config = make_config(tmp_path, variants=[{"name": "v1", "prompt": "prompt.yaml"}])
     settings = make_settings(tmp_path)
     interrupted = run_eval(config, settings)
     simulate_interruption(interrupted.path)
 
-    (tmp_path / "prompt.yaml").write_text('- role: user\n  content: "{{ q }} v2-MUTATED"\n')
+    (tmp_path / "prompt.yaml").write_text(
+        '- role: user\n  content: "{{ q }} v2-MUTATED"\n', encoding="utf-8"
+    )
     mutated = make_config(tmp_path, variants=[{"name": "v1", "prompt": "prompt.yaml"}])
     with pytest.raises(StorageError, match="config does not match"):
         run_eval(mutated, settings, resume_run_id=interrupted.run_id)
 
     # restoring the original content makes resume work again
-    (tmp_path / "prompt.yaml").write_text('- role: user\n  content: "{{ q }} v1"\n')
+    (tmp_path / "prompt.yaml").write_text(
+        '- role: user\n  content: "{{ q }} v1"\n', encoding="utf-8"
+    )
     restored = make_config(tmp_path, variants=[{"name": "v1", "prompt": "prompt.yaml"}])
     resumed = run_eval(restored, settings, resume_run_id=interrupted.run_id)
     assert {r.output for r in resumed.records} <= {"alpha v1", "beta v1"}

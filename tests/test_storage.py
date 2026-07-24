@@ -29,13 +29,13 @@ def test_create_run_writes_meta_and_snapshot(tmp_path, config):
     writer = RunStore(tmp_path).create_run(config, label="baseline-candidate")
     assert (writer.path / "artifacts").is_dir()
 
-    meta = json.loads((writer.path / "run.json").read_text())
+    meta = json.loads((writer.path / "run.json").read_text(encoding="utf-8"))
     assert meta["id"] == writer.run_id
     assert meta["label"] == "baseline-candidate"
     assert meta["status"] == "running"
     assert meta["counts"] is None
 
-    snapshot = yaml.safe_load((writer.path / "config.snapshot.yaml").read_text())
+    snapshot = yaml.safe_load((writer.path / "config.snapshot.yaml").read_text(encoding="utf-8"))
     assert snapshot["models"][0]["id"] == "m1"
 
 
@@ -123,7 +123,7 @@ def test_torn_final_line_tolerated(tmp_path, config):
     store = RunStore(tmp_path)
     writer = store.create_run(config)
     writer.append_result(record())
-    with writer.results_path.open("a") as handle:
+    with writer.results_path.open("a", encoding="utf-8") as handle:
         handle.write('{"variant": "v1", "model": "m1", "case_')  # torn mid-write
 
     assert len(store.load_results(writer.run_id)) == 1
@@ -135,7 +135,7 @@ def test_open_run_truncates_torn_tail_before_appending(tmp_path, config):
     store = RunStore(tmp_path)
     writer = store.create_run(config)
     writer.append_result(record())
-    with writer.results_path.open("a") as handle:
+    with writer.results_path.open("a", encoding="utf-8") as handle:
         handle.write('{"torn')
 
     reopened = store.open_run(writer.run_id)
@@ -149,7 +149,7 @@ def test_corrupt_middle_line_raises(tmp_path, config):
     store = RunStore(tmp_path)
     writer = store.create_run(config)
     writer.append_result(record())
-    with writer.results_path.open("a") as handle:
+    with writer.results_path.open("a", encoding="utf-8") as handle:
         handle.write("{corrupt}\n")
     writer.append_result(record(case_id="case-2"))
 

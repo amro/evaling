@@ -28,8 +28,8 @@ def cli(tmp_path, *args):
 
 @pytest.fixture
 def two_runs(tmp_path):
-    (tmp_path / "good.yaml").write_text(GOOD)
-    (tmp_path / "mixed.yaml").write_text(MIXED)
+    (tmp_path / "good.yaml").write_text(GOOD, encoding="utf-8")
+    (tmp_path / "mixed.yaml").write_text(MIXED, encoding="utf-8")
     assert cli(tmp_path, "-q", "run", str(tmp_path / "good.yaml"), "--label", "good").exit_code == 0
     assert cli(tmp_path, "-q", "run", str(tmp_path / "mixed.yaml")).exit_code == 0
     return tmp_path
@@ -96,7 +96,7 @@ def test_export_stdout_and_file(two_runs):
     out_file = two_runs / "report.csv"
     csv_result = cli(two_runs, "export", "good", "--format", "csv", "--out", str(out_file))
     assert csv_result.exit_code == 0
-    assert out_file.read_text().startswith("variant,model,case_id")
+    assert out_file.read_text(encoding="utf-8").startswith("variant,model,case_id")
 
     data = json.loads(cli(two_runs, "export", "good", "--format", "json").output)
     assert len(data["results"]) == 2
@@ -109,12 +109,12 @@ def test_baseline_pin_and_regression_gate(two_runs):
 
     # a run gated with baseline: regression against the pinned (perfect) run
     gated = GOOD + "thresholds: {baseline: regression}\n"
-    (two_runs / "gated.yaml").write_text(gated)
+    (two_runs / "gated.yaml").write_text(gated, encoding="utf-8")
     same = cli(two_runs, "run", str(two_runs / "gated.yaml"))
     assert same.exit_code == 0, same.output
 
     worse = gated.replace("expected: beta", "expected: WRONG")
-    (two_runs / "worse.yaml").write_text(worse)
+    (two_runs / "worse.yaml").write_text(worse, encoding="utf-8")
     regressed = cli(two_runs, "run", str(two_runs / "worse.yaml"))
     assert regressed.exit_code == 1
     assert "baseline" in regressed.output
@@ -122,7 +122,7 @@ def test_baseline_pin_and_regression_gate(two_runs):
 
 def test_regression_gate_without_pinned_baseline_exits_2(two_runs):
     gated = GOOD + "thresholds: {baseline: regression}\n"
-    (two_runs / "gated.yaml").write_text(gated)
+    (two_runs / "gated.yaml").write_text(gated, encoding="utf-8")
     result = cli(two_runs, "run", str(two_runs / "gated.yaml"))
     assert result.exit_code == 2
     assert "no baseline pinned" in result.output

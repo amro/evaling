@@ -213,7 +213,8 @@ class TestValidateCommand:
                 '    prompt: [{role: user, content: "{{ q }}"}]\n'
                 "cases: [{id: c1, vars: {q: alpha}, expected: alpha}]\n"
                 "scorecard: [{criterion: acc, scorer: {type: exact}}]\n"
-            )
+            ),
+            encoding="utf-8",
         )
         return path
 
@@ -224,7 +225,9 @@ class TestValidateCommand:
         assert not (tmp_path / "runs").exists()
 
     def test_validate_reports_errors(self, tmp_path):
-        broken = self.config(tmp_path).read_text().replace("{{ q }}", "{{ missing }}")
+        broken = (
+            self.config(tmp_path).read_text(encoding="utf-8").replace("{{ q }}", "{{ missing }}")
+        )
         result = self.cli(tmp_path, "validate", str(self.config(tmp_path, broken)))
         assert result.exit_code == 2
         assert "'missing' is undefined" in result.output
@@ -238,7 +241,7 @@ class TestInitProvider:
 
             result = runner.invoke(main, ["init"], env=ENV, catch_exceptions=False)
             assert result.exit_code == 0
-            gitignore = (Path(root) / ".gitignore").read_text()
+            gitignore = (Path(root) / ".gitignore").read_text(encoding="utf-8")
             assert ".evaling/" in gitignore
             assert ".evaling.secrets.yaml" in gitignore
             assert (Path(root) / ".evaling.secrets.yaml.example").is_file()
@@ -260,7 +263,7 @@ class TestInitProvider:
                 main, ["init", "--provider", provider], env=ENV, catch_exceptions=False
             )
             assert result.exit_code == 0, result.output
-            config = (Path(root) / "eval.yaml").read_text()
+            config = (Path(root) / "eval.yaml").read_text(encoding="utf-8")
             assert marker in config
             assert "provider: mock" not in config
 

@@ -65,8 +65,10 @@ class TestHttpProviderEndToEnd:
 
         monkeypatch.setattr(http_module.HttpProvider, "client", fake_client)
 
-        (tmp_path / "eval.yaml").write_text(HTTP_CONFIG)
-        (tmp_path / ".evaling.secrets.yaml").write_text("OPENAI_API_KEY: sk-test\n")
+        (tmp_path / "eval.yaml").write_text(HTTP_CONFIG, encoding="utf-8")
+        (tmp_path / ".evaling.secrets.yaml").write_text(
+            "OPENAI_API_KEY: sk-test\n", encoding="utf-8"
+        )
         (tmp_path / ".evaling.secrets.yaml").chmod(0o600)
 
         config = load_config(tmp_path / "eval.yaml")
@@ -106,8 +108,10 @@ class TestHttpProviderEndToEnd:
             return self._client
 
         monkeypatch.setattr(http_module.HttpProvider, "client", fake_client)
-        (tmp_path / "eval.yaml").write_text(HTTP_CONFIG)
-        (tmp_path / ".evaling.secrets.yaml").write_text("OPENAI_API_KEY: sk-test\n")
+        (tmp_path / "eval.yaml").write_text(HTTP_CONFIG, encoding="utf-8")
+        (tmp_path / ".evaling.secrets.yaml").write_text(
+            "OPENAI_API_KEY: sk-test\n", encoding="utf-8"
+        )
         (tmp_path / ".evaling.secrets.yaml").chmod(0o600)
 
         result = run_eval(load_config(tmp_path / "eval.yaml"), make_settings(tmp_path))

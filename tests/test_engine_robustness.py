@@ -71,7 +71,7 @@ class TestCostBudgetConcurrency:
         )
         assert any("could not be enforced" in w for w in result.warnings)
         # and it's persisted with the run, not just printed
-        meta = json.loads((result.path / "run.json").read_text())
+        meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
         assert meta["warnings"]
 
     def test_priced_models_are_still_capped(self, tmp_path, probe):
@@ -101,9 +101,9 @@ class TestCacheCompatibility:
         cache.put(key, Completion(text="hi"))
 
         path = cache._path(key)
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         data["field_from_a_newer_evaling"] = 1
-        path.write_text(json.dumps(data))
+        path.write_text(json.dumps(data), encoding="utf-8")
 
         assert cache.get(key).text == "hi"  # tolerated, not TypeError
 
@@ -112,7 +112,7 @@ class TestCacheCompatibility:
         spec = ModelSpec.model_validate({"id": "m", "provider": "mock"})
         key = cache.key_for(spec, self.rendered(tmp_path))
         cache.put(key, Completion(text="hi"))
-        cache._path(key).write_text('"just a string"')
+        cache._path(key).write_text('"just a string"', encoding="utf-8")
         assert cache.get(key) is None
 
     @pytest.mark.parametrize(
@@ -171,7 +171,7 @@ class TestStorageDurability:
         settings = make_settings(tmp_path)
         good = run_eval(make_config(tmp_path), settings)
         broken = run_eval(make_config(tmp_path), settings)
-        (broken.path / "run.json").write_text("{half-written")
+        (broken.path / "run.json").write_text("{half-written", encoding="utf-8")
 
         store = RunStore(settings.output_dir)
         listed = [meta["id"] for meta in store.list_runs()]
@@ -182,7 +182,7 @@ class TestStorageDurability:
 
         settings = make_settings(tmp_path)
         result = run_eval(make_config(tmp_path), settings)
-        (result.path / "run.json").write_text("{half-written")
+        (result.path / "run.json").write_text("{half-written", encoding="utf-8")
         with pytest.raises(StorageError, match="run metadata is corrupt"):
             RunStore(settings.output_dir).load_meta(result.run_id)
 
@@ -190,29 +190,29 @@ class TestStorageDurability:
         settings = make_settings(tmp_path)
         result = run_eval(make_config(tmp_path), settings)
         results_path = result.path / "results.jsonl"
-        with results_path.open("a") as handle:
+        with results_path.open("a", encoding="utf-8") as handle:
             handle.write('{"torn')  # a crash artifact
-        before = results_path.read_text()
+        before = results_path.read_text(encoding="utf-8")
 
         store = RunStore(settings.output_dir)
         store.load_meta(result.run_id)
         store.load_results(result.run_id)
-        assert results_path.read_text() == before, "a read must not rewrite the run"
+        assert results_path.read_text(encoding="utf-8") == before, "a read must not rewrite the run"
 
     def test_resume_still_repairs(self, tmp_path):
         settings = make_settings(tmp_path)
         result = run_eval(make_config(tmp_path), settings)
         results_path = result.path / "results.jsonl"
-        with results_path.open("a") as handle:
+        with results_path.open("a", encoding="utf-8") as handle:
             handle.write('{"torn')
 
         RunStore(settings.output_dir).open_run(result.run_id)  # write-open
-        assert '{"torn' not in results_path.read_text()
+        assert '{"torn' not in results_path.read_text(encoding="utf-8")
 
     def test_run_json_is_written_atomically(self, tmp_path):
         target = tmp_path / "run.json"
         write_json_atomic(target, {"a": 1})
-        assert json.loads(target.read_text()) == {"a": 1}
+        assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1}
         assert list(tmp_path.glob(".*tmp*")) == []  # no leftovers
 
     def test_records_tolerate_unknown_fields(self):
@@ -230,5 +230,5 @@ class TestStorageDurability:
     def test_runs_record_a_format_version(self, tmp_path):
         settings = make_settings(tmp_path)
         result = run_eval(make_config(tmp_path), settings)
-        meta = json.loads((result.path / "run.json").read_text())
+        meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
         assert meta["format_version"] >= 1

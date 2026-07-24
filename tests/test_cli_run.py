@@ -20,7 +20,7 @@ scorecard: [{criterion: acc, scorer: {type: exact}}]
 
 def invoke(tmp_path, *args, config=CONFIG, config_name="eval.yaml"):
     if config is not None:
-        (tmp_path / config_name).write_text(config)
+        (tmp_path / config_name).write_text(config, encoding="utf-8")
     base = [
         "-o",
         str(tmp_path / "runs"),
@@ -108,7 +108,7 @@ def test_quiet_run_prints_nothing_on_success(tmp_path):
 
 
 def test_config_flag_alternative_location(tmp_path):
-    (tmp_path / "custom.yaml").write_text(CONFIG)
+    (tmp_path / "custom.yaml").write_text(CONFIG, encoding="utf-8")
     result = invoke(tmp_path, "-c", str(tmp_path / "custom.yaml"), "run", config=None)
     assert result.exit_code == 0, result.output
 
@@ -133,7 +133,7 @@ def test_config_settings_output_dir_respected_by_all_commands(tmp_path, monkeypa
     # show/list/baseline resolved the default dir and found nothing.
     monkeypatch.chdir(tmp_path)
     config = CONFIG + "settings: {output_dir: custom_runs}\n"
-    (tmp_path / "eval.yaml").write_text(config)
+    (tmp_path / "eval.yaml").write_text(config, encoding="utf-8")
     runner_args = ["run", "eval.yaml"]
 
     from click.testing import CliRunner

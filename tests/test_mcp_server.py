@@ -33,7 +33,7 @@ scorecard: [{criterion: acc, scorer: {type: exact}}]
 
 @pytest.fixture
 def project(tmp_path):
-    (tmp_path / "eval.yaml").write_text(CONFIG)
+    (tmp_path / "eval.yaml").write_text(CONFIG, encoding="utf-8")
     return tmp_path
 
 
@@ -231,7 +231,9 @@ class TestOtherTools:
         assert out == {"requests": 2, "render_errors": [], "ok": True}
 
     def test_render_prompt_reports_template_errors(self, tmp_path):
-        (tmp_path / "bad.yaml").write_text(CONFIG.replace("{{ q }}", "{{ missing }}"))
+        (tmp_path / "bad.yaml").write_text(
+            CONFIG.replace("{{ q }}", "{{ missing }}"), encoding="utf-8"
+        )
         out = render_prompt_tool(str(tmp_path / "bad.yaml"))
         assert out["ok"] is False
         assert "'missing' is undefined" in out["render_errors"][0]["error"]

@@ -17,7 +17,7 @@ def score(scorer, output, case=None):
 
 def write_scorer(tmp_path, body, name="my_scorer.py"):
     path = tmp_path / name
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     return tmp_path
 
 

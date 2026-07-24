@@ -75,7 +75,7 @@ def test_corrupt_cache_entry_is_a_miss(tmp_path):
     cache = ResponseCache(tmp_path)
     key = cache.key_for(spec(), rendered(tmp_path=tmp_path))
     cache.put(key, Completion(text="ok"))
-    cache._path(key).write_text("{not json")
+    cache._path(key).write_text("{not json", encoding="utf-8")
     assert cache.get(key) is None
 
 

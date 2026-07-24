@@ -121,7 +121,7 @@ class TestJson:
         assert not result.passed and "schema violation" in result.detail
 
     def test_schema_from_file(self, tmp_path):
-        (tmp_path / "s.json").write_text('{"type": "array"}')
+        (tmp_path / "s.json").write_text('{"type": "array"}', encoding="utf-8")
         scorer = JsonSchemaScorer({"schema": "s.json"}, tmp_path)
         assert score(scorer, "[1]").passed
         assert not score(scorer, '{"a": 1}').passed

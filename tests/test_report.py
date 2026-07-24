@@ -165,7 +165,8 @@ class TestCli:
             "  - name: v1\n"
             '    prompt: [{role: user, content: "{{ q }}"}]\n'
             "cases: [{id: c1, vars: {q: alpha}, expected: alpha}]\n"
-            "scorecard: [{criterion: acc, scorer: {type: exact}}]\n"
+            "scorecard: [{criterion: acc, scorer: {type: exact}}]\n",
+            encoding="utf-8",
         )
         return path
 
@@ -174,14 +175,14 @@ class TestCli:
         result = self.cli(tmp_path, "run", str(self.config_file(tmp_path)), "--html", str(out))
         assert result.exit_code == 0, result.output
         assert "report written to" in result.output
-        assert out.read_text().startswith("<!doctype html>")
+        assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
 
     def test_export_html_to_file(self, tmp_path):
         self.cli(tmp_path, "-q", "run", str(self.config_file(tmp_path)))
         out = tmp_path / "exported.html"
         result = self.cli(tmp_path, "export", "latest", "--format", "html", "--out", str(out))
         assert result.exit_code == 0, result.output
-        assert "<!doctype html>" in out.read_text()
+        assert "<!doctype html>" in out.read_text(encoding="utf-8")
 
     def test_compare_html_flag(self, tmp_path):
         config = self.config_file(tmp_path)
@@ -194,4 +195,4 @@ class TestCli:
         ids = [run["id"] for run in jsonlib.loads(runs)]
         result = self.cli(tmp_path, "compare", ids[1], ids[0], "--html", str(out))
         assert result.exit_code == 0, result.output
-        assert out.read_text().startswith("<!doctype html>")
+        assert out.read_text(encoding="utf-8").startswith("<!doctype html>")

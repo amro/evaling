@@ -13,7 +13,7 @@ from evaling.render import render_messages
 def script(tmp_path, body, name="model.py"):
     """A python script invoked as the command, so tests are platform-portable."""
     path = tmp_path / name
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     return f"{sys.executable} {path}"
 
 

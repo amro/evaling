@@ -28,7 +28,8 @@ def write_config(tmp_path, response=HOSTILE, model_id="mock", variant="v1"):
         f'  - name: "{variant}"\n'
         '    prompt: [{role: user, content: "{{ q }}"}]\n'
         "cases: [{id: c1, vars: {q: alpha}, expected: alpha}]\n"
-        "scorecard: [{criterion: acc, scorer: {type: exact}}]\n"
+        "scorecard: [{criterion: acc, scorer: {type: exact}}]\n",
+        encoding="utf-8",
     )
     return path
 

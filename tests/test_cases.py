@@ -67,7 +67,8 @@ def test_jsonl_rows_split_reserved_fields_and_vars(tmp_path):
                 "photo": "file://images/dog.jpg",
             }
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     [case] = load_cases(config_with({"file": "cases.jsonl"}, tmp_path))
     assert case.id == "c1"
@@ -80,7 +81,7 @@ def test_jsonl_rows_split_reserved_fields_and_vars(tmp_path):
 def test_jsonl_files_mapping_supported(tmp_path):
     dataset = tmp_path / "data" / "cases.jsonl"
     dataset.parent.mkdir()
-    dataset.write_text(json.dumps({"files": {"doc": "doc.pdf"}}) + "\n")
+    dataset.write_text(json.dumps({"files": {"doc": "doc.pdf"}}) + "\n", encoding="utf-8")
     [case] = load_cases(config_with({"file": "data/cases.jsonl"}, tmp_path))
     # dataset-relative resolution: against data/, not the config dir
     assert case.files["doc"] == str((tmp_path / "data" / "doc.pdf").resolve())
@@ -88,20 +89,20 @@ def test_jsonl_files_mapping_supported(tmp_path):
 
 def test_jsonl_blank_lines_skipped(tmp_path):
     dataset = tmp_path / "cases.jsonl"
-    dataset.write_text('{"q": "a"}\n\n{"q": "b"}\n')
+    dataset.write_text('{"q": "a"}\n\n{"q": "b"}\n', encoding="utf-8")
     assert len(load_cases(config_with({"file": "cases.jsonl"}, tmp_path))) == 2
 
 
 def test_jsonl_invalid_json_reports_line(tmp_path):
     dataset = tmp_path / "cases.jsonl"
-    dataset.write_text('{"q": "a"}\n{oops\n')
+    dataset.write_text('{"q": "a"}\n{oops\n', encoding="utf-8")
     with pytest.raises(ConfigError, match=r"cases\.jsonl:2: invalid JSON"):
         load_cases(config_with({"file": "cases.jsonl"}, tmp_path))
 
 
 def test_jsonl_non_object_line_rejected(tmp_path):
     dataset = tmp_path / "cases.jsonl"
-    dataset.write_text("[1, 2]\n")
+    dataset.write_text("[1, 2]\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="must be a JSON object"):
         load_cases(config_with({"file": "cases.jsonl"}, tmp_path))
 
@@ -109,7 +110,8 @@ def test_jsonl_non_object_line_rejected(tmp_path):
 def test_csv_rows_load_with_reserved_columns(tmp_path):
     dataset = tmp_path / "cases.csv"
     dataset.write_text(
-        "id,question,expected,photo\nc1,breed?,collie,file://dog.jpg\n,color?,,file://cat.jpg\n"
+        "id,question,expected,photo\nc1,breed?,collie,file://dog.jpg\n,color?,,file://cat.jpg\n",
+        encoding="utf-8",
     )
     cases = load_cases(config_with({"file": "cases.csv"}, tmp_path))
     assert cases[0].id == "c1"
@@ -126,7 +128,7 @@ def test_missing_case_file_raises(tmp_path):
 
 
 def test_empty_case_file_raises(tmp_path):
-    (tmp_path / "cases.jsonl").write_text("")
+    (tmp_path / "cases.jsonl").write_text("", encoding="utf-8")
     with pytest.raises(ConfigError, match="case file is empty"):
         load_cases(config_with({"file": "cases.jsonl"}, tmp_path))
 
@@ -139,6 +141,6 @@ def test_unsupported_case_file_extension_raises(tmp_path):
 
 def test_duplicate_ids_across_dataset_rejected(tmp_path):
     dataset = tmp_path / "cases.jsonl"
-    dataset.write_text('{"id": "dup"}\n{"id": "dup"}\n')
+    dataset.write_text('{"id": "dup"}\n{"id": "dup"}\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="duplicate case id: 'dup'"):
         load_cases(config_with({"file": "cases.jsonl"}, tmp_path))

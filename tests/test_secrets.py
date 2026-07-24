@@ -1,6 +1,7 @@
 """Secrets come from a gitignored file; the environment always wins."""
 
 import asyncio
+import os
 
 import httpx
 import pytest
@@ -23,9 +24,14 @@ from helpers import make_config, make_settings
 
 
 def write_secrets(path, body, mode=0o600):
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     path.chmod(mode)
     return path
+
+
+posix_only = pytest.mark.skipif(
+    os.name != "posix", reason="POSIX mode bits; Windows ACLs are checked differently"
+)
 
 
 class TestLoading:
@@ -80,6 +86,7 @@ class TestLoading:
         with pytest.raises(SecretsError, match="invalid YAML"):
             load_secrets(tmp_path, env={})
 
+    @posix_only
     def test_loose_permissions_warn(self, tmp_path):
         path = write_secrets(tmp_path / PROJECT_SECRETS_NAME, "K: v\n", mode=0o644)
         assert world_readable(path)
@@ -181,6 +188,7 @@ class TestProviderIntegration:
 
 
 class TestRunIntegration:
+    @posix_only
     def test_loose_permissions_surface_as_a_run_warning(self, tmp_path):
         write_secrets(tmp_path / PROJECT_SECRETS_NAME, "K: v\n", mode=0o644)
         result = run_eval(make_config(tmp_path), make_settings(tmp_path))

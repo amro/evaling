@@ -47,7 +47,7 @@ def test_scenario_completes_cleanly(name, tmp_path):
     # everything persisted and loadable
     store = RunStore(settings.output_dir)
     assert len(store.load_results(result.run_id)) == SCENARIOS[name]
-    meta = json.loads((result.path / "run.json").read_text())
+    meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
     assert meta["status"] == "complete"
 
 

@@ -30,7 +30,7 @@ def test_missing_file_raises_config_error():
 
 def test_invalid_yaml_syntax_names_file(tmp_path):
     bad = tmp_path / "bad.yaml"
-    bad.write_text("models: [unclosed\n  - nope: {")
+    bad.write_text("models: [unclosed\n  - nope: {", encoding="utf-8")
     with pytest.raises(ConfigError, match=r"bad\.yaml.*invalid YAML") as exc_info:
         load_config(bad)
     assert "Traceback" not in str(exc_info.value)
@@ -38,7 +38,7 @@ def test_invalid_yaml_syntax_names_file(tmp_path):
 
 def test_non_mapping_top_level_rejected(tmp_path):
     bad = tmp_path / "list.yaml"
-    bad.write_text("- just\n- a\n- list\n")
+    bad.write_text("- just\n- a\n- list\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="top level must be a mapping, got list"):
         load_config(bad)
 
@@ -58,7 +58,8 @@ cases:
 scorecard:
   - criterion: acc
     scorer: {type: exact}
-"""
+""",
+        encoding="utf-8",
     )
     with pytest.raises(ConfigError) as exc_info:
         load_config(bad)
@@ -80,7 +81,8 @@ cases:
 scorecard:
   - criterion: acc
     scorer: {type: exact}
-"""
+""",
+        encoding="utf-8",
     )
     with pytest.raises(ConfigError, match=r"invalid config \(2 errors\):"):
         load_config(bad)

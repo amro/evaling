@@ -23,7 +23,7 @@ def test_defaults_when_no_layers_present():
 
 def test_user_config_overrides_defaults(tmp_path):
     user = tmp_path / "config.yaml"
-    user.write_text("concurrency: 2\n")
+    user.write_text("concurrency: 2\n", encoding="utf-8")
     settings = resolve(user_config_path=user)
     assert settings.concurrency == 2
     assert settings.cache is True  # untouched fields keep defaults
@@ -31,7 +31,7 @@ def test_user_config_overrides_defaults(tmp_path):
 
 def test_eval_config_settings_override_user_config(tmp_path):
     user = tmp_path / "config.yaml"
-    user.write_text("concurrency: 2\noutput_dir: /from-user\n")
+    user.write_text("concurrency: 2\noutput_dir: /from-user\n", encoding="utf-8")
     eval_settings = Settings.model_validate({"concurrency": 4})
     settings = resolve(eval_settings=eval_settings, user_config_path=user)
     assert settings.concurrency == 4  # eval config wins
@@ -40,7 +40,7 @@ def test_eval_config_settings_override_user_config(tmp_path):
 
 def test_eval_settings_only_override_explicitly_set_fields(tmp_path):
     user = tmp_path / "config.yaml"
-    user.write_text("cache: false\n")
+    user.write_text("cache: false\n", encoding="utf-8")
     # eval config sets nothing; its defaults must not clobber the user config
     settings = resolve(eval_settings=Settings(), user_config_path=user)
     assert settings.cache is False
@@ -105,21 +105,21 @@ def test_empty_env_value_ignored():
 
 def test_user_config_with_unknown_key_rejected(tmp_path):
     user = tmp_path / "config.yaml"
-    user.write_text("concurency: 2\n")
+    user.write_text("concurency: 2\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="concurency"):
         resolve(user_config_path=user)
 
 
 def test_user_config_invalid_yaml_rejected(tmp_path):
     user = tmp_path / "config.yaml"
-    user.write_text("cache: [unclosed")
+    user.write_text("cache: [unclosed", encoding="utf-8")
     with pytest.raises(ConfigError, match="invalid YAML"):
         resolve(user_config_path=user)
 
 
 def test_empty_user_config_ignored(tmp_path):
     user = tmp_path / "config.yaml"
-    user.write_text("")
+    user.write_text("", encoding="utf-8")
     assert resolve(user_config_path=user) == Settings()
 
 
@@ -142,6 +142,6 @@ def test_out_of_range_cli_value_is_config_error():
 
 def test_user_config_path_from_env(tmp_path):
     user = tmp_path / "custom.yaml"
-    user.write_text("concurrency: 3\n")
+    user.write_text("concurrency: 3\n", encoding="utf-8")
     settings = resolve_settings(env={"EVALING_USER_CONFIG": str(user)}, user_config_path=None)
     assert settings.concurrency == 3
