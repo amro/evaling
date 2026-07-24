@@ -164,12 +164,14 @@ it accepts, implement `complete()`, and register it:
 ```python
 from evaling.providers.http import HttpProvider
 
+
 class MyProvider(HttpProvider):
     DEFAULT_API_KEY_ENV = "MY_API_KEY"
     SUPPORTED_MEDIA = frozenset({"image"})
 
     async def complete(self, request):
-        ...  # build payload, call self.post_json(...), return a Completion
+        # Build the payload, call self.post_json(...), return a Completion.
+        ...
 ```
 
 `SUPPORTED_MEDIA` is enforced before any model call, so an unsupported part
