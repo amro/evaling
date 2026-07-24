@@ -30,11 +30,22 @@ Anywhere a command takes a run, you can pass:
 
 ## Commands
 
-### `evaling init [--force]`
+### `evaling init [--force] [--provider NAME]`
 
-Scaffold a working example (`eval.yaml`, two prompt variants, a JSONL case
-file) that runs offline against the built-in mock provider. Refuses to
-overwrite existing files without `--force`.
+Scaffold a working example — `eval.yaml`, two prompt variants, a JSONL case
+file, a `.gitignore`, and a `.evaling.secrets.yaml.example` — that runs
+offline against the built-in mock provider. Refuses to overwrite existing
+files without `--force`.
+
+| Flag | Effect |
+|---|---|
+| `--provider NAME` | Scaffold for `mock` (default), `anthropic`, `openai`, or `openai-compatible` |
+| `--force` | Overwrite existing scaffold files |
+
+`--provider` writes a real model block for that vendor instead of the mock
+one, including the environment variable it reads. The scaffolded `.gitignore`
+already excludes `.evaling/` and `.evaling.secrets.yaml`; see
+[secrets.md](secrets.md).
 
 ### `evaling run [CONFIG]`
 
@@ -57,6 +68,16 @@ configured thresholds fail, `2` on config errors.
 With `thresholds.baseline: regression` in the config, the pinned baseline is
 used automatically (pin one first with `evaling baseline set`).
 
+### `evaling validate [CONFIG]`
+
+Check the config and render every prompt without calling any model — the same
+work as `run --dry-run`, named so it's findable. Exits `2` if anything fails
+to load or render.
+
+| Flag | Effect |
+|---|---|
+| `--model NAME` / `--variant NAME` / `--case ID` | Validate a sub-matrix (each repeatable) |
+
 ### `evaling show RUN [--failures] [--case ID]`
 
 Re-render a stored run: the summary matrix by default, failing cells with
@@ -78,6 +99,30 @@ Render a stored run: `json` (full data), `csv` (one row per cell with
 per-criterion columns), `md` (paste-into-a-PR summary), `html` (see below).
 Writes stdout unless `--out` is given.
 
+### `evaling cache info` / `evaling cache clear`
+
+Inspect or clear the response cache. `info` reports the cache location, entry
+count, and total size; `clear` deletes entries.
+
+| Flag | Effect |
+|---|---|
+| `--older-than DAYS` | Only remove entries older than this (on `clear`) |
+| `--yes` | Skip the confirmation prompt (on `clear`) |
+
+The cache key covers only what changes a response — provider, model, base
+URL, request parameters, and the rendered messages — so run labels and output
+directories never invalidate it. Use `--json` for machine-readable output.
+
+### `evaling mcp`
+
+Start the MCP server on stdio so an agent can drive evaling directly. Needs the
+optional extra (`pip install 'evaling[mcp]'`); see [mcp.md](mcp.md).
+
+### `evaling baseline set RUN` / `evaling baseline show`
+
+Pin (or print) the baseline run used by `regression` gating and the
+`baseline` run reference.
+
 ## HTML reports
 
 `--html` (on `run` and `compare`) and `--format html` (on `export`) produce a
@@ -95,16 +140,6 @@ cases sort first, and a "show failures only" toggle (pure CSS) hides the rest.
 Model output is escaped, so a response containing HTML renders as visible text
 rather than markup. Binary inputs are referenced by content hash, never
 inlined, which keeps reports small.
-
-### `evaling mcp`
-
-Start the MCP server on stdio so an agent can drive evaling directly. Needs the
-optional extra (`pip install 'evaling[mcp]'`); see [mcp.md](mcp.md).
-
-### `evaling baseline set RUN` / `evaling baseline show`
-
-Pin (or print) the baseline run used by `regression` gating and the
-`baseline` run reference.
 
 ## Exit codes
 

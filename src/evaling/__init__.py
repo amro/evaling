@@ -26,7 +26,12 @@ from evaling.engine import (  # noqa: E402
 from evaling.errors import ContentError, EvalingError, TemplateError  # noqa: E402
 from evaling.export import export_run  # noqa: E402
 from evaling.scorers.base import ScoringError  # noqa: E402
-from evaling.scoring import aggregate, cell_summary, compare_aggregates  # noqa: E402
+from evaling.scoring import (  # noqa: E402
+    GateResult,
+    aggregate,
+    cell_summary,
+    compare_aggregates,
+)
 from evaling.storage import ResultRecord, RunStore, StorageError  # noqa: E402
 
 __all__ = [
@@ -35,6 +40,7 @@ __all__ = [
     "DryRunReport",
     "EvalConfig",
     "EvalingError",
+    "GateResult",
     "ResultRecord",
     "RunResult",
     "RunStore",

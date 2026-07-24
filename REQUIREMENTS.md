@@ -1,7 +1,11 @@
 # evaling — Requirements
 
-**Status:** settled for v1. This document reflects the design decisions made
-2026-07-24; changes from here should go through discussion + a doc update first.
+**Status:** settled for v1, and now **implemented**. This document records the
+design decisions made 2026-07-24; changes from here should go through
+discussion + a doc update first.
+
+Where the shipped tool refined a decision, this document has been updated to
+match it — see [As built](#as-built) at the end for the deltas worth knowing.
 
 ## 1. Overview
 
@@ -34,8 +38,9 @@ Three layers, strictly ordered:
    run engine, providers, scorers, storage, exports. Public, documented API:
    everything the CLI can do is doable programmatically.
 2. **CLI** — a thin wrapper over the core library (argument parsing + rendering only).
-3. **MCP server** (`evaling --mcp`) — a second thin wrapper over the same core,
-   exposing eval operations as MCP tools.
+3. **MCP server** (`evaling mcp`) — a second thin wrapper over the same core,
+   exposing eval operations as MCP tools. Ships as an optional extra
+   (`evaling[mcp]`) so the base install stays small.
 
 No feature may be implemented in the CLI or MCP layer if it belongs in the core.
 
@@ -123,7 +128,11 @@ in layers, most specific wins:
   protocol). The pluggable provider interface must, however, allow future
   transports (MCP sampling, arbitrary HTTP) without engine changes.
 - Per-model parameters: temperature, max tokens, system prompt override, etc.
-- Rate limiting and retry with backoff, configurable per provider.
+- Rate limiting and retry with backoff. Retries are configurable per model
+  (`max_retries`, `timeout_s`); rate limiting is per model as well
+  (`max_concurrency`, `requests_per_minute`), because one global limit is the
+  wrong control when a matrix mixes a local model with a rate-limited hosted
+  one.
 - Concurrency: requests run in parallel with a configurable limit.
 
 ### 4.4 Scoring, scorecards, and autoraters
@@ -283,6 +292,8 @@ artifacts/             # content-addressed binary inputs/outputs
     a minimal working example, and links into `docs/`. Any change that alters
     user-facing behavior updates the README in the same commit.
   - Detailed docs live in `docs/` as markdown, one file per topic:
+    - `docs/README.md` — documentation index.
+    - `docs/tutorial.md` — the full walkthrough: install through CI gating.
     - `docs/getting-started.md` — install, first eval, reading results.
     - `docs/configuration.md` — full `eval.yaml` reference, settings layering,
       environment variables.
@@ -297,6 +308,10 @@ artifacts/             # content-addressed binary inputs/outputs
     - `docs/mcp.md` — MCP server setup and tool reference.
     - `docs/ci.md` — CI recipes: gating, baselines, HTML report artifacts.
     - `docs/storage.md` — run directory format, caching, exports.
+    - `docs/secrets.md` — where API keys come from and how they're protected.
+    - `docs/troubleshooting.md` — symptoms, causes, fixes.
+    - `docs/python-api.md` — using evaling as a library.
+    - `docs/architecture.md` — internal structure and design rationale.
   - Each file is created alongside the milestone that implements its topic and
     updated in the same commit as any behavior change to that topic. Stale docs
     are treated as bugs.
@@ -312,7 +327,7 @@ artifacts/             # content-addressed binary inputs/outputs
 | Binary inputs | Images + PDFs + audio in v1, via typed content parts |
 | Providers (v1) | Anthropic, OpenAI, OpenAI-compatible, `command`, mock |
 | Model calling via MCP | No (not an inference protocol); provider interface stays pluggable |
-| Driving evaling via MCP | Yes — `--mcp` server in v1, aimed at agent iteration, not CI |
+| Driving evaling via MCP | Yes — `evaling mcp` (optional extra) in v1, aimed at agent iteration, not CI |
 | Cache default | On (opt-out via `--no-cache`) |
 | CI gating | Both absolute thresholds and regression-vs-baseline |
 | HTML report | Yes — single self-contained file, for `export` and `compare` |
@@ -365,3 +380,32 @@ thresholds:
   min_pass_rate: 0.9
   baseline: regression   # fail if worse than pinned baseline
 ```
+
+## As built
+
+Everything above shipped. The refinements worth calling out, because they
+differ from what a reader of the original draft would assume:
+
+- **Secrets have a file, not just environment variables.** Keys may come from
+  a gitignored `.evaling.secrets.yaml` (or `~/.config/evaling/secrets.yaml`,
+  or `$EVALING_SECRETS`) as well as the environment, which always wins.
+  Secrets are never read from `eval.yaml`, never written into `os.environ`,
+  and are redacted from output. See `docs/secrets.md`.
+- **MCP is an optional extra.** `pip install 'evaling[mcp]'`. The base install
+  keeps its small dependency footprint.
+- **Limits are per model, not per provider.** See §4.3 above.
+- **Two commands were added for findability**: `evaling validate` (the same
+  work as `run --dry-run`, under a name people look for) and `evaling cache`
+  (`info` / `clear`).
+- **Video** remains typed, stored, and hashed like any other attachment, and
+  is accepted by the `mock` and `command` providers. No first-class API
+  provider accepts it yet; the capability check rejects it before a request is
+  sent rather than failing mid-run.
+- **Platform support is verified, not assumed.** CI runs Linux (3.10–3.13),
+  macOS, and Windows. All file I/O is explicitly UTF-8 with fixed newlines, so
+  runs are portable between platforms.
+- **The docs are tested.** YAML examples are validated against the real schema,
+  `docs/cli.md` is checked against actual `--help` output, links are resolved,
+  and the worked examples in `examples/` are executed end to end on every
+  commit. "Stale docs are treated as bugs" is enforced by CI rather than by
+  good intentions.

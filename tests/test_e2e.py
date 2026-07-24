@@ -1,4 +1,4 @@
-"""End-to-end runs of the committed fixture evals in tests/fixtures/e2e/.
+"""End-to-end runs of the worked examples in examples/.
 
 Each scenario is a complete eval project (config, prompts, datasets, media)
 executed through the real engine against the mock provider — no mocked
@@ -14,7 +14,7 @@ from evaling import run_eval
 from evaling.config import Settings, load_config
 from evaling.storage import RunStore
 
-E2E = Path(__file__).parent / "fixtures" / "e2e"
+E2E = Path(__file__).resolve().parent.parent / "examples"
 
 SCENARIOS = {
     "text-single": 8,  # 2 variants x 2 models x 2 cases

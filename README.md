@@ -31,28 +31,35 @@ See [getting started](docs/getting-started.md).
 
 ## Documentation
 
-Detailed docs live in [`docs/`](docs/):
+Full docs live in [`docs/`](docs/). New here? Start with the
+**[tutorial](docs/tutorial.md)** — install through CI gating, with runnable
+examples at every step.
 
-- [Getting started](docs/getting-started.md) — install, first eval, reading
-  results.
+- [Tutorial](docs/tutorial.md) — the complete walkthrough.
+- [Getting started](docs/getting-started.md) — the short version.
 - [CLI reference](docs/cli.md) — commands, flags, run references, exit codes.
-- [CI recipes](docs/ci.md) — gating, baselines, cost ceilings, report
-  artifacts.
-- [MCP server](docs/mcp.md) — drive evaling from an agent for hands-off prompt
-  iteration.
 - [Configuration](docs/configuration.md) — the `eval.yaml` reference, settings
   layering, and environment variables.
-- [Providers](docs/providers.md) — Anthropic, OpenAI, OpenAI-compatible (local
-  models, Gemini, OpenRouter), the `command` provider, pricing, and adding your
-  own.
 - [Prompts](docs/prompts.md) — variants, Jinja2 templating, multi-turn
   messages, multimodal inputs, and case datasets.
 - [Scoring](docs/scoring.md) — scorers, scorecards, LLM judges, and CI
   thresholds.
-- [Evaluating judges](docs/evaluating-judges.md) — calibrate autoraters against
-  human labels (meta-evals).
+- [Providers](docs/providers.md) — Anthropic, OpenAI, OpenAI-compatible (local
+  models, Gemini, OpenRouter), the `command` provider, pricing, and adding your
+  own.
+- [Secrets](docs/secrets.md) — where API keys come from, and how they're kept
+  out of git and out of your output.
 - [Storage](docs/storage.md) — the run directory format, resuming interrupted
   runs, response caching, and programmatic access.
+- [CI recipes](docs/ci.md) — gating, baselines, cost ceilings, report
+  artifacts.
+- [Evaluating judges](docs/evaluating-judges.md) — calibrate autoraters against
+  human labels (meta-evals).
+- [MCP server](docs/mcp.md) — drive evaling from an agent for hands-off prompt
+  iteration.
+- [Python API](docs/python-api.md) — use evaling as a library.
+- [Troubleshooting](docs/troubleshooting.md) — symptoms, causes, fixes.
+- [Architecture](docs/architecture.md) — how it's built, and why.
 
 ## Development
 
@@ -69,9 +76,11 @@ uv run ruff format . # format
 Changes are documented in the [CHANGELOG](CHANGELOG.md).
 
 Complete sample evals (text and multimodal, single- and multi-turn) live in
-[`tests/fixtures/e2e/`](tests/fixtures/e2e/) — the test suite runs them end to
-end against the built-in mock provider, and they double as worked examples of
-the config format.
+[`examples/`](examples/) — the test suite runs them end to end against the
+built-in mock provider on every commit, so they are guaranteed to work with
+the current version.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 ## License
 

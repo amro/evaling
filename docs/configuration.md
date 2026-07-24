@@ -73,9 +73,30 @@ Per-model options (all optional):
 - `timeout_s` — per-model request timeout (wired by the HTTP providers).
 - `max_retries` — transient-failure retries for this model (attempts =
   retries + 1; default 2 retries).
+- `max_concurrency` — cap on in-flight requests **for this model**.
+- `requests_per_minute` — sliding-window rate limit for this model.
 
-API keys are read from environment variables only — never put keys in config
-files.
+The last two exist because one global `--concurrency` is the wrong control as
+soon as a matrix mixes a local model with a rate-limited hosted one. They
+compose with the global setting: a call must satisfy the global semaphore,
+this model's concurrency cap, and this model's rate limit.
+
+```yaml
+models:
+  - id: claude-sonnet-5
+    provider: anthropic
+    max_concurrency: 4
+    requests_per_minute: 50
+  - id: local-llama            # unconstrained; runs as fast as it can
+    provider: openai-compatible
+    base_url: http://localhost:11434/v1
+```
+
+Retry backoff reacts to a 429 that already happened; a rate limit avoids
+sending it.
+
+API keys are never read from config files. They come from the environment or
+from a gitignored secrets file — see [secrets.md](secrets.md).
 
 ## `variants`
 
@@ -165,6 +186,57 @@ thresholds:
   min_score: 0.8           # aggregate scorecard score
   baseline: regression     # "regression" = compare against the pinned baseline;
                            # a run id compares against that specific run
+```
+
+## A complete config
+
+Every block together, for reference:
+
+```yaml
+settings:
+  output_dir: .evaling/runs
+  cache_dir: .evaling/cache
+  concurrency: 8
+  cache: true
+
+models:
+  - id: claude-sonnet-5
+    provider: anthropic
+    params: {max_tokens: 1024}
+    max_concurrency: 4
+    requests_per_minute: 50
+  - id: gpt-5.2
+    provider: openai
+
+variants:
+  - name: concise
+    prompt:
+      - role: system
+        content: Answer in one short sentence.
+      - role: user
+        content: "{{ question }}"
+  - name: detailed
+    prompt: prompts/detailed.yaml
+
+cases:
+  file: cases.jsonl
+
+judges:
+  quality:
+    model: claude-sonnet-5
+    rubric: prompts/judge-rubric.yaml
+
+scorecard:
+  - criterion: accuracy
+    scorer: {type: contains}
+    weight: 2
+  - criterion: helpful
+    scorer: {type: llm-judge, judge: quality}
+
+thresholds:
+  min_pass_rate: 0.9
+  min_score: 0.8
+  baseline: regression
 ```
 
 ## Settings resolution

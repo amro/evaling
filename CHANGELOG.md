@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Secrets file support: API keys may come from a gitignored
+  `.evaling.secrets.yaml` beside the config, `~/.config/evaling/secrets.yaml`,
+  or a path in `$EVALING_SECRETS` — the real environment always wins, so CI is
+  unaffected. Keys are still never read from `eval.yaml`, are never written
+  into `os.environ`, and are redacted from errors and stored artifacts. The
+  file's permissions are checked (POSIX) and a warning is surfaced if it is
+  readable by others. `evaling init` scaffolds an example and gitignores the
+  real thing. See `docs/secrets.md`.
+- Per-model limits: `max_concurrency` and `requests_per_minute`, composing
+  with the global concurrency setting so a rate-limited hosted model no longer
+  throttles the whole matrix.
+- `evaling validate` — the same work as `run --dry-run`, under a name people
+  look for.
+- `evaling cache info` / `evaling cache clear [--older-than DAYS]` — inspect
+  or prune the response cache.
+- `evaling init --provider anthropic|openai|openai-compatible|mock` scaffolds
+  a real model block for that vendor.
+- `python -m evaling` as an alternative entry point.
+- `GateResult` is exported from the top-level package; it is part of
+  `run_eval`'s return type and could not previously be imported or annotated.
+- Documentation: a full [tutorial](docs/tutorial.md) (install through CI
+  gating), plus `docs/secrets.md`, `docs/troubleshooting.md`,
+  `docs/python-api.md`, `docs/architecture.md`, a documentation index at
+  `docs/README.md`, and `CONTRIBUTING.md`.
+- The worked example evals moved from `tests/fixtures/e2e/` to
+  [`examples/`](examples/) with a README. The test suite still runs all four
+  end to end, so they cannot drift from the code.
+- The documentation is now tested (`tests/test_docs.py`): YAML examples are
+  validated against the real config schema, `docs/cli.md` is checked against
+  actual `--help` output for undocumented commands and flags, and relative
+  links must resolve.
+- CI runs macOS and Windows in addition to Linux 3.10–3.13.
+
+### Fixed
+
+- **All file I/O now names UTF-8 explicitly.** Python previously fell back to
+  the platform default encoding, which is cp1252 on Windows — so writing an
+  HTML report crashed, and any run whose output contained an emoji, a curly
+  quote, or CJK text would have failed while recording results. Files evaling
+  writes for itself also pin `newline="\n"`, so JSONL and JSON are
+  byte-identical across platforms. A lint rule (PLW1514) now makes unencoded
+  text I/O a build error.
+- The secrets-file permission check is POSIX-only. Windows synthesizes mode
+  bits that always look world-readable, which produced a spurious warning on
+  every run there.
+
 - MCP server (`evaling mcp`, optional extra `evaling[mcp]`): `run_eval`,
   `get_run`, `get_case_result`, `compare_runs`, `list_runs`, `set_baseline`,
   and `render_prompt` over stdio, for agent-driven prompt iteration. Responses
