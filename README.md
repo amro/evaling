@@ -38,6 +38,8 @@ Detailed docs live in [`docs/`](docs/):
 - [CLI reference](docs/cli.md) — commands, flags, run references, exit codes.
 - [CI recipes](docs/ci.md) — gating, baselines, cost ceilings, report
   artifacts.
+- [MCP server](docs/mcp.md) — drive evaling from an agent for hands-off prompt
+  iteration.
 - [Configuration](docs/configuration.md) — the `eval.yaml` reference, settings
   layering, and environment variables.
 - [Providers](docs/providers.md) — Anthropic, OpenAI, OpenAI-compatible (local

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- MCP server (`evaling mcp`, optional extra `evaling[mcp]`): `run_eval`,
+  `get_run`, `get_case_result`, `compare_runs`, `list_runs`, `set_baseline`,
+  and `render_prompt` over stdio, for agent-driven prompt iteration. Responses
+  are token-frugal — summaries by default, pagination, snipped outputs — and
+  every tool is a thin call into the same core the CLI uses.
 - HTML reports: `--html PATH` on `run` and `compare`, and `--format html` on
   `export`. A single self-contained file — inline styles, no JavaScript, no
   network — with the summary matrix, gate verdict, and per-case drill-down

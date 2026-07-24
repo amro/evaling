@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from rich.markup import escape as markup_escape
 from rich.table import Table
 
 from evaling.scoring import cell_summary, filter_failures
@@ -17,10 +18,23 @@ def score3(value: float) -> str:
 
 
 def snip(text: str | None, width: int = 60) -> str:
+    """Flatten, truncate, and neutralize rich markup in untrusted text.
+
+    Model output and provider errors are not ours: a response containing
+    "[/bold]" would otherwise raise MarkupError and crash the command, and
+    "[red]" would silently restyle the terminal.
+    """
     if text is None:
         return ""
     flat = " ".join(text.split())
-    return flat if len(flat) <= width else flat[: width - 1] + "…"
+    if len(flat) > width:
+        flat = flat[: width - 1] + "…"
+    return markup_escape(flat)
+
+
+def safe(value: Any) -> str:
+    """Escape a config-supplied value (variant/model/case name, label)."""
+    return markup_escape("" if value is None else str(value))
 
 
 def matrix_table(aggregates: dict[str, Any]) -> Table:
@@ -30,8 +44,8 @@ def matrix_table(aggregates: dict[str, Any]) -> Table:
     for cell in aggregates.get("matrix", []):
         errors = cell["errors"]
         table.add_row(
-            cell["variant"],
-            cell["model"],
+            safe(cell["variant"]),
+            safe(cell["model"]),
             score3(cell["score"]),
             pct(cell["pass_rate"]),
             str(cell["cases"]),
@@ -60,10 +74,10 @@ def runs_table(runs: list[dict[str, Any]]) -> Table:
         totals = meta.get("totals") or {}
         cost = totals.get("cost_usd")
         table.add_row(
-            meta["id"],
-            meta.get("label") or "",
-            meta["status"],
-            meta.get("started_at") or "",
+            safe(meta["id"]),
+            safe(meta.get("label") or ""),
+            safe(meta["status"]),
+            safe(meta.get("started_at") or ""),
             score3(overall["score"]) if overall else "",
             pct(overall["pass_rate"]) if overall else "",
             f"${cost:.4f}" if cost is not None else "",
@@ -79,8 +93,8 @@ def case_table(records: list[ResultRecord]) -> Table:
         score, passed = cell_summary(record)
         body = f"[red]{snip(record.error)}[/red]" if record.error else snip(record.output)
         table.add_row(
-            record.variant,
-            record.model,
+            safe(record.variant),
+            safe(record.model),
             "[green]yes[/green]" if passed else "[red]no[/red]",
             score3(score),
             body,
@@ -91,7 +105,7 @@ def case_table(records: list[ResultRecord]) -> Table:
 def failure_lines(records: list[ResultRecord]) -> list[str]:
     lines = []
     for record in filter_failures(records):
-        key = f"[bold]{record.variant} × {record.model} × {record.case_id}[/bold]"
+        key = f"[bold]{safe(record.variant)} × {safe(record.model)} × {safe(record.case_id)}[/bold]"
         if record.error:
             lines.append(f"{key} — [red]error:[/red] {snip(record.error, 100)}")
         else:
@@ -109,7 +123,7 @@ def gate_lines(gate: dict[str, Any]) -> list[str]:
     lines = [verdict]
     for check in gate["checks"]:
         mark = "[green]✓[/green]" if check["passed"] else "[red]✗[/red]"
-        lines.append(f"  {mark} {check['name']}: {check['detail']}")
+        lines.append(f"  {mark} {safe(check['name'])}: {safe(check['detail'])}")
     return lines
 
 
@@ -120,8 +134,8 @@ def compare_table(diff: dict[str, Any]) -> tuple[Table, list[str]]:
         table.add_column(column)
     for cell in diff["cells"]:
         table.add_row(
-            cell["variant"],
-            cell["model"],
+            safe(cell["variant"]),
+            safe(cell["model"]),
             f"{score3(cell['score_a'])} → {score3(cell['score_b'])}",
             _delta(cell["score_delta"], score3),
             f"{pct(cell['pass_rate_a'])} → {pct(cell['pass_rate_b'])}",
@@ -130,10 +144,10 @@ def compare_table(diff: dict[str, Any]) -> tuple[Table, list[str]]:
 
     notes = []
     if diff["only_a"]:
-        groups = ", ".join(f"{c['variant']}×{c['model']}" for c in diff["only_a"])
+        groups = ", ".join(f"{safe(c['variant'])}×{safe(c['model'])}" for c in diff["only_a"])
         notes.append(f"only in first run: {groups}")
     if diff["only_b"]:
-        groups = ", ".join(f"{c['variant']}×{c['model']}" for c in diff["only_b"])
+        groups = ", ".join(f"{safe(c['variant'])}×{safe(c['model'])}" for c in diff["only_b"])
         notes.append(f"only in second run: {groups}")
     return table, notes
 

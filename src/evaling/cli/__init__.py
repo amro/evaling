@@ -10,6 +10,7 @@ from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.markup import escape as markup_escape
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from evaling import __version__
@@ -83,7 +84,12 @@ def cli_errors(fn):
         try:
             return fn(*args, **kwargs)
         except (EvalingError, OSError) as exc:
-            Console(stderr=True, highlight=False).print(f"[red]error:[/red] {exc}")
+            # Escape the message: brackets in it (a JSON path, "evaling[mcp]",
+            # a model's own output) would otherwise be eaten as rich markup or
+            # raise MarkupError on the way out.
+            Console(stderr=True, highlight=False).print(
+                f"[red]error:[/red] {markup_escape(str(exc))}"
+            )
             raise SystemExit(2) from exc
 
     return wrapper
@@ -494,6 +500,18 @@ def baseline_show(app):
         app.console.print(pinned)
     else:
         app.console.print("no baseline pinned")
+
+
+@main.command()
+@pass_app
+@cli_errors
+def mcp(app):
+    """Start the MCP server on stdio (for agent-driven prompt iteration)."""
+    from evaling.mcp_server import serve
+
+    # Resolve the output dir the same way every other command does, so an
+    # agent sees exactly the runs the CLI sees.
+    serve(output_dir=str(app.settings().output_dir), config_path=app.config_path)
 
 
 @main.command()

@@ -96,6 +96,11 @@ Model output is escaped, so a response containing HTML renders as visible text
 rather than markup. Binary inputs are referenced by content hash, never
 inlined, which keeps reports small.
 
+### `evaling mcp`
+
+Start the MCP server on stdio so an agent can drive evaling directly. Needs the
+optional extra (`pip install 'evaling[mcp]'`); see [mcp.md](mcp.md).
+
 ### `evaling baseline set RUN` / `evaling baseline show`
 
 Pin (or print) the baseline run used by `regression` gating and the
