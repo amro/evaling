@@ -6,6 +6,7 @@ without engine changes.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
@@ -55,8 +56,11 @@ class Provider(ABC):
     #: class so unsupported parts fail at validation/dry-run time, not mid-run.
     SUPPORTED_MEDIA: ClassVar[frozenset[str]] = frozenset()
 
-    def __init__(self, spec: ModelSpec):
+    def __init__(self, spec: ModelSpec, *, env: "Mapping[str, str] | None" = None):
         self.spec = spec
+        #: Environment used for API-key lookups: the real environment plus any
+        #: secrets file. None means "use os.environ".
+        self.env = env
 
     @abstractmethod
     async def complete(self, request: CompletionRequest) -> Completion:

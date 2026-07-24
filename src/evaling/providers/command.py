@@ -26,6 +26,11 @@ class CommandProvider(Provider):
 
     SUPPORTED_MEDIA = frozenset({"image", "file", "audio", "video"})
 
+    def __init__(self, spec, *, env=None):
+        # Secrets reach the script through its environment — a wrapper around a
+        # real API usually needs the same key evaling would have used.
+        super().__init__(spec, env=env)
+
     async def complete(self, request: CompletionRequest) -> Completion:
         payload = json.dumps(
             {
@@ -56,6 +61,7 @@ class CommandProvider(Provider):
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=dict(self.env) if self.env is not None else None,
         )
         try:
             out, err = await asyncio.wait_for(

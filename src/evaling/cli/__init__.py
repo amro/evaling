@@ -277,11 +277,14 @@ def run(
                 "totals": result.totals,
                 "aggregates": result.aggregates,
                 "gate": gate,
+                "warnings": result.warnings,
                 **({"html": str(html_path)} if html_path else {}),
             }
         )
     else:
         app.say("")
+        for warning in result.warnings:
+            app.err.print(f"[yellow]warning:[/yellow] {markup_escape(warning)}")
         app.show(display.matrix_table(result.aggregates))
         _say_totals(app, result.counts, result.totals)
         if gate:

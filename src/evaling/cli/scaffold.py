@@ -56,8 +56,27 @@ CASES_JSONL = """\
 {"id": "arithmetic", "question": "What is 2 + 2?", "expected": "2"}
 """
 
+GITIGNORE = """\
+# evaling run history, response cache, and reports
+.evaling/
+
+# secrets — never commit these
+.evaling.secrets.yaml
+"""
+
+SECRETS_EXAMPLE = """\
+# Copy to .evaling.secrets.yaml (already gitignored) and fill in.
+# Real environment variables always win over this file, so CI keeps working.
+#
+# ANTHROPIC_API_KEY: sk-ant-...
+# OPENAI_API_KEY: sk-...
+# GEMINI_API_KEY: ...
+"""
+
 FILES = {
     "eval.yaml": EVAL_YAML,
+    ".gitignore": GITIGNORE,
+    ".evaling.secrets.yaml.example": SECRETS_EXAMPLE,
     "prompts/concise.yaml": CONCISE_YAML,
     "prompts/detailed.yaml": DETAILED_YAML,
     "cases.jsonl": CASES_JSONL,

@@ -37,6 +37,7 @@ from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
 from evaling.scorers import create_scorers
 from evaling.scoring import GateResult, aggregate, evaluate_gate
+from evaling.secrets import build_env
 from evaling.storage import (
     ResultRecord,
     RunStore,
@@ -102,8 +103,10 @@ async def run_eval_async(
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
     # ALL configured models get providers (judges need theirs); only selected
-    # models get matrix cells.
-    providers = {model.id: create_provider(model) for model in config.models}
+    # models get matrix cells. One secret env for the whole run: real
+    # environment first, then any secrets file next to the config.
+    secret_env, secret_warnings = build_env(config.base_dir)
+    providers = {model.id: create_provider(model, secret_env) for model in config.models}
     try:
         return await _run_eval_impl(
             config,
@@ -117,6 +120,7 @@ async def run_eval_async(
             case_filter=case_filter,
             max_cost_usd=max_cost_usd,
             on_result=on_result,
+            extra_warnings=secret_warnings,
         )
     finally:
         await asyncio.gather(
@@ -137,6 +141,7 @@ async def _run_eval_impl(
     case_filter: list[str] | None,
     max_cost_usd: float | None,
     on_result: Callable[[ResultRecord], None] | None,
+    extra_warnings: list[str] | None = None,
 ) -> RunResult:
     if settings is None:
         settings = resolve_settings(None, config.settings)
@@ -279,7 +284,7 @@ async def _run_eval_impl(
         "cost_usd": _total(records, "cost_usd"),
     }
 
-    warnings: list[str] = []
+    warnings: list[str] = list(extra_warnings or [])
     if max_cost_usd is not None and budget.unknown_cost_seen:
         warnings.append(
             "--max-cost could not be enforced for every call: some models "
@@ -570,7 +575,8 @@ def dry_run(
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
     _validate_media_support(variants_sel, models_sel, prompts)
-    providers = {model.id: create_provider(model) for model in config.models}
+    secret_env, _ = build_env(config.base_dir)
+    providers = {model.id: create_provider(model, secret_env) for model in config.models}
     create_scorers(config, providers)  # fail fast on bad scorer config
 
     cells = []

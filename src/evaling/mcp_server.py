@@ -146,6 +146,7 @@ async def run_eval_tool(
         "totals": result.totals,
         "aggregates": result.aggregates,
         "gate": asdict(result.gate) if result.gate else None,
+        "warnings": result.warnings,
     }
     failures = filter_failures(result.records)
     if failures:

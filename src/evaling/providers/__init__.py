@@ -1,5 +1,7 @@
 """Provider registry: map a model spec to a Provider instance."""
 
+from collections.abc import Mapping
+
 from evaling.config.schema import ModelSpec
 from evaling.providers.anthropic import AnthropicProvider
 from evaling.providers.base import Completion, CompletionRequest, Provider, ProviderError
@@ -31,11 +33,13 @@ def provider_class(name: str) -> type[Provider]:
     return cls
 
 
-def create_provider(spec: ModelSpec) -> Provider:
+def create_provider(spec: ModelSpec, env: Mapping[str, str] | None = None) -> Provider:
+    """Build a provider. ``env`` supplies API keys (real environment plus any
+    secrets file); providers that don't read the environment ignore it."""
     try:
         cls = provider_class(spec.provider)
     except ProviderError:
         raise ProviderError(
             f"model {spec.id!r}: provider {spec.provider!r} is not implemented yet"
         ) from None
-    return cls(spec)
+    return cls(spec, env=env)

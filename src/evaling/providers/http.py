@@ -6,12 +6,15 @@ run. Transport and status errors map to ProviderError with an accurate
 """
 
 import base64
+import os
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
 
 from evaling.config.schema import ModelSpec
 from evaling.providers.base import Provider, ProviderError
+from evaling.secrets import redact
 
 DEFAULT_TIMEOUT_S = 120.0
 
@@ -27,10 +30,8 @@ class HttpProvider(Provider):
     #: Whether a missing API key is fatal (false for local/self-hosted servers).
     REQUIRES_API_KEY: bool = True
 
-    def __init__(self, spec: ModelSpec, *, env: dict[str, str] | None = None):
-        super().__init__(spec)
-        import os
-
+    def __init__(self, spec: ModelSpec, *, env: Mapping[str, str] | None = None):
+        super().__init__(spec, env=env)
         self._env = os.environ if env is None else env
         self._client: httpx.AsyncClient | None = None
 
@@ -114,15 +115,16 @@ class HttpProvider(Provider):
         )
 
     def _redact(self, text: str) -> str:
-        """Never let a key reach an error message, a log, or results.jsonl.
+        """Never let a secret reach an error message, a log, or results.jsonl.
 
-        Nothing here echoes the key, but a misconfigured gateway that reflects
-        request headers into its error body would otherwise persist it.
+        Nothing here echoes a key, but a misconfigured gateway that reflects
+        request headers into its error body would otherwise persist one. Every
+        value from a secrets file is redacted too, not just this model's key.
         """
         key = self._env.get(self.api_key_env) if self.api_key_env else None
         if key and len(key) >= 8 and key in text:
-            return text.replace(key, "<redacted>")
-        return text
+            text = text.replace(key, "<redacted>")
+        return redact(text, getattr(self._env, "secret_values", ()))
 
 
 def _retry_after(response: httpx.Response) -> float | None:
