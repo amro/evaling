@@ -126,7 +126,10 @@ class RunStore:
     def create_run(self, config: EvalConfig, *, label: str | None = None) -> "RunWriter":
         self.output_dir.mkdir(parents=True, exist_ok=True)
         for _ in range(20):
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+            now = datetime.now(timezone.utc)
+            # millisecond precision so ids sort by creation order; the suffix
+            # only disambiguates true collisions
+            stamp = now.strftime("%Y%m%dT%H%M%S") + f"{now.microsecond // 1000:03d}"
             run_id = f"{stamp}-{secrets.token_hex(2)}"
             path = self.output_dir / run_id
             try:

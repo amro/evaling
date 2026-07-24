@@ -126,3 +126,10 @@ def test_empty_user_config_ignored(tmp_path):
 def test_default_user_config_path_is_under_home():
     assert default_user_config_path().is_absolute()
     assert default_user_config_path().name == "config.yaml"
+
+
+def test_user_config_path_from_env(tmp_path):
+    user = tmp_path / "custom.yaml"
+    user.write_text("concurrency: 3\n")
+    settings = resolve_settings(env={"EVALING_USER_CONFIG": str(user)}, user_config_path=None)
+    assert settings.concurrency == 3

@@ -16,8 +16,8 @@ Runs live under the output directory (default `.evaling/runs/`, see
   artifacts/             # binary inputs, content-addressed
 ```
 
-Run ids are timestamp-prefixed (`20260724T141530-9f2a`), so runs sort
-chronologically by id.
+Run ids are timestamp-prefixed with millisecond precision
+(`20260724T141530042-9f2a`), so runs sort chronologically by id.
 
 ## `run.json`
 

@@ -28,6 +28,9 @@ ENV_VARS = {
     "EVALING_CACHE": "cache",
 }
 
+# Overrides where the user config file is looked up (not a Settings field).
+USER_CONFIG_ENV_VAR = "EVALING_USER_CONFIG"
+
 _TRUTHY = {"1", "true", "yes", "on"}
 _FALSY = {"0", "false", "no", "off"}
 
@@ -51,7 +54,11 @@ def resolve_settings(
     """
     values: dict[str, Any] = {}
 
-    user = _load_user_config(user_config_path or default_user_config_path())
+    env_map = os.environ if env is None else env
+    if user_config_path is None:
+        env_user_config = env_map.get(USER_CONFIG_ENV_VAR)
+        user_config_path = Path(env_user_config) if env_user_config else default_user_config_path()
+    user = _load_user_config(user_config_path)
     if user is not None:
         values.update({name: getattr(user, name) for name in user.model_fields_set})
 
