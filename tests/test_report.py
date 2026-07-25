@@ -196,3 +196,32 @@ class TestCli:
         result = self.cli(tmp_path, "compare", ids[1], ids[0], "--html", str(out))
         assert result.exit_code == 0, result.output
         assert out.read_text(encoding="utf-8").startswith("<!doctype html>")
+
+
+class TestLayout:
+    """Spacing bugs are invisible to assertions about content.
+
+    The totals line under the summary table carried a negative top margin,
+    which pulled it up over the table's last row — the text and the row's
+    bottom border rendered on top of each other.
+    """
+
+    def test_totals_line_does_not_pull_itself_up_into_the_table(self):
+        from evaling.report import STYLE
+
+        rule = next(line for line in STYLE.splitlines() if line.startswith(".totals"))
+        margin = rule.split("margin:")[1].split(";")[0].strip()
+        top = margin.split()[0]
+        assert not top.startswith("-"), f".totals has a negative top margin ({top})"
+
+    def test_no_negative_top_margins_anywhere_in_the_stylesheet(self):
+        from evaling.report import STYLE
+
+        offenders = []
+        for line in STYLE.splitlines():
+            if "margin:" not in line:
+                continue
+            value = line.split("margin:")[1].split(";")[0].strip()
+            if value.split() and value.split()[0].startswith("-"):
+                offenders.append(line.strip())
+        assert not offenders, f"negative top margins can overlap content: {offenders}"

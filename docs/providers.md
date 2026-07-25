@@ -129,6 +129,12 @@ Params: `response`, `fail_times`, `error: fatal`, `cost`.
 Everything else under `params` is forwarded to the provider's API verbatim
 (`temperature`, `max_tokens`, `top_p`, …).
 
+Forwarded verbatim means evaling does not validate them — which parameters a
+model accepts is the vendor's business, and it changes. A parameter a model no
+longer supports comes back as a provider error naming it, at which point the
+vendor's current API reference is the place to look. `temperature`, for
+instance, is not accepted by every current Claude model.
+
 ## Cost tracking
 
 evaling ships published per-model rates for Anthropic models and computes cost

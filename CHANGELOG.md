@@ -98,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The totals line in HTML reports (`72/72 succeeded · …`) overlapped the
+  bottom row of the summary table. It carried a negative top margin, so the
+  text and the table's last border rendered on top of each other.
+
 - The `run` progress bar crashed with an `UnboundLocalError` for source-backed
   configs, which have no up-front cell count.
 - The `command` provider now runs its script in the config's directory rather

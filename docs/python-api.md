@@ -338,7 +338,9 @@ comparable runs; a different fingerprint means results can't be mixed.
 
 ## A worked example
 
-Sweep a parameter and pick the best variant:
+Sweep a parameter and pick the best value. (Substitute a parameter your model
+actually accepts — evaling forwards `params` verbatim, so the vendor decides
+what is valid, and `temperature` is not accepted by every current model.)
 
 ```python
 from evaling import EvalConfig, load_config, run_eval

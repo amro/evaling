@@ -204,6 +204,10 @@ usual way with no config change. evaling warns if the file is readable by
 anyone but you, and redacts key values from error messages. Details in
 [secrets.md](secrets.md).
 
+A key also needs a funded account — API credits are separate from a Claude or
+ChatGPT subscription, and a brand-new key with no credit fails on the first
+request rather than at setup.
+
 ### Add the models
 
 ```yaml

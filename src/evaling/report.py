@@ -44,7 +44,7 @@ code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; 
 .banner.pass { background: var(--pass-bg); color: var(--pass); border-color: var(--pass); }
 .banner.fail { background: var(--fail-bg); color: var(--fail); border-color: var(--fail); }
 .banner ul { margin: .5rem 0 0; padding-left: 1.2rem; font-weight: 400; }
-.totals { color: var(--muted); font-size: .9rem; margin: -.75rem 0 1.5rem; }
+.totals { color: var(--muted); font-size: .9rem; margin: .75rem 0 1.5rem; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
 th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 600; }

@@ -13,6 +13,14 @@ uv sync --group dev
 uv run evaling --version
 ```
 
+`uv run evaling` always reflects your working tree. If you'd rather type
+`evaling`, install it — but note that `uv tool install` copies the code, so
+re-run it after every change:
+
+```sh
+uv tool install --force .
+```
+
 ## The checks CI runs
 
 Run these before pushing — they're the whole gate:

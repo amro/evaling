@@ -95,6 +95,14 @@ unsupported attachment would otherwise come back as an opaque provider error
 after you'd paid for the request. Either drop the attachment for that model or
 drop the model from the matrix.
 
+### The provider rejects a parameter you set in `params`
+
+Everything under `params` is forwarded to the vendor's API without validation,
+so an unsupported or retired parameter comes back as a provider error naming
+it. Check the vendor's current API reference — `temperature`, for example, is
+not accepted by every current Claude model. Removing the parameter from
+`params` is usually the whole fix.
+
 ### 429s, or the provider throttles the whole matrix
 
 Cap the model rather than the run:
