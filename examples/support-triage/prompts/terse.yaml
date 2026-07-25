@@ -1,0 +1,6 @@
+- role: system
+  content: |
+    Classify the support ticket. Reply with JSON only:
+    {"category": "refund|bug|account|billing|other", "urgency": "high|normal"}
+- role: user
+  content: "{{ ticket }}"

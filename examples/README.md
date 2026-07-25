@@ -1,7 +1,8 @@
 # Examples
 
-Four complete evals, each runnable as-is. They use the built-in mock provider,
-so they need no API key and no network.
+Six complete evals, each runnable as-is. They need no API key and no network —
+the first four use the built-in mock provider, and `support-triage` uses a
+small deterministic script behind the `command` provider.
 
 The test suite runs all four end to end on every commit
 (`tests/test_e2e.py`), which means they can't drift from the code — if an
@@ -9,6 +10,8 @@ example here is wrong, CI is red.
 
 | Example | Shows |
 | --- | --- |
+| [`support-triage/`](support-triage/) | **Start here.** A realistic eval: ticket classification across 2 prompt variants × 3 models × 12 cases, with a weighted scorecard, a Python scorer, JSON-schema validation, and a deterministic fake model behind the `command` provider. |
+| [`no-look/`](no-look/) | Cases streamed from a paging source, evaluated in no-look mode so no case content reaches disk. |
 | [`text-single/`](text-single/) | Text, single-turn, inline prompts and cases. Two variants × two models × two cases. |
 | [`text-multi/`](text-multi/) | A multi-turn conversation, an external prompt file, and a JSONL dataset. |
 | [`media-single/`](media-single/) | Every media kind — image, PDF, audio, video — with cases from a CSV using the `file://` convention. |
@@ -17,7 +20,7 @@ example here is wrong, CI is red.
 ## Running one
 
 ```sh
-cd examples/text-single
+cd examples/support-triage
 evaling run
 ```
 

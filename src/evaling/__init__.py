@@ -7,6 +7,7 @@ MCP server) can do is available here programmatically.
 __version__ = "0.1.0"
 
 from evaling.config import (  # noqa: E402
+    Case,
     ConfigError,
     EvalConfig,
     Settings,
@@ -25,6 +26,7 @@ from evaling.engine import (  # noqa: E402
 )
 from evaling.errors import ContentError, EvalingError, TemplateError  # noqa: E402
 from evaling.export import export_run  # noqa: E402
+from evaling.privacy import hash_case_id, redact_record  # noqa: E402
 from evaling.scorers.base import ScoringError  # noqa: E402
 from evaling.scoring import (  # noqa: E402
     GateResult,
@@ -32,9 +34,22 @@ from evaling.scoring import (  # noqa: E402
     cell_summary,
     compare_aggregates,
 )
+from evaling.sources import (  # noqa: E402
+    BaseCaseSource,
+    CasePage,
+    CaseSource,
+    SourceError,
+)
 from evaling.storage import ResultRecord, RunStore, StorageError  # noqa: E402
 
 __all__ = [
+    "Case",
+    "redact_record",
+    "hash_case_id",
+    "SourceError",
+    "CaseSource",
+    "CasePage",
+    "BaseCaseSource",
     "ConfigError",
     "ContentError",
     "DryRunReport",

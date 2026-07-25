@@ -8,6 +8,7 @@ without engine changes.
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, ClassVar
 
 from evaling.config.schema import ModelSpec
@@ -56,11 +57,20 @@ class Provider(ABC):
     #: class so unsupported parts fail at validation/dry-run time, not mid-run.
     SUPPORTED_MEDIA: ClassVar[frozenset[str]] = frozenset()
 
-    def __init__(self, spec: ModelSpec, *, env: "Mapping[str, str] | None" = None):
+    def __init__(
+        self,
+        spec: ModelSpec,
+        *,
+        env: "Mapping[str, str] | None" = None,
+        base_dir: "Path | None" = None,
+    ):
         self.spec = spec
         #: Environment used for API-key lookups: the real environment plus any
         #: secrets file. None means "use os.environ".
         self.env = env
+        #: Directory of the config that declared this model. Relative paths in
+        #: a model spec resolve against it, like every other path in a config.
+        self.base_dir = base_dir
 
     @abstractmethod
     async def complete(self, request: CompletionRequest) -> Completion:

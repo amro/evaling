@@ -22,6 +22,35 @@ When you're iterating on a prompt, you want fast answers to questions like:
 `evaling` runs your prompt variants against your chosen models over a set of test
 cases, scores the outputs, and shows you a comparison — all from the terminal.
 
+## What you can evaluate
+
+**Anything you can call.** Anthropic and OpenAI directly; Ollama, vLLM, LM
+Studio, OpenRouter, Gemini and Gemma through the OpenAI-compatible endpoint;
+and anything else at all through the `command` provider, which pipes JSON to a
+script — so an agent, a RAG pipeline, or a local binary is as evaluable as a
+chat API.
+
+**Text, and not only text.** Single prompts or scripted multi-turn
+conversations. Images, PDFs, audio, and video attach to cases and are checked
+against each model's declared capabilities before a request is sent.
+
+**Against whatever "correct" means for you.** Exact match, substring, regex,
+and JSON-schema validation for the mechanical parts; your own Python function
+when the rule is real but not a pattern; an LLM judge with a rubric when the
+question is genuinely a matter of judgment — and a meta-eval to check that
+judge against labels you wrote yourself, before you trust it to gate anything.
+
+**At the size you actually have.** A dozen cases inline in the config, a JSONL
+or CSV dataset in git, or hundreds of thousands streamed from your own API
+through a case source. Memory is bounded by concurrency, not by case count.
+
+**Including data you're not allowed to read.** No-look mode evaluates
+production traffic and keeps prompts, outputs, and attachments out of every
+artifact — you get the scores, and the data stays where it was.
+
+**And it tells you whether the change helped.** Compare two runs cell by cell,
+pin a baseline, and fail CI on a regression rather than on a hunch.
+
 ## Quick taste
 
 ```sh

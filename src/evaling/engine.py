@@ -23,6 +23,7 @@ from evaling.config.loader import resolve_prompt
 from evaling.config.schema import (
     Case,
     CaseFileRef,
+    CaseSourceRef,
     EvalConfig,
     ModelSpec,
     Settings,
@@ -32,12 +33,19 @@ from evaling.config.settings import resolve_settings
 from evaling.content import MediaRef
 from evaling.errors import EvalingError
 from evaling.limits import limiter_for
+from evaling.privacy import redact_record
 from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
 from evaling.scorers import create_scorers
 from evaling.scoring import Aggregator, GateResult, evaluate_gate
 from evaling.secrets import build_env
+from evaling.sources import (
+    close_source,
+    iter_source_cases,
+    load_source,
+    source_count,
+)
 from evaling.storage import (
     ResultRecord,
     RunStore,
@@ -122,7 +130,9 @@ async def run_eval_async(
     # models get matrix cells. One secret env for the whole run: real
     # environment first, then any secrets file next to the config.
     secret_env, secret_warnings = build_env(config.base_dir)
-    providers = {model.id: create_provider(model, secret_env) for model in config.models}
+    providers = {
+        model.id: create_provider(model, secret_env, config.base_dir) for model in config.models
+    }
     try:
         return await _run_eval_impl(
             config,
@@ -162,21 +172,50 @@ async def _run_eval_impl(
     if settings is None:
         settings = resolve_settings(None, config.settings)
 
-    variants_sel, models_sel, cases = select_matrix(
-        config, models=model_filter, variants=variant_filter, cases=case_filter
-    )
+    privacy = config.privacy
+    source_ref = config.cases if isinstance(config.cases, CaseSourceRef) else None
+
+    if source_ref is not None:
+        variants_sel, models_sel = select_variants_models(
+            config, models=model_filter, variants=variant_filter
+        )
+        cases: list[Case] = []
+        if case_filter:
+            raise ConfigError(
+                "--case cannot filter a source-backed run: cases are fetched lazily, "
+                "so evaling does not know the ids in advance. Filter inside your "
+                "source, or use `limit` to take fewer."
+            )
+    else:
+        variants_sel, models_sel, cases = select_matrix(
+            config, models=model_filter, variants=variant_filter, cases=case_filter
+        )
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
     _validate_media_support(variants_sel, models_sel, prompts)
     scorecard = create_scorers(config, providers)
-    cache = ResponseCache(settings.cache_dir) if settings.cache else None
+    # A judge rationale quotes the text it graded, so no-look has to drop it.
+    judge_criteria = frozenset(
+        criterion.criterion for criterion, _ in scorecard if criterion.scorer.type == "llm-judge"
+    )
+    # The response cache stores prompts and completions verbatim, which is
+    # exactly what no-look exists to prevent.
+    cache = ResponseCache(settings.cache_dir) if settings.cache and not privacy.no_look else None
 
     store = RunStore(settings.output_dir)
     # Resolve the baseline up front: a missing pinned baseline must fail
     # before any model call, not after the run completes.
     baseline_id = _resolve_baseline(store, config, baseline_run_id)
     fingerprint = config_fingerprint(config)
+    if resume_run_id is not None and source_ref is not None:
+        raise StorageError(
+            "resume is not supported for source-backed runs. A source can return "
+            "different rows on the second call — inserted, mutated, or aged out — "
+            "and evaling cannot verify that it did not. The halves of such a run "
+            "would describe different data while looking entirely normal. Start a "
+            "fresh run (see REQUIREMENTS.md, M11, for the reasoning)."
+        )
     if resume_run_id is not None:
         writer = store.open_run(resume_run_id)
         if writer.meta.get("status") == "complete":
@@ -190,7 +229,9 @@ async def _run_eval_impl(
         prior_records = store.load_results(resume_run_id)
         done = {record.key for record in prior_records}
     else:
-        writer = store.create_run(config, label=label, config_sha256=fingerprint)
+        writer = store.create_run(
+            config, label=label, config_sha256=fingerprint, redact_cases=privacy.no_look
+        )
         prior_records = []
         done = set()
 
@@ -209,7 +250,13 @@ async def _run_eval_impl(
         try:
             await _execute_cell(record, variant_name, model, case)
         except Exception as exc:  # noqa: BLE001 - per-cell isolation: no cell may kill the run
-            record.error = _describe_error(exc)
+            record.error = _describe_error(exc, safe=privacy.no_look)
+        # The one place case data can leave this function. Redacting here, in
+        # place, means storage, callbacks, progress display, reports, and
+        # exports are all structurally incapable of seeing it — rather than
+        # each having to remember not to.
+        if privacy.no_look:
+            redact_record(record, judge_criteria, hash_case_ids=not privacy.keep_case_ids)
         await _append(record)
         if on_result is not None:
             # A flaky progress callback must not abort an otherwise-healthy run.
@@ -223,11 +270,13 @@ async def _run_eval_impl(
         rendered = render_messages(prompts[variant_name], case, config.base_dir)
         record.messages = serialize_messages(rendered)
         # Archiving inputs is bookkeeping: a full disk must not cost the cell.
-        with contextlib.suppress(OSError):
-            for message in rendered:
-                for part in message.parts:
-                    if isinstance(part, MediaRef):
-                        await asyncio.to_thread(writer.store_artifact, part)
+        # Skipped in no-look mode, where the attachment is itself the data.
+        if not privacy.no_look:
+            with contextlib.suppress(OSError):
+                for message in rendered:
+                    for part in message.parts:
+                        if isinstance(part, MediaRef):
+                            await asyncio.to_thread(writer.store_artifact, part)
 
         if cache is not None:
             key = cache.key_for(model, rendered)
@@ -285,20 +334,38 @@ async def _run_eval_impl(
         async with lock:
             await asyncio.to_thread(writer.append_result, record)
 
-    # A generator, not a list: the matrix is never materialized, so a run over
+    # Generators, not lists: the matrix is never materialized, so a run over
     # hundreds of thousands of cells costs no more up front than a run over ten.
-    factories = (
-        partial(execute, variant.name, model, case)
-        for variant in variants_sel
-        for model in models_sel
-        for case in cases
-        if (variant.name, model.id, case.id) not in done
-    )
+    # Cases are the outer loop for a source, because a source can only be
+    # walked once; for a fixed list the original variant-major order is kept.
+    if source_ref is not None:
+        source = load_source(source_ref.source, config.base_dir, source_ref.params)
+
+        async def factories():
+            try:
+                async for case in iter_source_cases(source, source_ref.page_size, source_ref.limit):
+                    for variant in variants_sel:
+                        for model in models_sel:
+                            yield partial(execute, variant.name, model, case)
+            finally:
+                await close_source(source)
+
+        cell_stream = factories()
+        expected_total = None
+    else:
+        cell_stream = (
+            partial(execute, variant.name, model, case)
+            for variant in variants_sel
+            for model in models_sel
+            for case in cases
+            if (variant.name, model.id, case.id) not in done
+        )
+        expected_total = len(variants_sel) * len(models_sel) * len(cases)
 
     # Decide up front whether records will be handed back, so a large run never
-    # accumulates a list it would only discard.
-    expected_total = len(variants_sel) * len(models_sel) * len(cases)
-    retain = expected_total <= MAX_RETAINED_RECORDS
+    # accumulates a list it would only discard. A source has no known size, so
+    # assume it is large rather than risk holding an unbounded run in memory.
+    retain = expected_total is not None and expected_total <= MAX_RETAINED_RECORDS
 
     tally = _RunTally()
     for record in prior_records:
@@ -310,7 +377,7 @@ async def _run_eval_impl(
         if retain:
             retained.append(record)
 
-    await consume_bounded(factories, settings.concurrency, collect)
+    await consume_bounded(cell_stream, settings.concurrency, collect)
 
     counts, totals = tally.counts, tally.totals
     records = retained if retain else []
@@ -502,7 +569,17 @@ class _CostBudget:
             self._cond.notify_all()
 
 
-def _describe_error(exc: Exception) -> str:
+def _describe_error(exc: Exception, *, safe: bool = False) -> str:
+    """Describe a failure. ``safe`` keeps only what cannot echo case content.
+
+    Provider errors quote response bodies, and a rejected request often comes
+    back with the offending input attached — so in no-look mode the message
+    itself is a leak, and only the shape of the failure survives.
+    """
+    if safe:
+        status = getattr(exc, "status_code", None)
+        detail = f" (HTTP {status})" if status else ""
+        return f"{type(exc).__name__}{detail} — detail withheld (no-look)"
     # EvalingErrors are already user-facing; anything else keeps its type for context.
     if isinstance(exc, EvalingError):
         return str(exc)
@@ -540,6 +617,13 @@ def _referenced_files(config: EvalConfig) -> list[str]:
     for judge in config.judges.values():
         if isinstance(judge.rubric, str):
             paths.add(str((config.base_dir / judge.rubric).resolve()))
+    if isinstance(config.cases, CaseSourceRef):
+        # The source's data is not a file and is not necessarily stable, so
+        # only the code that produces it can be fingerprinted. Resume is
+        # refused for source-backed runs precisely because this is not enough
+        # to prove two runs saw the same cases.
+        paths.add(str((config.base_dir / config.cases.source.rpartition(":")[0]).resolve()))
+        return sorted(paths)
     if isinstance(config.cases, CaseFileRef):
         paths.add(str((config.base_dir / config.cases.file).resolve()))
     for case in load_cases(config):
@@ -570,19 +654,16 @@ def _literal_media_paths(message, base_dir: Path) -> set[str]:
     return paths
 
 
-def select_matrix(
+def select_variants_models(
     config: EvalConfig,
     *,
     models: list[str] | None = None,
     variants: list[str] | None = None,
-    cases: list[str] | None = None,
-) -> tuple[list[VariantSpec], list[ModelSpec], list[Case]]:
-    """Validate filters and return exactly what the matrix will execute.
+) -> tuple[list[VariantSpec], list[ModelSpec]]:
+    """Validate and apply the variant/model filters.
 
-    The single authority for matrix membership: the engine, dry runs, and the
-    CLI's request count all use this, so they cannot disagree. Filtering
-    models here does NOT remove judge providers — judges are not matrix
-    members in the first place.
+    Split out because a source-backed run needs exactly this and cannot have
+    the case half, which requires knowing every case up front.
     """
     variant_specs = config.variants
     if variants:
@@ -605,7 +686,30 @@ def select_matrix(
             )
         wanted = set(models)
         model_specs = [m for m in model_specs if m.id in wanted]
+    return variant_specs, model_specs
 
+
+def select_matrix(
+    config: EvalConfig,
+    *,
+    models: list[str] | None = None,
+    variants: list[str] | None = None,
+    cases: list[str] | None = None,
+) -> tuple[list[VariantSpec], list[ModelSpec], list[Case]]:
+    """Validate filters and return exactly what the matrix will execute.
+
+    The single authority for matrix membership: the engine, dry runs, and the
+    CLI's request count all use this, so they cannot disagree. Filtering
+    models here does NOT remove judge providers — judges are not matrix
+    members in the first place.
+    """
+    variant_specs, model_specs = select_variants_models(config, models=models, variants=variants)
+
+    if isinstance(config.cases, CaseSourceRef):
+        raise ConfigError(
+            "this config's cases come from a source, which is fetched lazily and "
+            "cannot be listed up front; use run_eval, or dry_run for a sample"
+        )
     case_list = load_cases(config)
     if cases:
         known = {case.id for case in case_list}
@@ -620,12 +724,83 @@ def select_matrix(
     return variant_specs, model_specs, case_list
 
 
+def _dry_run_source(
+    config: EvalConfig,
+    *,
+    model_filter: list[str] | None,
+    variant_filter: list[str] | None,
+) -> "DryRunReport":
+    variants_sel, models_sel = select_variants_models(
+        config, models=model_filter, variants=variant_filter
+    )
+    prompts = {
+        variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
+    }
+    _validate_media_support(variants_sel, models_sel, prompts)
+    secret_env, _ = build_env(config.base_dir)
+    providers = {
+        model.id: create_provider(model, secret_env, config.base_dir) for model in config.models
+    }
+    create_scorers(config, providers)
+
+    source_ref = config.cases
+    source = load_source(source_ref.source, config.base_dir, source_ref.params)
+
+    async def sample() -> tuple[list[Case], int | None]:
+        try:
+            total = await source_count(source)
+            take = min(source_ref.page_size, source_ref.limit or source_ref.page_size)
+            cases: list[Case] = []
+            async for case in iter_source_cases(source, take, take):
+                cases.append(case)
+            return cases, total
+        finally:
+            await close_source(source)
+
+    cases, total = asyncio.run(sample())
+    cells = []
+    for variant in variants_sel:
+        for model in models_sel:
+            for case in cases:
+                error = None
+                try:
+                    render_messages(prompts[variant.name], case, config.base_dir)
+                except Exception as exc:  # noqa: BLE001 - reported per cell, like the engine
+                    error = _describe_error(exc)
+                cells.append(
+                    {
+                        "variant": variant.name,
+                        "model": model.id,
+                        "case_id": case.id,
+                        "error": error,
+                    }
+                )
+    per_case = len(variants_sel) * len(models_sel)
+    if total is not None:
+        requests = per_case * (min(total, source_ref.limit) if source_ref.limit else total)
+    elif source_ref.limit:
+        requests = per_case * source_ref.limit
+    else:
+        requests = len(cells)  # only the sample is knowable
+    return DryRunReport(
+        requests=requests,
+        cells=cells,
+        sampled=total is None and not source_ref.limit,
+        source_total=total,
+    )
+
+
 @dataclass
 class DryRunReport:
     """What a run would do: the matrix, per-cell render outcomes, no model calls."""
 
     requests: int
     cells: list[dict[str, Any]]  # {variant, model, case_id, error: str|None}
+    #: True when ``cells`` covers only a sample because the source's total is
+    #: unknown — ``requests`` is then the sample size, not the run size.
+    sampled: bool = False
+    #: The source's own total, when it reports one.
+    source_total: int | None = None
 
     @property
     def errors(self) -> list[dict[str, Any]]:
@@ -640,7 +815,15 @@ def dry_run(
     case_filter: list[str] | None = None,
 ) -> DryRunReport:
     """Validate everything a run needs — prompts, cases, scorers, rendering —
-    without calling any model."""
+    without calling any model.
+
+    A source-backed config is validated against a sample: the first page is
+    fetched and rendered, which catches the errors that matter (a template
+    referring to a variable the source doesn't provide, a missing attachment)
+    without walking a production dataset to do it.
+    """
+    if isinstance(config.cases, CaseSourceRef):
+        return _dry_run_source(config, model_filter=model_filter, variant_filter=variant_filter)
     variants_sel, models_sel, cases = select_matrix(
         config, models=model_filter, variants=variant_filter, cases=case_filter
     )
@@ -649,7 +832,9 @@ def dry_run(
     }
     _validate_media_support(variants_sel, models_sel, prompts)
     secret_env, _ = build_env(config.base_dir)
-    providers = {model.id: create_provider(model, secret_env) for model in config.models}
+    providers = {
+        model.id: create_provider(model, secret_env, config.base_dir) for model in config.models
+    }
     create_scorers(config, providers)  # fail fast on bad scorer config
 
     cells = []

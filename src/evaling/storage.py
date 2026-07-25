@@ -85,9 +85,14 @@ def serialize_messages(
     return serialized
 
 
-def snapshot_config(config: EvalConfig) -> tuple[str, str]:
+def snapshot_config(config: EvalConfig, *, redact_cases: bool = False) -> tuple[str, str]:
     """Canonical YAML serialization of a config and its sha256."""
-    snapshot = yaml.safe_dump(config.model_dump(mode="json"), sort_keys=True)
+    data = config.model_dump(mode="json")
+    if redact_cases:
+        from evaling.privacy import redact_config_snapshot
+
+        data = redact_config_snapshot(data)
+    snapshot = yaml.safe_dump(data, sort_keys=True)
     return snapshot, hashlib.sha256(snapshot.encode()).hexdigest()
 
 
@@ -166,12 +171,17 @@ class RunStore:
         *,
         label: str | None = None,
         config_sha256: str | None = None,
+        redact_cases: bool = False,
     ) -> "RunWriter":
         """Create a run directory.
 
         ``config_sha256`` overrides the recorded config hash — the engine
         passes a content fingerprint covering referenced files; the default is
         the hash of the config snapshot alone.
+
+        ``redact_cases`` drops inline cases from the stored snapshot. A config
+        that lists its cases inline contains the data itself, which no-look
+        mode must not leave on disk.
         """
         if label in self.RESERVED_LABELS:
             raise StorageError(
@@ -194,7 +204,7 @@ class RunStore:
             raise StorageError(f"could not allocate a unique run directory in {self.output_dir}")
 
         (path / "artifacts").mkdir()
-        snapshot, snapshot_sha256 = snapshot_config(config)
+        snapshot, snapshot_sha256 = snapshot_config(config, redact_cases=redact_cases)
         config_sha256 = config_sha256 or snapshot_sha256
         (path / "config.snapshot.yaml").write_text(snapshot, encoding="utf-8", newline="\n")
         meta = {

@@ -22,8 +22,8 @@ from evaling.render import RenderedText
 class MockProvider(Provider):
     SUPPORTED_MEDIA = frozenset({"image", "file", "audio", "video"})
 
-    def __init__(self, spec, *, env=None):
-        super().__init__(spec, env=env)
+    def __init__(self, spec, *, env=None, base_dir=None):
+        super().__init__(spec, env=env, base_dir=base_dir)
         self._calls = 0
 
     async def complete(self, request: CompletionRequest) -> Completion:

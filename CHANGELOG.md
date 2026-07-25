@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Case sources** — cases can now be fetched from your own Python, a page at
+  a time, instead of being listed in the config or a dataset file:
+  `cases: {source: sources/prod.py:make_source, page_size: 200, limit: 5000}`.
+  Implement `fetch(cursor, limit) -> CasePage` (sync or async); `count()` and
+  `close()` are used when present. `CaseSource` is a Protocol, so no import or
+  subclass is required. Cases stream, so run size is bounded by concurrency
+  rather than by case count. See `docs/no-look.md`.
+- **No-look mode** (`privacy: {no_look: true}`, or `evaling run --no-look`) —
+  for evaluating production data nobody may read afterwards. Rendered prompts,
+  model outputs, judge rationales, attachments, provider error bodies, and
+  inline cases in the config snapshot are all dropped; scores, counts, and
+  timings survive. Case ids are hashed by default, since an id from a
+  production system identifies a record as surely as the record does
+  (`keep_case_ids: true` to opt out). The response cache is disabled, because
+  it stores prompts and completions verbatim. Redaction happens at one place —
+  record construction — so every downstream surface is structurally incapable
+  of leaking rather than individually careful.
+- Two substantial examples: `examples/support-triage/` (a realistic
+  classification eval with a weighted scorecard, a Python scorer, and a
+  deterministic fake model behind the `command` provider) and
+  `examples/no-look/` (a paging source over synthetic production data).
 - Secrets file support: API keys may come from a gitignored
   `.evaling.secrets.yaml` beside the config, `~/.config/evaling/secrets.yaml`,
   or a path in `$EVALING_SECRETS` — the real environment always wins, so CI is
@@ -76,6 +97,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arithmetic rather than two that can drift.
 
 ### Fixed
+
+- The `run` progress bar crashed with an `UnboundLocalError` for source-backed
+  configs, which have no up-front cell count.
+- The `command` provider now runs its script in the config's directory rather
+  than inheriting the caller's working directory. Every other path in a config
+  resolves against the config file, so `command: python3 model.py` used to be
+  the one setting that silently depended on where you were standing.
 
 - **All file I/O now names UTF-8 explicitly.** Python previously fell back to
   the platform default encoding, which is cp1252 on Windows — so writing an

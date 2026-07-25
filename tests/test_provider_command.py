@@ -4,10 +4,12 @@ import sys
 
 import pytest
 
-from evaling.config import Case, Message, ModelSpec
+from evaling import run_eval
+from evaling.config import Case, Message, ModelSpec, load_config
 from evaling.providers.base import CompletionRequest, ProviderError
 from evaling.providers.command import CommandProvider
 from evaling.render import render_messages
+from helpers import make_settings
 
 
 def script(tmp_path, body, name="model.py"):
@@ -126,3 +128,36 @@ def test_supports_every_media_kind():
     # the script decides what it can handle, so nothing is rejected up front
     for kind in ("image", "file", "audio", "video"):
         assert kind in CommandProvider.SUPPORTED_MEDIA
+
+
+class TestWorkingDirectory:
+    """A command resolves against its config, not against the caller's cwd.
+
+    Every other path in a config (prompts, datasets, scorers, schemas) is
+    relative to the config file. A command that instead depended on where the
+    user happened to be standing made those configs silently non-portable.
+    """
+
+    def test_script_runs_in_the_config_directory(self, tmp_path, monkeypatch):
+        (tmp_path / "model.py").write_text(
+            "import json, sys; json.load(sys.stdin); print('ran here')\n", encoding="utf-8"
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: m, provider: command, command: 'python3 model.py'}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: hi}}]\n"
+            "scorecard: [{criterion: ok, scorer: {type: contains, value: 'ran here'}}]\n",
+            encoding="utf-8",
+        )
+        # Deliberately run from somewhere else entirely.
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        result = run_eval(
+            load_config(tmp_path / "eval.yaml"),
+            make_settings(tmp_path).model_copy(update={"output_dir": tmp_path / "runs"}),
+        )
+        assert result.counts["failed"] == 0, [r.error for r in result.records]
+        assert result.records[0].output.strip() == "ran here"

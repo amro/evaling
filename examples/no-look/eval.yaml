@@ -1,0 +1,41 @@
+# No-look eval: production data, scored but never readable afterwards.
+#
+# Cases come from a source (sources/prod_tickets.py) rather than a file, and
+# `privacy.no_look` keeps prompts, outputs, judge rationales, and attachments
+# out of every artifact. What survives is scores, counts, and timings.
+#
+#   evaling run
+#   evaling show latest              # aggregates, no case content
+#   grep -r "@example.com" .evaling/ # finds nothing
+#
+# Resume is deliberately unavailable for source-backed runs: a live source can
+# return different rows on the second call, and evaling cannot prove it didn't.
+# Use `limit` and --max-cost to bound a run instead.
+
+models:
+  - id: mock
+    provider: mock
+
+variants:
+  - name: acknowledge
+    prompt: prompts/reply.yaml
+
+cases:
+  source: sources/prod_tickets.py:make_source
+  params: {total: 250}
+  page_size: 50
+  limit: 100          # bound the run; required unless you pass --max-cost
+
+scorecard:
+  # Scorers see the real output — they are the boundary where you decide what
+  # is safe to report. This one emits only a verdict.
+  - criterion: brief
+    scorer: {type: python, file: scorers/brief.py}
+
+privacy:
+  no_look: true
+  # keep_case_ids: false is the default — ids are hashed, because an id from a
+  # production system identifies a record as surely as the record does.
+
+thresholds:
+  min_pass_rate: 0.9

@@ -169,6 +169,23 @@ API keys are redacted from error messages before they reach the terminal or
 Either way the failure is isolated to its cell: the run continues and reports
 the error in the summary.
 
+### Working directory
+
+The script runs in the directory containing the config, so relative paths in
+`command:` mean the same thing as relative paths everywhere else in that
+config:
+
+```yaml
+models:
+  - id: my-agent
+    provider: command
+    command: python3 agents/run.py      # relative to eval.yaml, not to your shell
+```
+
+Secrets reach the script through its environment — a wrapper around a real API
+usually needs the same key evaling would have used. See
+[secrets.md](secrets.md).
+
 ## Adding a provider
 
 Subclass `Provider` (or `HttpProvider` for HTTP APIs), declare which media kinds

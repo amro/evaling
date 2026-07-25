@@ -19,6 +19,7 @@
 | [Scoring](scoring.md) | Scorers, scorecards, LLM judges, thresholds |
 | [Providers](providers.md) | Anthropic, OpenAI, OpenAI-compatible, local models, `command` |
 | [Secrets](secrets.md) | Where API keys come from, and how they're protected |
+| [No-look evals](no-look.md) | Case sources, and evaluating data nobody may read |
 | [Storage](storage.md) | Run directories, resuming, caching, programmatic access |
 
 ## Going further

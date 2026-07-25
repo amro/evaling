@@ -2,7 +2,14 @@
 
 import asyncio
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
+from collections.abc import (
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Sequence,
+)
 from contextlib import asynccontextmanager
 from typing import TypeVar
 
@@ -62,7 +69,7 @@ class KeyedLocks:
 
 
 async def consume_bounded(
-    factories: Iterable[Callable[[], Awaitable[T]]],
+    factories: Iterable[Callable[[], Awaitable[T]]] | AsyncIterable[Callable[[], Awaitable[T]]],
     limit: int,
     handle: Callable[[T], None],
 ) -> None:
@@ -79,6 +86,11 @@ async def consume_bounded(
     """
     if limit < 1:
         raise ValueError("limit must be >= 1")
+
+    if hasattr(factories, "__aiter__"):
+        await _consume_async(factories, limit, handle)
+        return
+
     iterator = iter(factories)
 
     async def worker() -> None:
@@ -89,6 +101,31 @@ async def consume_bounded(
                 factory = next(iterator)
             except StopIteration:
                 return
+            handle(await factory())
+
+    await asyncio.gather(*(worker() for _ in range(limit)))
+
+
+async def _consume_async(
+    factories: AsyncIterable[Callable[[], Awaitable[T]]],
+    limit: int,
+    handle: Callable[[T], None],
+) -> None:
+    """Same, for a source that is itself awaited (a paging API, say).
+
+    ``__anext__`` suspends, so unlike the sync path the workers really can race
+    and an async generator raises if re-entered while running — hence the lock.
+    """
+    iterator = factories.__aiter__()
+    lock = asyncio.Lock()
+
+    async def worker() -> None:
+        while True:
+            async with lock:
+                try:
+                    factory = await iterator.__anext__()
+                except StopAsyncIteration:
+                    return
             handle(await factory())
 
     await asyncio.gather(*(worker() for _ in range(limit)))

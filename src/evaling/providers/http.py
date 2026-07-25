@@ -8,6 +8,7 @@ run. Transport and status errors map to ProviderError with an accurate
 import base64
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -30,8 +31,14 @@ class HttpProvider(Provider):
     #: Whether a missing API key is fatal (false for local/self-hosted servers).
     REQUIRES_API_KEY: bool = True
 
-    def __init__(self, spec: ModelSpec, *, env: Mapping[str, str] | None = None):
-        super().__init__(spec, env=env)
+    def __init__(
+        self,
+        spec: ModelSpec,
+        *,
+        env: Mapping[str, str] | None = None,
+        base_dir: Path | None = None,
+    ):
+        super().__init__(spec, env=env, base_dir=base_dir)
         self._env = os.environ if env is None else env
         self._client: httpx.AsyncClient | None = None
 

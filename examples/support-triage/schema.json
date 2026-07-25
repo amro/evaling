@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["category", "urgency"],
+  "additionalProperties": false,
+  "properties": {
+    "category": {"enum": ["refund", "bug", "account", "billing", "other"]},
+    "urgency": {"enum": ["high", "normal"]}
+  }
+}

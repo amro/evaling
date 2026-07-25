@@ -52,6 +52,14 @@ judges:
     rubric: prompts/judge-rubric.yaml
 ```
 
+> **A judge sends your case data to another model.** That is a second
+> processor with its own terms and its own retention. Whether that is
+> acceptable for your data is your call, not evaling's, so it is permitted and
+> not blocked — but decide it deliberately, especially when the cases are
+> production data. In [no-look mode](no-look.md) judge rationales are dropped
+> from all artifacts, but the data still leaves your process to reach the
+> judge.
+
 Rubric templates receive `output` (the text being graded), `expected`, and
 `vars` (the case's variables):
 

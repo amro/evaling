@@ -18,8 +18,9 @@ from evaling.cli import display
 from evaling.cli.scaffold import scaffold_project
 from evaling.config import load_config, resolve_settings
 from evaling.config.loader import load_project_settings
+from evaling.config.schema import CaseSourceRef
 from evaling.engine import dry_run as engine_dry_run
-from evaling.engine import run_eval, select_matrix
+from evaling.engine import run_eval, select_matrix, select_variants_models
 from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.report import render_compare_html, render_run_html
@@ -149,6 +150,11 @@ def main(ctx, config_path, output_dir, cache_dir, no_color, quiet, verbose, json
     help="Stop issuing model calls once accumulated cost reaches this many USD.",
 )
 @click.option("-y", "--yes", is_flag=True, help="Skip the large-matrix confirmation.")
+@click.option(
+    "--no-look",
+    is_flag=True,
+    help="Never store or display prompts, outputs, or attachments — scores only.",
+)
 @click.option("--no-cache", is_flag=True, help="Bypass the response cache.")
 @click.option("--resume", "resume_ref", default=None, help="Resume an interrupted run.")
 @click.option(
@@ -176,6 +182,7 @@ def run(
     case_ids,
     dry,
     max_cost,
+    no_look,
     yes,
     no_cache,
     resume_ref,
@@ -194,21 +201,50 @@ def run(
         _do_dry_run(app, config, model_filter, variant_filter, case_filter)
         return
 
+    if no_look:
+        # One-way: the flag can enable no-look but never disable what the
+        # config asked for.
+        config = config.model_copy(
+            update={"privacy": config.privacy.model_copy(update={"no_look": True})}
+        )
     settings = app.settings(config, concurrency=concurrency, cache=False if no_cache else None)
     store = RunStore(settings.output_dir)
 
-    # The same selection the engine will execute — filters validate here,
-    # before any progress display.
-    variants_sel, models_sel, cases_sel = select_matrix(
-        config, models=model_filter, variants=variant_filter, cases=case_filter
-    )
-    count = len(variants_sel) * len(models_sel) * len(cases_sel)
-    app.say(
-        f"Running [bold]{count}[/bold] requests "
-        f"({len(variants_sel)} variants × {len(models_sel)} models × {len(cases_sel)} cases)"
-    )
-    if count >= CONFIRM_THRESHOLD and not yes and sys.stdin.isatty():
-        click.confirm(f"That is {count} model calls — continue?", abort=True)
+    if isinstance(config.cases, CaseSourceRef):
+        # A source is walked lazily, so there is no count to show or confirm.
+        # An unbounded one with no ceiling is a bill, not a run.
+        if config.cases.limit is None and max_cost is None and not yes:
+            raise click.UsageError(
+                "this config fetches cases from a source with no `limit`, so evaling "
+                "cannot tell how many model calls the run will make. Set `limit` in the "
+                "config, pass --max-cost, or pass --yes to run it anyway."
+            )
+        variants_sel, models_sel = select_variants_models(
+            config, models=model_filter, variants=variant_filter
+        )
+        bound = f"up to {config.cases.limit} cases" if config.cases.limit else "all cases"
+        app.say(
+            f"Running {len(variants_sel)} variants × {len(models_sel)} models over "
+            f"[bold]{bound}[/bold] from the case source"
+        )
+        # `limit` gives a real total; without one the source size is unknown
+        # until it is walked, so the progress bar runs indeterminate.
+        count = (
+            len(variants_sel) * len(models_sel) * config.cases.limit if config.cases.limit else None
+        )
+    else:
+        # The same selection the engine will execute — filters validate here,
+        # before any progress display.
+        variants_sel, models_sel, cases_sel = select_matrix(
+            config, models=model_filter, variants=variant_filter, cases=case_filter
+        )
+        count = len(variants_sel) * len(models_sel) * len(cases_sel)
+        app.say(
+            f"Running [bold]{count}[/bold] requests "
+            f"({len(variants_sel)} variants × {len(models_sel)} models × {len(cases_sel)} cases)"
+        )
+        if count >= CONFIRM_THRESHOLD and not yes and sys.stdin.isatty():
+            click.confirm(f"That is {count} model calls — continue?", abort=True)
 
     # baseline resolution (including thresholds.baseline: regression) is core
     # logic — the engine handles it; any run reference passes through.
@@ -346,11 +382,25 @@ def _do_dry_run(app, config, model_filter, variant_filter, case_filter):
         case_filter=case_filter,
     )
     if app.json_output:
-        app.echo_json({"requests": report.requests, "cells": report.cells})
-    else:
-        app.console.print(
-            f"[bold]{report.requests}[/bold] requests would be made; no model was called."
+        app.echo_json(
+            {
+                "requests": report.requests,
+                "cells": report.cells,
+                "sampled": report.sampled,
+                "source_total": report.source_total,
+            }
         )
+    else:
+        if report.sampled:
+            app.console.print(
+                f"Sampled [bold]{report.requests}[/bold] cells from the case source "
+                "(its total is unknown, so this is a sample, not the run size); "
+                "no model was called."
+            )
+        else:
+            app.console.print(
+                f"[bold]{report.requests}[/bold] requests would be made; no model was called."
+            )
         for cell in report.errors:
             app.console.print(
                 f"  [red]✗[/red] {cell['variant']} × {cell['model']} × {cell['case_id']}: "

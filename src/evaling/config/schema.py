@@ -139,6 +139,39 @@ class CaseFileRef(StrictModel):
     file: str
 
 
+class CaseSourceRef(StrictModel):
+    """Cases fetched from user code, a page at a time.
+
+    ``source`` is ``path/to/file.py:factory``; the factory is called with
+    ``params`` and returns an object with ``fetch(cursor, limit)``. See
+    evaling.sources.
+    """
+
+    source: str = Field(min_length=1)
+    params: dict[str, Any] = Field(default_factory=dict)
+    #: Cases requested per fetch.
+    page_size: int = Field(default=100, gt=0)
+    #: Stop after this many cases; None means take everything the source has.
+    limit: int | None = Field(default=None, gt=0)
+
+
+class Privacy(StrictModel):
+    """Controls for evaluating data that must not be readable afterwards.
+
+    ``no_look`` is the switch that matters: prompts, model outputs, judge
+    rationales, and attachments are dropped before anything is written to disk
+    or shown, leaving scores, counts, and timings. See docs/no-look.md.
+    """
+
+    no_look: bool = False
+    #: Keep raw case ids in no-look mode. Off by default: an id from a
+    #: production system is often an email, an order number, or an account
+    #: reference, so it identifies a record as surely as the record does.
+    #: Ids are otherwise replaced by a stable hash, which still lets a case be
+    #: followed across a matrix and between runs.
+    keep_case_ids: bool = False
+
+
 class ScorerSpec(BaseModel):
     """A scorer reference. Extra keys are scorer-specific parameters."""
 
@@ -174,10 +207,11 @@ class EvalConfig(StrictModel):
     settings: Settings = Field(default_factory=Settings)
     models: list[ModelSpec] = Field(min_length=1)
     variants: list[VariantSpec] = Field(min_length=1)
-    cases: CaseFileRef | list[Case]
+    cases: CaseFileRef | CaseSourceRef | list[Case]
     scorecard: list[CriterionSpec] = Field(min_length=1)
     judges: dict[str, JudgeSpec] = Field(default_factory=dict)
     thresholds: Thresholds = Field(default_factory=Thresholds)
+    privacy: Privacy = Field(default_factory=Privacy)
 
     # Directory containing the config file; relative paths resolve against it.
     _base_dir: Path = PrivateAttr(default=Path())

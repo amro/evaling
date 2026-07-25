@@ -26,10 +26,10 @@ class CommandProvider(Provider):
 
     SUPPORTED_MEDIA = frozenset({"image", "file", "audio", "video"})
 
-    def __init__(self, spec, *, env=None):
+    def __init__(self, spec, *, env=None, base_dir=None):
         # Secrets reach the script through its environment — a wrapper around a
         # real API usually needs the same key evaling would have used.
-        super().__init__(spec, env=env)
+        super().__init__(spec, env=env, base_dir=base_dir)
 
     async def complete(self, request: CompletionRequest) -> Completion:
         payload = json.dumps(
@@ -62,6 +62,10 @@ class CommandProvider(Provider):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=dict(self.env) if self.env is not None else None,
+            # Run where the config lives, so `command: python3 score.py` means
+            # the same thing as every other path in that config — and a config
+            # is not silently dependent on the caller's working directory.
+            cwd=str(self.base_dir) if self.base_dir else None,
         )
         try:
             out, err = await asyncio.wait_for(

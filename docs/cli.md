@@ -64,9 +64,15 @@ configured thresholds fail, `2` on config errors.
 | `--label NAME` | Name the run for later reference (`latest` and `baseline` are reserved) |
 | `--html PATH` | Also write a self-contained HTML report when the run finishes |
 | `--concurrency N` | Max parallel model calls |
+| `--no-look` | Never store or display prompts, outputs, or attachments — scores only ([no-look.md](no-look.md)) |
 
 With `thresholds.baseline: regression` in the config, the pinned baseline is
 used automatically (pin one first with `evaling baseline set`).
+
+`--no-look` can turn privacy mode on but never off — a config that sets
+`privacy.no_look: true` cannot be loosened from the command line. A run whose
+cases come from a source refuses to start without `limit` or `--max-cost`, and
+cannot be resumed; see [no-look.md](no-look.md) for why.
 
 ### `evaling validate [CONFIG]`
 

@@ -13,6 +13,7 @@ import pytest
 from evaling import run_eval
 from evaling.config import Settings, load_config
 from evaling.storage import RunStore
+from helpers import make_settings
 
 E2E = Path(__file__).resolve().parent.parent / "examples"
 
@@ -111,3 +112,35 @@ def test_media_multi_turns_and_artifact_dedup(tmp_path):
     # both cases share the same two files -> exactly two artifacts
     artifacts = list((result.path / "artifacts").iterdir())
     assert len(artifacts) == 2
+
+
+class TestSubstantialExamples:
+    """The README examples must keep working; they are the first thing people run."""
+
+    def test_support_triage_runs_and_discriminates(self, tmp_path):
+        """The point of this example is that better prompts score better."""
+        config = load_config(E2E / "support-triage" / "eval.yaml")
+        result = run_eval(config, make_settings(tmp_path))
+        assert result.counts["total"] == 72
+        assert result.counts["failed"] == 0
+
+        by_cell = {(cell["variant"], cell["model"]): cell for cell in result.aggregates["matrix"]}
+        # The structured prompt defines urgency; the terse one doesn't.
+        assert (
+            by_cell[("structured", "clean-json")]["score"]
+            > by_cell[("terse", "clean-json")]["score"]
+        )
+        # The model that wraps JSON in prose fails the format criteria outright.
+        assert by_cell[("structured", "chatty")]["pass_rate"] == 0.0
+
+    def test_no_look_example_leaks_nothing(self, tmp_path):
+        config = load_config(E2E / "no-look" / "eval.yaml")
+        settings = make_settings(tmp_path)
+        result = run_eval(config, settings)
+        assert result.counts["total"] == 100
+
+        for path in settings.output_dir.rglob("*"):
+            if path.is_file():
+                text = path.read_text(encoding="utf-8", errors="ignore")
+                assert "@example.com" not in text
+                assert "ORD-" not in text

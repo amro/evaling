@@ -1,0 +1,58 @@
+# Support-ticket triage: does the prompt get category and urgency right, and
+# does it return usable JSON?
+#
+# Runs offline. `fake_model.py` is a deterministic stand-in for a real model,
+# invoked through the `command` provider — the same mechanism you would use to
+# evaluate an agent, a RAG pipeline, or a local binary.
+#
+#   evaling validate     # check the config, call nothing
+#   evaling run          # 2 variants x 3 models x 12 cases = 72 cells
+#   evaling show latest --failures
+#
+# To use a real model instead, replace the models block:
+#   models:
+#     - id: claude-sonnet-5
+#       provider: anthropic
+#       params: {max_tokens: 256}
+
+models:
+  # Three "models" that differ only in how well they follow instructions.
+  - id: clean-json
+    provider: command
+    command: python3 fake_model.py
+    params: {style: clean}
+  - id: chatty
+    provider: command
+    command: python3 fake_model.py
+    params: {style: chatty}
+  - id: sloppy
+    provider: command
+    command: python3 fake_model.py
+    params: {style: sloppy}
+
+variants:
+  - name: terse
+    prompt: prompts/terse.yaml
+  - name: structured
+    prompt: prompts/structured.yaml
+
+cases:
+  file: cases.jsonl
+
+scorecard:
+  # Weighted: being right matters more than being well-formed, but both count.
+  - criterion: correct-triage
+    scorer: {type: python, file: scorers/category.py}
+    weight: 3
+  - criterion: valid-json
+    scorer: {type: json-valid}
+    weight: 1
+  - criterion: matches-schema
+    scorer: {type: json-schema, schema: schema.json}
+    weight: 1
+  - criterion: no-prose
+    scorer: {type: not-contains, value: "Here's"}
+    weight: 1
+
+thresholds:
+  min_pass_rate: 0.5

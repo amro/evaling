@@ -1,0 +1,12 @@
+{"id": "t-1001", "ticket": "I was charged twice for my subscription this month. Please refund the duplicate.", "expected_category": "refund", "expected_urgency": "normal"}
+{"id": "t-1002", "ticket": "The export button throws a 500 error every time. This is blocking our production release, need this urgent.", "expected_category": "bug", "expected_urgency": "high"}
+{"id": "t-1003", "ticket": "I'm locked out after enabling 2fa and can't log in.", "expected_category": "account", "expected_urgency": "normal"}
+{"id": "t-1004", "ticket": "Can you send me the VAT invoice for last quarter?", "expected_category": "billing", "expected_urgency": "normal"}
+{"id": "t-1005", "ticket": "Our whole team is down, the app is broken and we are losing money by the hour.", "expected_category": "bug", "expected_urgency": "high"}
+{"id": "t-1006", "ticket": "How do I change the colour theme?", "expected_category": "other", "expected_urgency": "normal"}
+{"id": "t-1007", "ticket": "Please reimburse me, the plan was cancelled but you still charged.", "expected_category": "refund", "expected_urgency": "normal"}
+{"id": "t-1008", "ticket": "Password reset email never arrives.", "expected_category": "account", "expected_urgency": "normal"}
+{"id": "t-1009", "ticket": "Where can I download my receipt?", "expected_category": "billing", "expected_urgency": "normal"}
+{"id": "t-1010", "ticket": "Dashboard is not working since the update, needs fixing asap.", "expected_category": "bug", "expected_urgency": "high"}
+{"id": "t-1011", "ticket": "Just wanted to say the new release is great.", "expected_category": "other", "expected_urgency": "normal"}
+{"id": "t-1012", "ticket": "Outage on our production instance, everything is down.", "expected_category": "bug", "expected_urgency": "high"}

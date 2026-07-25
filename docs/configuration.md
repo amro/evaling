@@ -145,6 +145,35 @@ cases:
 In CSV/JSONL datasets, a value of the form `file://path` marks a field as a
 file reference.
 
+### Cases from a source
+
+For cases that live behind an API — too many to file, or too sensitive to
+keep — point at Python you write instead:
+
+```yaml
+cases:
+  source: sources/prod.py:make_source
+  params: {region: eu}
+  page_size: 200
+  limit: 5000
+```
+
+The factory returns an object with `fetch(cursor, limit)`. Cases stream a page
+at a time, so run size is bounded by concurrency rather than by case count.
+Full reference: [no-look.md](no-look.md).
+
+## `privacy`
+
+```yaml
+privacy:
+  no_look: true          # drop prompts, outputs, judge rationales, attachments
+  keep_case_ids: false   # default: ids are hashed, since ids identify records
+```
+
+For evaluating data nobody may read afterwards. Scores, counts, and timings
+survive; everything derived from case content does not. See
+[no-look.md](no-look.md).
+
 ## `scorecard`
 
 Quality is a set of weighted criteria, each backed by a scorer:
