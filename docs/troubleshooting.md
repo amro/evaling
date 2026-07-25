@@ -28,7 +28,7 @@ The usual causes are a typo, or the shape difference between inline and
 dataset cases — inline cases nest variables under `vars:`, while dataset rows
 put them at the top level.
 
-### `extra fields not permitted`
+### `Extra inputs are not permitted`
 
 The config schema rejects unknown keys on purpose, so a misspelled field fails
 loudly instead of being silently ignored. The message names the offending key
@@ -88,7 +88,7 @@ last page rather than repeating the final cursor.
 evaling stops issuing new calls and tells you how many cells it skipped.
 Raise the ceiling or narrow the matrix with `--model` / `--variant` / `--case`.
 
-### `model 'x' does not support media type 'video'`
+### `variant 'v' uses video content, which model 'm' (provider 'openai') does not support`
 
 The capability check fired before sending, which is deliberate — an
 unsupported attachment would otherwise come back as an opaque provider error

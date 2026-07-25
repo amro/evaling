@@ -7,6 +7,7 @@ Three classes of rot, each cheap to catch and expensive to find by hand:
 * a link to a file that has been moved or renamed
 """
 
+import ast
 import re
 import subprocess
 import sys
@@ -140,6 +141,106 @@ def heading_slugs(path: Path) -> set[str]:
         slug = re.sub(r"[^\w\s-]", "", title.lower())
         slugs.add(re.sub(r"[\s_]+", "-", slug).strip("-"))
     return slugs
+
+
+class TestQuotedErrorMessages:
+    """Troubleshooting headings quote errors, and people search for what they saw.
+
+    A heading that no longer matches the real message is worse than no entry:
+    the page looks like it covers the problem and the search finds nothing.
+    Two headings had already drifted when this was written — one quoted
+    Pydantic v1 wording, the other paraphrased a message it never matched.
+
+    What this catches: a heading quoting a message that has been reworded or
+    deleted, which is the common case, since a message and its doc entry get
+    edited at different times.
+
+    What it does not catch: a paraphrase that happens to share a long run with
+    some *other* evaling message. Tying each heading to the specific message it
+    documents would need that mapping written down, and keeping the mapping
+    current is the same problem this test exists to solve. It is a net, not a
+    proof.
+    """
+
+    #: Headings quoting something evaling does not produce — a dependency does.
+    NOT_OURS = {
+        "'question' is undefined",  # jinja2 UndefinedError
+        "Extra inputs are not permitted",  # pydantic v2
+    }
+
+    #: How much contiguous text a heading must share with a real message. Long
+    #: enough that a match is not coincidence, short enough to survive an
+    #: interpolated value sitting in the middle of the sentence.
+    MIN_RUN = 22
+
+    def message_strings(self) -> str:
+        """Every string literal evaling could raise, comments excluded.
+
+        Matching raw file text was too loose: a paraphrase passed because its
+        wording appeared in a code comment. Only string literals reach a user.
+        """
+        chunks: list[str] = []
+        for path in sorted((REPO / "src").rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            docstrings = {
+                ast.get_docstring(node, clean=False)
+                for node in ast.walk(tree)
+                if isinstance(
+                    node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+                )
+            }
+            for node in ast.walk(tree):
+                if isinstance(node, ast.JoinedStr):
+                    # Keep literal runs contiguous across interpolations, so a
+                    # message reads here as it reads to the user — but do not
+                    # let text join across an interpolated value.
+                    chunks.append(
+                        "\x00".join(
+                            part.value
+                            for part in node.values
+                            if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                        )
+                    )
+                elif (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and node.value not in docstrings
+                ):
+                    chunks.append(node.value)
+        # Newline-joined so a run can never span two unrelated messages.
+        return "\n".join(chunks)
+
+    def longest_shared_run(self, heading: str, source: str) -> int:
+        """Longest contiguous slice of the heading appearing in one message."""
+        best = 0
+        for start in range(len(heading)):
+            for end in range(len(heading), start + best, -1):
+                if heading[start:end] in source:
+                    best = max(best, end - start)
+                    break
+        return best
+
+    def test_headings_match_real_messages(self):
+        text = (REPO / "docs" / "troubleshooting.md").read_text(encoding="utf-8")
+        # Backticks are markup in the source strings, not part of the message.
+        source = self.message_strings().replace("`", "").lower()
+        missing = []
+        # Only headings that are entirely a quoted message. A heading like
+        # "`result.records` is empty but the run worked" is prose about a
+        # symptom, not a string anyone will grep for.
+        for heading in re.findall(r"^### `([^`]+)`$", text, re.M):
+            if heading in self.NOT_OURS:
+                continue
+            run = self.longest_shared_run(heading.replace("`", "").lower(), source)
+            if run < self.MIN_RUN:
+                missing.append(f"{heading!r} (longest shared run: {run} chars)")
+        assert not missing, "troubleshooting headings not found in src/: " + "; ".join(missing)
+
+    def test_the_exemptions_are_still_needed(self):
+        """If a message becomes ours, it should stop being exempt."""
+        source = self.message_strings()
+        stale = [message for message in self.NOT_OURS if message.lower() in source.lower()]
+        assert not stale, f"now produced by evaling, so no longer exempt: {stale}"
 
 
 class TestAnchors:
