@@ -31,6 +31,12 @@ and order numbers — the material that normally makes an eval run impossible to
 share. A real source is the same shape: page your API, hand back `Case`
 objects.
 
+This example is safe to run anywhere because its data is invented. A real one
+is not: your source hands plaintext to evaling's own process, so a no-look run
+belongs on infrastructure already cleared for that data. No-look controls what
+the run *leaves behind*, not who can reach the data — see
+[who this is for](../../docs/no-look.md#who-this-is-for-and-where-it-has-to-run).
+
 ## What it demonstrates
 
 **Case ids are data too.** These ids are email addresses. They are hashed by
