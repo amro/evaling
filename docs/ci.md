@@ -85,3 +85,39 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   ```sh
   evaling --json run | jq -e '.gate.passed'
   ```
+
+## Gating on production data
+
+To gate against real traffic that CI's logs must not contain, combine a
+[case source](no-look.md) with no-look mode:
+
+```yaml
+cases:
+  source: sources/prod.py:make_source
+  page_size: 200
+  limit: 500
+
+privacy:
+  no_look: true
+
+thresholds:
+  min_pass_rate: 0.95
+  baseline: regression
+```
+
+```yaml
+- run: evaling run --max-cost 5.00 --html report.html
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+- uses: actions/upload-artifact@v4
+  if: always()
+  with: {name: eval-report, path: report.html}
+```
+
+The gate, the summary, and the uploaded report all work normally — they
+contain scores, not case content — so the artifact is safe to keep and share.
+
+Two differences from an ordinary CI eval. The response cache is disabled in
+no-look mode, so every run pays full price; keep `limit` and `--max-cost`
+tight. And source-backed runs can't be resumed, so a job that dies starts over
+— which is another reason to bound it.

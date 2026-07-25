@@ -229,6 +229,76 @@ config = EvalConfig.model_validate(
 A config built this way has no file to resolve relative paths against, so
 prompt files, datasets, and attachments must be absolute.
 
+## Case sources
+
+Cases can come from your own code instead of a file. Implement `fetch`; the
+rest is optional.
+
+```python
+from evaling import BaseCaseSource, Case, CasePage
+
+
+class ProdTickets(BaseCaseSource):
+    def fetch(self, cursor: str | None, limit: int) -> CasePage:
+        page = my_api.query(after=cursor, limit=limit)
+        return CasePage(
+            cases=[Case(id=r["id"], vars={"ticket": r["body"]}) for r in page.rows],
+            cursor=page.next_cursor,  # None on the last page
+        )
+
+    def count(self) -> int | None:  # optional
+        return my_api.total()
+
+    def close(self) -> None:  # optional
+        my_api.disconnect()
+```
+
+`fetch` may be `async def`. Inheriting from `BaseCaseSource` is optional —
+`CaseSource` is a `runtime_checkable` Protocol, so any object with a `fetch`
+method qualifies:
+
+```python
+from evaling import CaseSource
+
+isinstance(ProdTickets(), CaseSource)  # True
+```
+
+A source is referenced from the config by import path, since the config is
+YAML and cannot hold an object:
+
+```yaml
+cases:
+  source: sources/prod.py:make_source
+  params: {region: eu}
+  page_size: 200
+  limit: 5000
+```
+
+Source-backed runs never return records in memory (the size isn't known up
+front), so `records_truncated` is always True — use `iter_records()`.
+`SourceError` is raised for a source that can't be loaded or that returns
+something unusable.
+
+## Privacy
+
+```python
+from evaling import hash_case_id, redact_record
+```
+
+`redact_record(record, judge_criteria, hash_case_ids=True)` strips everything
+derived from case content, in place. The engine calls it for you when
+`privacy.no_look` is set; it's exported for the rare case of building your own
+pipeline around `run_eval`.
+
+`hash_case_id(case_id)` is the same stable hash no-look mode applies, so you
+can find a hashed case in your own data:
+
+```python
+hash_case_id("customer@example.com")  # 'case-2be299046ace7bbe'
+```
+
+See [no-look.md](no-look.md).
+
 ## Errors
 
 Every failure evaling raises deliberately descends from `EvalingError`:
@@ -240,6 +310,7 @@ Every failure evaling raises deliberately descends from `EvalingError`:
 | `ContentError` | An attachment is missing, unreadable, or unsupported |
 | `ScoringError` | A scorer failed |
 | `StorageError` | A run can't be read, written, or resumed |
+| `SourceError` | A case source failed to load or returned something unusable |
 
 ```python
 from evaling import EvalingError, load_config, run_eval

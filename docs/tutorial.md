@@ -21,7 +21,8 @@ costs before you pay for one.
 7. [Comparing runs](#7-comparing-runs)
 8. [Gating in CI](#8-gating-in-ci)
 9. [Multimodal and multi-turn](#9-multimodal-and-multi-turn)
-10. [Where to go next](#10-where-to-go-next)
+10. [Cases from an API, and data you can't read](#10-cases-from-an-api-and-data-you-cant-read)
+11. [Where to go next](#11-where-to-go-next)
 
 ---
 
@@ -485,8 +486,9 @@ A prompt can be a whole conversation, not just one message:
   content: "{{ followup }}"
 ```
 
-And cases can carry images, PDFs, audio, and video. Attachments go in the
-case's `files` map and are referenced as `{{ files.<name> }}`:
+And cases can carry images, PDFs, audio (`.mp3`, `.wav`, `.ogg`, `.flac`,
+`.m4a`, `.aac`), and video. Attachments go in the case's `files` map and are
+referenced as `{{ files.<name> }}`:
 
 ```yaml
 variants:
@@ -516,16 +518,129 @@ evaling checks that the model supports the media type before sending, so an
 unsupported combination fails immediately with a clear message instead of a
 confusing provider error.
 
-Four complete, runnable examples live in [`examples/`](../examples/) — text
-and multimodal, single- and multi-turn. The test suite runs all four on every
-commit, so they're guaranteed to work with the current version. Copy one as a
+Six complete, runnable examples live in [`examples/`](../examples/), all
+offline. [`support-triage/`](../examples/support-triage/) is the most
+realistic one — ticket classification across two prompt variants and three
+models, with a weighted scorecard and a Python scorer. The test suite runs
+every example on each commit, so they can't drift from the code. Copy one as a
 starting point:
 
 ```sh
-cp -r examples/media-single my-eval && cd my-eval && evaling run
+cp -r examples/support-triage my-eval && cd my-eval && evaling run
 ```
 
-## 10. Where to go next
+## 10. Cases from an API, and data you can't read
+
+Inline cases and dataset files both assume the cases are yours to keep. Two
+situations break that: there are far too many, or you are not allowed to look
+at them.
+
+### A case source
+
+Instead of a file, point at Python you write. evaling calls it for pages:
+
+```python
+# sources/prod_tickets.py
+from evaling import BaseCaseSource, Case, CasePage
+
+
+class ProdTickets(BaseCaseSource):
+    def fetch(self, cursor, limit):
+        page = my_api.query(after=cursor, limit=limit)
+        return CasePage(
+            cases=[Case(id=row["id"], vars={"ticket": row["body"]}) for row in page.rows],
+            cursor=page.next_cursor,  # None when there is no more
+        )
+
+    def count(self):  # optional; gives progress a real total
+        return my_api.total()
+
+
+def make_source():
+    return ProdTickets()
+```
+
+```yaml
+cases:
+  source: sources/prod_tickets.py:make_source
+  page_size: 200
+  limit: 5000
+```
+
+`fetch` may be `async def`. You don't inherit from anything if you'd rather
+not — `CaseSource` is a Protocol, so any object with a `fetch` method works
+and your class can know nothing about evaling.
+
+Cases stream a page at a time, so a run over a hundred thousand cases costs no
+more memory than a run over ten. Two things change: `--case` filtering can't
+work (evaling doesn't know the ids in advance — filter inside your source),
+and a source with no `limit` refuses to start unless you pass `--max-cost`. An
+unbounded source pointed at a production table is a bill, not a run.
+
+```sh
+evaling validate     # fetches one page and renders it — no full walk
+```
+
+### No-look mode
+
+Now the harder version: the data is production traffic, and nobody may read
+it afterwards.
+
+```yaml
+privacy:
+  no_look: true
+```
+
+Prompts, model outputs, judge rationales, attachments, and provider error
+bodies are dropped before anything is written or displayed. What survives is
+what you actually wanted: scores, pass rates, token counts, latency, and the
+gate.
+
+```json
+{"case_id": "case-2be299046ace7bbe", "variant": "acknowledge", "model": "mock",
+ "messages": [], "output": null, "input_tokens": 52,
+ "scores": {"brief": {"score": 1.0, "passed": true, "detail": "14 words"}}}
+```
+
+Case ids are hashed by default, because an id from a production system is
+often an email address or an order number — it identifies a record as surely
+as the record does. The hash is stable, so you can still follow one case
+across the matrix and between runs.
+
+**The catch, and the way around it.** You can't debug a regression by reading
+failures — that's the point, and it also removes your normal way of working.
+The escape valve is the scorer: it sees the real output and decides what is
+safe to say about it.
+
+```python
+def score(output: str, case: dict):
+    missing = [f for f in REQUIRED if f not in output]
+    if missing:
+        return {"score": 0.0, "passed": False, "detail": f"missing fields: {', '.join(missing)}"}
+    return {"score": 1.0, "passed": True, "detail": "complete"}
+```
+
+That `detail` survives no-look mode, because you wrote it. A judge's rationale
+does not — it quotes the text it graded.
+
+Verify the claim rather than trusting it:
+
+```sh
+cd examples/no-look
+evaling run
+grep -r "@example.com" .evaling/     # nothing
+```
+
+Two more things worth knowing before you rely on this. **Runs can't be
+resumed** when cases come from a source: a live source can return different
+rows on the second call, and a run whose halves describe different data looks
+completely normal while being wrong. And **a judge still sends your data to
+another vendor** — rationales are dropped from artifacts, but the data leaves
+your process to reach the judge, which is a decision only you can make.
+
+Full reference: [no-look.md](no-look.md).
+
+## 11. Where to go next
 
 - [configuration.md](configuration.md) — every `eval.yaml` field, settings
   layering, environment variables
@@ -533,6 +648,8 @@ cp -r examples/media-single my-eval && cd my-eval && evaling run
 - [scoring.md](scoring.md) — every scorer in detail, custom Python scorers
 - [providers.md](providers.md) — all providers, pricing, rate limits, writing
   your own
+- [no-look.md](no-look.md) — case sources, and evaluating data nobody may read
 - [storage.md](storage.md) — the run format, resuming, programmatic access
+- [python-api.md](python-api.md) — using evaling as a library
 - [cli.md](cli.md) — full command reference
 - [troubleshooting.md](troubleshooting.md) — when something doesn't work

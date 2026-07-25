@@ -51,6 +51,35 @@ your working directory or to `eval.yaml`. Inline case paths resolve relative
 to the config. Move the file, or adjust the path to match the file declaring
 it.
 
+### `this config fetches cases from a source with no limit`
+
+An unbounded source pointed at a production table is a bill, not a run — so
+evaling won't start one without a ceiling. Set `limit` in the `cases:` block,
+pass `--max-cost`, or pass `--yes` if you really mean it.
+
+### `--case cannot filter a source-backed run`
+
+Cases from a source are fetched lazily, so evaling doesn't know the ids until
+it walks them. Filter inside your source (that's what `params` is for), or use
+`limit` to take fewer.
+
+### `resume is not supported for source-backed runs`
+
+Deliberate. A live source can return different rows on the second call, and
+evaling can't verify that it didn't — a run whose halves describe different
+data produces no error and plausible numbers. Bound runs with `limit` and
+`--max-cost` instead. See [no-look.md](no-look.md).
+
+### `case source fetch() returned X, expected a CasePage`
+
+Your `fetch` must return `CasePage(cases=[...], cursor=...)`, not a bare list.
+`cases` must contain `evaling.Case` objects, not dicts.
+
+### `case source returned cursor 'X' twice`
+
+The cursor isn't advancing, which would loop forever. Return `None` on the
+last page rather than repeating the final cursor.
+
 ## During a run
 
 ### The run stops early and reports skipped cells
@@ -148,6 +177,20 @@ For a judge, the stored `rationale` tells you what the judge thought it was
 doing — usually the fastest way to spot a rubric that's grading something
 other than what you meant. If a judge disagrees with you systematically,
 calibrate it before trusting it: [evaluating-judges.md](evaluating-judges.md).
+
+### Outputs are empty in the report and `show` shows nothing
+
+Check whether the run used no-look mode (`privacy.no_look`, or `--no-look`).
+Prompts, outputs, judge rationales, and attachments are dropped by design;
+scores, pass rates, and the gate are complete. Case ids are hashed, so to find
+one in your own data hash yours the same way (`evaling.hash_case_id`).
+
+If you need to see *why* something failed under no-look, that information has
+to come from a scorer's `detail` — the scorer sees the real output and decides
+what is safe to report. See [no-look.md](no-look.md).
+
+Note that source-backed runs also report `records_truncated`, which is a
+different thing — see below.
 
 ### `result.records` is empty but the run clearly worked
 

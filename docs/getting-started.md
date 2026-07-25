@@ -73,3 +73,5 @@ response cache makes repeat runs of unchanged cells free. See
 - [prompts.md](prompts.md) — templating, multi-turn, images/PDFs/audio.
 - [scoring.md](scoring.md) — scorecards, LLM judges, thresholds.
 - [ci.md](ci.md) — gate your prompts in CI.
+- [no-look.md](no-look.md) — cases from your own API, and evaluating data
+  nobody may read.

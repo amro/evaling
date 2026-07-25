@@ -11,8 +11,10 @@ eval.yaml ──▶ config ──▶ matrix ──▶ engine ──▶ scorers �
               cases              providers ◀── cache        storage ──▶ report
 ```
 
-1. **Load and validate** the config, cases, and prompt files.
-2. **Expand the matrix**: every variant × model × case is one *cell*.
+1. **Load and validate** the config and prompt files; cases come from the
+   config, a dataset file, or a source that is paged lazily.
+2. **Expand the matrix**: every variant × model × case is one *cell*. The
+   matrix is a generator, never a list.
 3. **Render** each cell's prompt through Jinja2 with the case's variables.
 4. **Call** the model, subject to concurrency, rate, and cost limits.
 5. **Score** the output against the scorecard.
@@ -26,6 +28,8 @@ Steps 3–6 run concurrently per cell; everything else is sequential.
 | Module | Responsibility |
 | --- | --- |
 | `config/` | Schema, loading, settings layering, case datasets |
+| `sources.py` | Case sources: the `CaseSource` protocol and page iteration |
+| `privacy.py` | No-look redaction, at one boundary |
 | `render.py`, `templating.py` | Jinja2 rendering with `StrictUndefined` |
 | `content.py` | Attachments: media typing, encoding, capability checks |
 | `engine.py` | The matrix run: scheduling, limits, resume, budget |
@@ -65,6 +69,30 @@ tree.
 
 The cost is that new vendor features need explicit support. That trade favors
 a tool whose job is *comparing* providers uniformly.
+
+### Nothing is materialized
+
+The matrix is a generator, not a list, and cells stream through a fixed worker
+pool — so in-flight work is bounded by `concurrency` rather than by cell
+count. Aggregates accumulate per record (`scoring.Aggregator`) instead of
+being computed from a retained list, and records above a cap aren't kept at
+all. A case source extends the same idea to the cases themselves, which were
+the last part of a run whose cost grew with its size.
+
+`aggregate()` is implemented on top of `Aggregator`, so there is one
+implementation of the arithmetic rather than two that can drift apart.
+
+### Redaction happens at one place
+
+No-look mode strips case content the moment a cell finishes scoring, before
+the record reaches storage, callbacks, display, reports, or MCP. Everything
+downstream is then structurally unable to leak it. The alternative — asking
+each subsystem to remember — works until the seventh one forgets.
+
+Scorers deliberately sit *before* that boundary: a scorer sees the real output
+and emits a verdict plus whatever detail its author deems safe, which puts the
+judgment where the domain knowledge is. Judge rationales are the exception and
+are dropped, since a rationale quotes what it graded.
 
 ### Results are written as they complete
 

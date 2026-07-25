@@ -96,6 +96,13 @@ audit have one implementation. See [architecture.md](docs/architecture.md).
 3. Test the passing case, the failing case, and malformed input.
 4. Document it in `docs/scoring.md`, including its parameters.
 
+## Adding a case source
+
+You don't need to contribute one — a source is your code, loaded by path (see
+[no-look.md](docs/no-look.md)). If you're changing the source machinery
+itself, note that `iter_source_cases` must never hold more than one page, and
+that a source returning a repeated cursor has to raise rather than loop.
+
 ## Reporting a bug
 
 Include:

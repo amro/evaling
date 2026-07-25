@@ -103,3 +103,38 @@ print(result.run_id, result.counts, result.totals)
 for record in result.records:
     print(record.variant, record.model, record.case_id, record.output)
 ```
+
+## Large runs
+
+Above 10,000 cells (`evaling.engine.MAX_RETAINED_RECORDS`) a run stops handing
+every record back in memory: `RunResult.records` is empty and
+`records_truncated` is set. Counts, totals, and aggregates are unaffected —
+they're accumulated as the run proceeds rather than computed from a retained
+list. Everything is still on disk:
+
+```python
+for record in result.iter_records():  # streams, any run size
+    ...
+```
+
+Empty rather than partial is deliberate. A partial list looks usable and would
+silently give you wrong numbers.
+
+## Source-backed runs cannot be resumed
+
+When cases come from a [case source](no-look.md), `--resume` is refused.
+Resume relies on the config fingerprint proving both runs saw the same cases,
+and a live source can return different rows on the second call — inserted,
+mutated, aged out, or simply a moved time window. The resulting run would
+describe two different populations while looking entirely normal.
+
+File- and inline-backed runs are unaffected: their data is fingerprinted, so
+resume stays supported there.
+
+## What no-look mode stores
+
+With `privacy.no_look`, `results.jsonl` holds scores, counts, tokens, cost,
+latency, and hashed case ids — no prompts, outputs, judge rationales, or
+attachments. `artifacts/` stays empty, `config.snapshot.yaml` has inline cases
+stripped, and the response cache is disabled for the run. See
+[no-look.md](no-look.md).
