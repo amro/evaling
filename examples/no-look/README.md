@@ -22,7 +22,8 @@ cat .evaling/runs/*/results.jsonl   # scores, no content
 
 ```json
 {"case_id": "case-2be299046ace7bbe", "messages": [], "output": null,
- "scores": {"brief": {"detail": "14 words", "passed": true, "score": 1.0}},
+ "scores": {"brief": {"detail": "within the 60-word limit",
+                      "passed": true, "score": 1.0}},
  "variant": "acknowledge", "model": "mock", "input_tokens": 52}
 ```
 
@@ -45,7 +46,8 @@ matrix and between runs. Set `privacy.keep_case_ids: true` if your ids are
 genuinely opaque.
 
 **Scorers are the redaction boundary.** `scorers/brief.py` sees the real
-output and emits only a verdict and a safe detail (`"14 words"`). That detail
+output and emits only a verdict and a safe detail (`"within the 60-word
+limit"`). That detail
 is the only thing about the output that reaches a report — so what you put
 there is the decision about what leaves the boundary.
 

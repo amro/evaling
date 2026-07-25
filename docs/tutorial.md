@@ -602,7 +602,8 @@ gate.
 ```json
 {"case_id": "case-2be299046ace7bbe", "variant": "acknowledge", "model": "mock",
  "messages": [], "output": null, "input_tokens": 52,
- "scores": {"brief": {"score": 1.0, "passed": true, "detail": "14 words"}}}
+ "scores": {"brief": {"score": 1.0, "passed": true,
+            "detail": "within the 60-word limit"}}}
 ```
 
 Case ids are hashed by default, because an id from a production system is
