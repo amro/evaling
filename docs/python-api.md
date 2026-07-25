@@ -63,6 +63,7 @@ result = await run_eval_async(config)
 | `aggregates` | `dict` | `overall` plus per variant × model |
 | `gate` | `GateResult \| None` | `None` when no thresholds are configured |
 | `warnings` | `list[str]` | Non-fatal issues, e.g. loose secrets-file permissions |
+| `records_truncated` | `bool` | True when the run was too large to keep in memory |
 
 Each aggregate entry holds `cases`, `score`, `pass_rate`, and `errors`:
 
@@ -84,6 +85,28 @@ import sys
 
 if result.gate is not None and not result.gate.passed:
     sys.exit(1)
+```
+
+### Large runs
+
+Above 10,000 cells (`evaling.engine.MAX_RETAINED_RECORDS`) a run stops handing
+back every record: `records` is empty and `records_truncated` is True. Counts,
+totals, and aggregates are unaffected — they're accumulated as the run
+proceeds, not computed from a retained list.
+
+`records` is empty rather than partial on purpose. A partial list looks usable
+and would silently give you wrong answers; an empty one sends you here:
+
+```python
+for record in result.iter_records():  # streams from disk, any run size
+    if record.error:
+        print(record.case_id, record.error)
+```
+
+`iter_records()` works for every run, so code that uses it needs no size check:
+
+```python
+failures = [r for r in result.iter_records() if r.error]
 ```
 
 ### `ResultRecord`

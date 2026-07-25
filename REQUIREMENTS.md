@@ -409,3 +409,69 @@ differ from what a reader of the original draft would assume:
   and the worked examples in `examples/` are executed end to end on every
   commit. "Stale docs are treated as bugs" is enforced by CI rather than by
   good intentions.
+
+## M11: no-look evals (design, not yet implemented)
+
+Evaluating production data that humans may not read. Two parts: a datasource
+interface users implement, and a mode that keeps the data out of every
+artifact. Decisions taken 2026-07-24, before implementation:
+
+### Scope of "no look"
+
+Data must not survive **on the machine** in human-readable form. It may be held
+in memory and in temporary on-disk artifacts during a run, provided nothing
+readable outlives the process.
+
+### Temporary artifacts are encrypted with an ephemeral key
+
+Any temp artifact a no-look run writes is encrypted with a key generated in
+memory at run start and never persisted. The key dies with the process, so
+anything left behind by a crash, an OOM kill, or a power loss is permanently
+unreadable. Cleanup on exit is still performed — but correctness does not
+depend on it, because cleanup is exactly what a killed process cannot do.
+
+### Resume is not supported for datasource-backed runs
+
+Deliberately refused rather than best-effort, for two reasons.
+
+**It cannot be made correct against a live source.** A source that is still
+receiving writes will shift rows under cursor pagination, mutate rows already
+evaluated, drop rows, or move the underlying population ("the last 24 hours"
+is a different set at 09:00 and 14:00). Any of these produces a run whose
+halves describe different data, and the failure is silent: no error, plausible
+numbers, wrong conclusion. A `stable: true` flag is a promise the tool cannot
+verify, and trusting it converts a user's mistaken belief into a corrupted
+result.
+
+**It conflicts with the ephemeral-key decision above.** Resuming requires
+reading what the previous process wrote, which requires the key that process
+deliberately destroyed. Supporting both would mean persisting the key, which
+defeats the guarantee that leftovers are unreadable.
+
+Long private runs therefore rely on `--max-cost` and on narrowing the matrix
+rather than on recovery. If resume becomes necessary later, the honest designs
+are (a) verify the source by re-walking its prefix and comparing a rolling
+digest of case content — cheap, since it costs API pages but no model calls —
+or (b) snapshot the case set locally on first fetch so evaling guarantees
+stability instead of trusting a claim. Either would need a user-supplied key
+to coexist with encryption at rest.
+
+File-backed and inline case runs are unaffected: their config fingerprint is
+verifiable, so resume remains supported there.
+
+### LLM judges are permitted in no-look mode
+
+A judge sends case data to a second model provider. That is a compliance
+decision only the user can make, so evaling permits it and documents the
+consequence plainly rather than blocking it. Judge rationales quote the data
+being graded and are therefore suppressed from stored artifacts in no-look
+mode.
+
+### No minimum-group-size guard on aggregates
+
+Small groups can be re-identifying, but the threshold is the user's judgment,
+and a run over a single case is a legitimate thing to do. evaling stays
+unopinionated and instead documents sample-size guidance, since the more common
+error is drawing conclusions from too few cases: at n=30 a pass rate carries
+roughly ±18 points at 95% confidence, n=100 gives ±10, n=400 gives ±5, and
+n=1000 gives ±3.

@@ -52,6 +52,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr.overall td { font-weight: 600; border-top: 2px solid var(--line); }
 .scroll { overflow-x: auto; }
 .filter { margin: 1rem 0; color: var(--muted); font-size: .9rem; }
+.notice { border-left: 3px solid var(--muted); background: rgba(127,127,127,.08);
+          padding: .75rem 1rem; margin: 1rem 0; font-size: .9rem; }
 .case {
   border: 1px solid var(--line); border-radius: 10px; margin: 0 0 1rem;
   overflow: hidden; background: var(--panel);
@@ -268,6 +270,38 @@ def _cases_section(records: list[ResultRecord]) -> str:
     return "".join(sections)
 
 
+#: Above this many cells the per-case drill-down is limited to failures.
+#: A full drill-down costs roughly 1.5 KB of HTML per cell, so an unbounded
+#: report of a large run is a file no browser will open — 50k cells produced a
+#: 75 MB page. Aggregates and the gate are always complete; only the
+#: cell-by-cell detail is trimmed.
+MAX_DETAILED_CASES = 2_000
+
+#: How many failing cases to show once a report is in summary mode.
+SUMMARY_MODE_FAILURES = 200
+
+
+def _summary_notice(shown: int, total: int, failures: int) -> str:
+    hidden = total - shown
+    return (
+        "<div class='notice'><strong>Large run — showing partial detail.</strong> "
+        f"This run has {total:,} cells, so the drill-down below covers "
+        f"{shown:,} of them ({failures:,} failing) and omits {hidden:,}. "
+        "The summary and gate above cover the whole run. "
+        "For everything, use <span class='mono'>evaling export &lt;run&gt; --format csv</span> "
+        "or <span class='mono'>evaling show &lt;run&gt; --case &lt;id&gt;</span>.</div>"
+    )
+
+
+def _select_for_detail(records: list[ResultRecord]) -> tuple[list[ResultRecord], str]:
+    """Which records to render in full, plus a notice when that isn't all of them."""
+    if len(records) <= MAX_DETAILED_CASES:
+        return records, ""
+    failures = [record for record in records if not cell_summary(record)[1]]
+    shown = failures[:SUMMARY_MODE_FAILURES]
+    return shown, _summary_notice(len(shown), len(records), len(failures))
+
+
 def render_run_html(meta: dict[str, Any], records: list[ResultRecord]) -> str:
     """A complete, self-contained report for one run."""
     label = f" — {esc(meta.get('label'))}" if meta.get("label") else ""
@@ -282,6 +316,7 @@ def render_run_html(meta: dict[str, Any], records: list[ResultRecord]) -> str:
         f" · ${cost:.4f}"
     )
     aggregates = meta.get("aggregates") or {}
+    detailed, notice = _select_for_detail(records)
 
     body = (
         f"<h1>evaling run <span class='mono'>{esc(meta.get('id'))}</span>{label}</h1>"
@@ -293,9 +328,10 @@ def render_run_html(meta: dict[str, Any], records: list[ResultRecord]) -> str:
         + (f"<h2>Summary</h2>{_matrix_table(aggregates)}" if aggregates else "")
         + f"<p class='totals'>{esc(totals_line)}</p>"
         + "<h2>Cases</h2>"
+        + notice
         + "<input type='checkbox' id='failures-only'>"
         + "<div class='filter'><label for='failures-only'>Show failures only</label></div>"
-        + f"<div class='cases'>{_cases_section(records)}</div>"
+        + f"<div class='cases'>{_cases_section(detailed)}</div>"
     )
     return _page(f"evaling run {meta.get('id')}", body)
 

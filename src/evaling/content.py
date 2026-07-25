@@ -26,6 +26,7 @@ MEDIA_TYPES: dict[str, str] = {
     ".ogg": "audio/ogg",
     ".flac": "audio/flac",
     ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
     ".webm": "video/webm",
@@ -34,7 +35,9 @@ MEDIA_TYPES: dict[str, str] = {
 ALLOWED_MEDIA_TYPES: dict[MediaKind, frozenset[str]] = {
     "image": frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"}),
     "file": frozenset({"application/pdf"}),
-    "audio": frozenset({"audio/mpeg", "audio/wav", "audio/ogg", "audio/flac", "audio/mp4"}),
+    "audio": frozenset(
+        {"audio/mpeg", "audio/wav", "audio/ogg", "audio/flac", "audio/mp4", "audio/aac"}
+    ),
     "video": frozenset({"video/mp4", "video/quicktime", "video/webm"}),
 }
 

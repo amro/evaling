@@ -149,6 +149,19 @@ doing — usually the fastest way to spot a rubric that's grading something
 other than what you meant. If a judge disagrees with you systematically,
 calibrate it before trusting it: [evaluating-judges.md](evaluating-judges.md).
 
+### `result.records` is empty but the run clearly worked
+
+Above 10,000 cells a run stops holding every record in memory;
+`records_truncated` is set and `records` is empty. It's empty rather than
+partial deliberately — a partial list would have silently given you wrong
+numbers. Aggregates, counts, and totals are complete and unaffected. Stream
+the records instead:
+
+```python
+for record in result.iter_records():
+    ...
+```
+
 ## Reports and output
 
 ### The HTML report's "failures only" toggle does nothing
@@ -156,6 +169,14 @@ calibrate it before trusting it: [evaluating-judges.md](evaluating-judges.md).
 The report contains no JavaScript by design — filtering is a CSS checkbox, so
 it works in any browser but not in a text-mode viewer or an email client that
 strips `<style>`. Open the file in a real browser.
+
+### The HTML report says "Large run — showing partial detail"
+
+Above 2,000 cells the drill-down covers failing cases only. The summary matrix
+and gate still describe the whole run. A full drill-down is about 1.5 KB of
+HTML per cell, so an unbounded report of a large run is a file a browser won't
+open. For complete data use `evaling export <run> --format csv`, or
+`evaling show <run> --case <id>` for a single case.
 
 ### Terminal output is mangled, or colors leak into a log
 

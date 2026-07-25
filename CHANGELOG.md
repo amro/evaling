@@ -42,6 +42,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   links must resolve.
 - CI runs macOS and Windows in addition to Linux 3.10–3.13.
 
+### Changed
+
+- The engine no longer materializes the matrix. Cells stream through a fixed
+  worker pool, so in-flight tasks are bounded by `concurrency` rather than by
+  the number of cells, and aggregates are accumulated per record instead of
+  computed from a retained list. Measured over a 30,000-cell run, live memory
+  at the end is identical to before the run started.
+- `RunResult.records` is empty for runs above `MAX_RETAINED_RECORDS` (10,000
+  cells), with the new `records_truncated` flag set. Use the new
+  `RunResult.iter_records()` to stream results from disk at any size. Empty
+  rather than partial is deliberate: a partial list would silently produce
+  wrong answers. **This is a behavior change for anyone reading `.records`
+  from a very large run.**
+- HTML reports degrade above 2,000 cells: aggregates and the gate stay
+  complete, the per-case drill-down is limited to failing cases, and a notice
+  says what was omitted and how to get it. A 50,000-cell report went from
+  75 MB — large enough that a browser will not open it — to 5.5 KB.
+- Prompt templates compile once per distinct source instead of once per cell.
+  `Environment.from_string` recompiles on every call, so a 30,000-cell run was
+  compiling the same template 30,000 times and keeping every result alive.
+  Throughput improved ~21% (1,030 → 1,250 cells/sec against the mock provider).
+
+### Added
+
+- AAC audio (`.aac`). `.m4a` already covered AAC in an MP4 container; this adds
+  raw ADTS streams.
+- `evaling.concurrency.KeyedLocks`, a refcounted lock-per-key that drops locks
+  when their last waiter leaves — the cache single-flight map previously kept
+  one lock per distinct cell for the life of a run.
+- `evaling.scoring.Aggregator` for incremental aggregation. `aggregate()` is
+  now implemented on top of it, so there is one implementation of the
+  arithmetic rather than two that can drift.
+
 ### Fixed
 
 - **All file I/O now names UTF-8 explicitly.** Python previously fell back to

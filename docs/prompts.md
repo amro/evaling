@@ -44,7 +44,7 @@ shorthand for a single text part — or a list of typed parts:
 | `text` | — (Jinja2 template) |
 | `image` | `.png` `.jpg` `.jpeg` `.gif` `.webp` |
 | `file` | `.pdf` |
-| `audio` | `.mp3` `.wav` `.ogg` `.flac` `.m4a` |
+| `audio` | `.mp3` `.wav` `.ogg` `.flac` `.m4a` `.aac` |
 | `video` | `.mp4` `.mov` `.webm` |
 
 Using a part type a provider can't accept fails at validation time — before any

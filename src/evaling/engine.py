@@ -9,15 +9,14 @@ import asyncio
 import contextlib
 import hashlib
 import time
-from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import Any
 
 from evaling.cache import ResponseCache
-from evaling.concurrency import bounded_gather
+from evaling.concurrency import KeyedLocks, consume_bounded
 from evaling.config.cases import load_cases
 from evaling.config.errors import ConfigError
 from evaling.config.loader import resolve_prompt
@@ -37,7 +36,7 @@ from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
 from evaling.scorers import create_scorers
-from evaling.scoring import GateResult, aggregate, evaluate_gate
+from evaling.scoring import Aggregator, GateResult, evaluate_gate
 from evaling.secrets import build_env
 from evaling.storage import (
     ResultRecord,
@@ -47,11 +46,21 @@ from evaling.storage import (
     snapshot_config,
 )
 
+#: Above this many cells a run stops handing every record back in memory.
+#: Counts, totals, and aggregates are unaffected — they are accumulated as the
+#: run proceeds — but ``records`` would be hundreds of megabytes of prompts and
+#: outputs that the caller has already got on disk.
+MAX_RETAINED_RECORDS = 10_000
+
 
 @dataclass
 class RunResult:
     run_id: str
     path: Path
+    #: Every record, unless the run exceeded :data:`MAX_RETAINED_RECORDS`, in
+    #: which case this is empty and ``records_truncated`` is True. Empty rather
+    #: than partial on purpose: a partial list would silently give a caller
+    #: wrong answers, while an empty one sends them to :meth:`iter_records`.
     records: list[ResultRecord]
     counts: dict[str, int]
     totals: dict[str, Any]
@@ -59,6 +68,12 @@ class RunResult:
     gate: GateResult | None
     #: Non-fatal notices worth showing the user (e.g. an unenforceable cost cap).
     warnings: list[str] = field(default_factory=list)
+    #: True when the run was too large to keep in memory; use iter_records().
+    records_truncated: bool = False
+
+    def iter_records(self) -> Iterator[ResultRecord]:
+        """Stream every record from disk, regardless of run size."""
+        return RunStore(self.path.parent).iter_results(self.run_id)
 
 
 def run_eval(
@@ -180,10 +195,10 @@ async def _run_eval_impl(
         done = set()
 
     lock = asyncio.Lock()
-    # Per-cache-key locks single-flight identical concurrent requests: the
-    # second waiter finds the first's response in the cache instead of paying
-    # for a duplicate provider call.
-    key_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+    # Single-flights identical concurrent requests: the second waiter finds the
+    # first's response in the cache instead of paying for a duplicate call.
+    single_flight = KeyedLocks()
+
     budget = _CostBudget(
         max_cost_usd, spent=sum(r.cost_usd for r in prior_records if r.cost_usd) or 0.0
     )
@@ -216,7 +231,7 @@ async def _run_eval_impl(
 
         if cache is not None:
             key = cache.key_for(model, rendered)
-            async with key_locks[key]:
+            async with single_flight(key):
                 completion = await asyncio.to_thread(cache.get, key)
                 record.cached = completion is not None
                 if completion is None:
@@ -270,27 +285,35 @@ async def _run_eval_impl(
         async with lock:
             await asyncio.to_thread(writer.append_result, record)
 
-    factories = [
+    # A generator, not a list: the matrix is never materialized, so a run over
+    # hundreds of thousands of cells costs no more up front than a run over ten.
+    factories = (
         partial(execute, variant.name, model, case)
         for variant in variants_sel
         for model in models_sel
         for case in cases
         if (variant.name, model.id, case.id) not in done
-    ]
-    new_records = await bounded_gather(factories, settings.concurrency)
+    )
 
-    records = prior_records + new_records
-    counts = {
-        "total": len(records),
-        "succeeded": sum(1 for r in records if r.error is None),
-        "failed": sum(1 for r in records if r.error is not None),
-        "cached": sum(1 for r in records if r.cached),
-    }
-    totals = {
-        "input_tokens": _total(records, "input_tokens"),
-        "output_tokens": _total(records, "output_tokens"),
-        "cost_usd": _total(records, "cost_usd"),
-    }
+    # Decide up front whether records will be handed back, so a large run never
+    # accumulates a list it would only discard.
+    expected_total = len(variants_sel) * len(models_sel) * len(cases)
+    retain = expected_total <= MAX_RETAINED_RECORDS
+
+    tally = _RunTally()
+    for record in prior_records:
+        tally.add(record)
+    retained: list[ResultRecord] = list(prior_records) if retain else []
+
+    def collect(record: ResultRecord) -> None:
+        tally.add(record)
+        if retain:
+            retained.append(record)
+
+    await consume_bounded(factories, settings.concurrency, collect)
+
+    counts, totals = tally.counts, tally.totals
+    records = retained if retain else []
 
     warnings: list[str] = list(extra_warnings or [])
     if max_cost_usd is not None and budget.unknown_cost_seen:
@@ -300,7 +323,7 @@ async def _run_eval_impl(
             "Set params.pricing to track their spend."
         )
 
-    aggregates = aggregate(records)
+    aggregates = tally.aggregates
     baseline_overall = _load_baseline_overall(store, baseline_id)
     gate = evaluate_gate(config.thresholds, aggregates["overall"], baseline_overall)
     writer.finalize(counts, totals, aggregates, asdict(gate) if gate else None, warnings)
@@ -308,6 +331,7 @@ async def _run_eval_impl(
         run_id=writer.run_id,
         path=writer.path,
         records=records,
+        records_truncated=not retain,
         counts=counts,
         totals=totals,
         aggregates=aggregates,
@@ -374,8 +398,49 @@ def _load_baseline_overall(store: RunStore, run_id: str | None) -> dict[str, Any
     return aggregates["overall"]
 
 
-def _total(records: list[ResultRecord], attr: str) -> int | float:
-    return sum(value for r in records if (value := getattr(r, attr)) is not None)
+class _RunTally:
+    """Counts, token/cost totals, and aggregates, accumulated one record at a time.
+
+    Everything a finished run reports is a reduction over its records, so none
+    of it requires holding the records themselves.
+    """
+
+    def __init__(self) -> None:
+        self.total = self.succeeded = self.failed = self.cached = 0
+        self.input_tokens = self.output_tokens = 0
+        self.cost_usd = 0.0
+        self._aggregator = Aggregator()
+
+    def add(self, record: ResultRecord) -> None:
+        self.total += 1
+        self.failed += record.error is not None
+        self.succeeded += record.error is None
+        self.cached += bool(record.cached)
+        self.input_tokens += record.input_tokens or 0
+        self.output_tokens += record.output_tokens or 0
+        self.cost_usd += record.cost_usd or 0.0
+        self._aggregator.add(record)
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return {
+            "total": self.total,
+            "succeeded": self.succeeded,
+            "failed": self.failed,
+            "cached": self.cached,
+        }
+
+    @property
+    def totals(self) -> dict[str, Any]:
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cost_usd": self.cost_usd,
+        }
+
+    @property
+    def aggregates(self) -> dict[str, Any]:
+        return self._aggregator.result()
 
 
 class _CostBudget:

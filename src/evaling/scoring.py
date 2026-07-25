@@ -27,30 +27,66 @@ def cell_summary(record: ResultRecord) -> tuple[float, bool]:
     return round(score, 6), passed
 
 
-def _group_stats(records: list[ResultRecord]) -> dict[str, Any]:
-    summaries = [cell_summary(record) for record in records]
-    n = len(summaries)
-    passed = sum(1 for _, ok in summaries if ok)
-    return {
-        "cases": n,
-        "score": round(sum(score for score, _ in summaries) / n, 6) if n else 0.0,
-        "pass_rate": round(passed / n, 6) if n else 0.0,
-        "errors": sum(1 for record in records if record.error is not None),
-    }
+@dataclass
+class _RunningStats:
+    """Sums, not stored records — so a group costs the same at 10 cells or 10 million."""
+
+    cases: int = 0
+    score_sum: float = 0.0
+    passed: int = 0
+    errors: int = 0
+
+    def add(self, record: ResultRecord) -> None:
+        score, ok = cell_summary(record)
+        self.cases += 1
+        self.score_sum += score
+        self.passed += ok
+        self.errors += record.error is not None
+
+    def result(self) -> dict[str, Any]:
+        n = self.cases
+        return {
+            "cases": n,
+            "score": round(self.score_sum / n, 6) if n else 0.0,
+            "pass_rate": round(self.passed / n, 6) if n else 0.0,
+            "errors": self.errors,
+        }
+
+
+class Aggregator:
+    """Accumulates run aggregates one record at a time.
+
+    The engine feeds records here as they complete and then discards them, so
+    a run's memory does not grow with the number of cells. :func:`aggregate`
+    is this same class fed from a list, so there is one implementation of the
+    arithmetic rather than two that can drift apart.
+    """
+
+    def __init__(self) -> None:
+        self._overall = _RunningStats()
+        self._groups: dict[tuple[str, str], _RunningStats] = {}
+
+    def add(self, record: ResultRecord) -> None:
+        self._overall.add(record)
+        group = self._groups.setdefault((record.variant, record.model), _RunningStats())
+        group.add(record)
+
+    def result(self) -> dict[str, Any]:
+        return {
+            "overall": self._overall.result(),
+            "matrix": [
+                {"variant": variant, "model": model, **stats.result()}
+                for (variant, model), stats in sorted(self._groups.items())
+            ],
+        }
 
 
 def aggregate(records: list[ResultRecord]) -> dict[str, Any]:
     """Run-level aggregates: overall stats plus one entry per variant×model cell group."""
-    groups: dict[tuple[str, str], list[ResultRecord]] = {}
+    aggregator = Aggregator()
     for record in records:
-        groups.setdefault((record.variant, record.model), []).append(record)
-    return {
-        "overall": _group_stats(records),
-        "matrix": [
-            {"variant": variant, "model": model, **_group_stats(group)}
-            for (variant, model), group in sorted(groups.items())
-        ],
-    }
+        aggregator.add(record)
+    return aggregator.result()
 
 
 def filter_failures(records: list[ResultRecord]) -> list[ResultRecord]:

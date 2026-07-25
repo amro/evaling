@@ -141,6 +141,14 @@ Model output is escaped, so a response containing HTML renders as visible text
 rather than markup. Binary inputs are referenced by content hash, never
 inlined, which keeps reports small.
 
+**Large runs are summarized.** Above 2,000 cells the per-case drill-down is
+limited to failing cases and the report says what it omitted. The summary
+matrix and gate verdict always cover the whole run. This is a practical limit
+rather than a stylistic one: a full drill-down costs roughly 1.5 KB of HTML per
+cell, so a 50,000-cell report would be about 75 MB — a file a browser will not
+open. For complete per-cell data at that size use `export --format csv`, or
+`show --case <id>` for one case.
+
 ## Exit codes
 
 | Code | Meaning |
