@@ -44,8 +44,8 @@ is the only thing about the output that reaches a report — so what you put
 there is the decision about what leaves the boundary.
 
 **Bounded by construction.** `limit: 100` caps the run. Without a `limit`,
-evaling refuses to start unless you pass `--max-cost` or `--yes`: an unbounded
-source with no ceiling is a bill, not a run.
+evaling asks for `--max-cost` or `--yes` first, since the call count would
+otherwise be whatever the source returns.
 
 **No resume.** Deliberate. A live source can return different rows on the
 second call — inserted, mutated, aged out — and evaling cannot verify that it

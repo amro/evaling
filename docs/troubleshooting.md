@@ -53,9 +53,9 @@ it.
 
 ### `this config fetches cases from a source with no limit`
 
-An unbounded source pointed at a production table is a bill, not a run — so
-evaling won't start one without a ceiling. Set `limit` in the `cases:` block,
-pass `--max-cost`, or pass `--yes` if you really mean it.
+Without a bound, the number of model calls is whatever the source returns, so
+evaling asks for one first. Set `limit` in the `cases:` block, pass
+`--max-cost`, or pass `--yes` to run it as-is.
 
 ### `--case cannot filter a source-backed run`
 

@@ -71,10 +71,10 @@ about evaling. `BaseCaseSource` exists only for editor completion.
 
 ### Cursors
 
-Cursor-based, not offset-based, because that is what real APIs give you and
-because offsets drift when the underlying table is still being written to. The
-cursor is opaque to evaling — a row id, a timestamp, a page token, whatever
-your API uses. Return `None` when there is nothing more.
+Cursor-based rather than offset-based, so that rows inserted or deleted
+during a walk don't cause pages to skip or repeat. The cursor is opaque to
+evaling — a row id, a timestamp, a page token, whatever your API uses. Return
+`None` when there is nothing more.
 
 A cursor that repeats is an error rather than an infinite loop.
 
@@ -100,7 +100,8 @@ tell how many model calls the run will make. Set `limit` in the config, pass
 --max-cost, or pass --yes to run it anyway.
 ```
 
-An unbounded source pointed at a production table is a bill, not a run.
+Without either, the number of model calls is whatever the source happens to
+return, which may be far more than intended.
 
 ### Checking a source without a full run
 

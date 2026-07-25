@@ -323,8 +323,8 @@ is only reproducible if both are pinned.
 
 ## 6. Scoring what exact match can't
 
-`contains` and `exact` handle a surprising amount, and you should reach for
-them first — free, instant, deterministic. The full set:
+`contains` and `exact` cover a lot, and they're free, instant, and
+deterministic. The full set:
 
 | Scorer | Passes when |
 | --- | --- |
@@ -406,8 +406,8 @@ A judge is a model call, so it costs money and it can be wrong. Before
 trusting one to gate anything, check it against labels you wrote yourself:
 put your grade in each case's `human_label` and score the judge with the
 `agreement` scorer. [evaluating-judges.md](evaluating-judges.md) walks through
-it, and it will save you from shipping a rubric that quietly disagrees with
-you.
+it — a rubric can disagree with you consistently without that being visible
+in the scores.
 
 ## 7. Comparing runs
 
@@ -465,10 +465,9 @@ A minimal GitHub Actions job:
   with: {name: eval-report, path: report.html}
 ```
 
-Keep `--max-cost` on CI runs. A misconfigured matrix in a loop is the
-expensive kind of mistake, and the ceiling makes it a cheap one. More
-patterns — caching between runs, PR comments, scheduled drift checks — in
-[ci.md](ci.md).
+A `--max-cost` ceiling on CI runs bounds what a misconfigured matrix can
+spend before anyone notices. More patterns — caching between runs, PR
+comments, scheduled drift checks — in [ci.md](ci.md).
 
 ## 9. Multimodal and multi-turn
 
@@ -575,7 +574,7 @@ Cases stream a page at a time, so a run over a hundred thousand cases costs no
 more memory than a run over ten. Two things change: `--case` filtering can't
 work (evaling doesn't know the ids in advance — filter inside your source),
 and a source with no `limit` refuses to start unless you pass `--max-cost`. An
-unbounded source pointed at a production table is a bill, not a run.
+source with no bound will run for as many cases as it returns.
 
 ```sh
 evaling validate     # fetches one page and renders it — no full walk

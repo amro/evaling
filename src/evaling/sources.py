@@ -17,8 +17,8 @@ Implement :class:`CaseSource` — structurally, no import or subclass required::
 ``fetch`` may be sync or async. Two optional methods are used when present:
 ``count()`` for progress and cost confirmation, and ``close()`` for cleanup.
 
-Cursor-based rather than offset-based because that is what real APIs provide,
-and because offsets drift when the underlying data is still changing.
+Cursor-based rather than offset-based, so that rows inserted or deleted during
+a walk do not cause pages to skip or repeat.
 """
 
 import importlib.util
