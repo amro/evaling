@@ -195,6 +195,18 @@ you are the right person to decide what may leave. Details from an **LLM
 judge** do not survive: a rationale quotes the text it graded, and no judge can
 be relied on to keep that separation.
 
+### Nothing is written and then deleted
+
+Case data is never written to disk in the first place. evaling uses no
+temporary files, in any mode, so there is no window in which case content
+exists on disk and no cleanup step whose failure would matter — which is the
+step a killed process cannot perform.
+
+Three limits this does not cover, none of which evaling can close: the OS may
+page memory to swap; the `command` provider hands case data to a subprocess
+whose behaviour is its author's responsibility; and attachment source files
+are already on your disk, since evaling reads them rather than copying them.
+
 ### The response cache is disabled
 
 The cache stores prompts and completions verbatim on disk — precisely what

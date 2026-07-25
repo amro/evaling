@@ -418,17 +418,47 @@ artifact. Decisions taken 2026-07-24, before implementation:
 
 ### Scope of "no look"
 
-Data must not survive **on the machine** in human-readable form. It may be held
-in memory and in temporary on-disk artifacts during a run, provided nothing
-readable outlives the process.
+Case data must not survive **on the machine** in human-readable form. Holding
+it in memory for the duration of a run is acceptable; leaving anything readable
+behind afterwards is not.
 
-### Temporary artifacts are encrypted with an ephemeral key
+**As implemented, no case data is written to disk at all.** Not written and
+deleted, not written encrypted — never written. In a no-look run, `results.jsonl`
+holds scores and metadata, `run.json` holds aggregates, `config.snapshot.yaml`
+has inline cases stripped, `artifacts/` stays empty because attachments are
+never archived, and the response cache is disabled for the run. evaling uses no
+temporary files anywhere in its codebase, in any mode.
 
-Any temp artifact a no-look run writes is encrypted with a key generated in
-memory at run start and never persisted. The key dies with the process, so
-anything left behind by a crash, an OOM kill, or a power loss is permanently
-unreadable. Cleanup on exit is still performed — but correctness does not
-depend on it, because cleanup is exactly what a killed process cannot do.
+This is a stronger guarantee than the original requirement asked for, and it is
+what made the encryption design below unnecessary.
+
+### Encryption at rest: designed, not needed
+
+The original plan was to encrypt temporary artifacts with a key generated in
+memory at run start and never persisted, so that anything left behind by a
+crash, an OOM kill, or a power loss would be permanently unreadable — cleanup
+on exit being exactly what a killed process cannot do.
+
+No component turned out to need to spool case data, so nothing was implemented
+and no cryptography dependency was taken. The design is recorded here because
+it remains the answer if a future feature does need to spool — the most likely
+candidate being very large media attachments streamed from a source, where a
+page of them may not fit in memory. Such a feature should take `cryptography`
+as an optional extra rather than a core dependency.
+
+### What this guarantee does not cover
+
+Three honest limits, none of which evaling can close:
+
+- **The operating system may page memory to disk.** Case data is held in memory
+  during a run, and swap is outside any application's control. A machine
+  handling data this sensitive should have encrypted swap, or none.
+- **The `command` provider hands case data to a subprocess.** That is what the
+  provider is for, and what the script does with the data — including writing
+  it somewhere — is the author's responsibility, not evaling's.
+- **Attachment source files are already on disk.** evaling reads them and does
+  not copy them; they belong to the caller and their handling is the caller's
+  concern.
 
 ### Resume is not supported for datasource-backed runs
 

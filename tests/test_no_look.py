@@ -262,3 +262,88 @@ def test_gate_and_thresholds_work_either_way(tmp_path, no_look):
     result = run_eval(config, make_settings(tmp_path))
     assert result.gate is not None
     assert result.gate.passed is True
+
+
+class TestAttachmentsNeverReachDisk:
+    """Media is the one payload with its own write path (`artifacts/`).
+
+    The canary test above uses text-only cases, so it would not have caught an
+    attachment being archived. This covers that path with real file bytes.
+    """
+
+    IMAGE_BYTES = b"CANARY-IMAGE-BYTES-9931"
+    PDF_BYTES = b"CANARY-PDF-BYTES-4417"
+
+    def media_config(self, tmp_path, no_look=True):
+        data = tmp_path / "data"
+        data.mkdir(exist_ok=True)
+        (data / "secret.png").write_bytes(
+            bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489")
+            + self.IMAGE_BYTES
+            + bytes.fromhex("0000000049454e44ae426082")
+        )
+        (data / "secret.pdf").write_bytes(b"%PDF-1.4\n" + self.PDF_BYTES + b"\n%%EOF\n")
+        config = EvalConfig.model_validate(
+            {
+                "models": [{"id": "mock", "provider": "mock"}],
+                "variants": [
+                    {
+                        "name": "describe",
+                        "prompt": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"text": "Describe: {{ note }}"},
+                                    {"image": "{{ files.photo }}"},
+                                    {"file": "{{ files.doc }}"},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+                "cases": [
+                    {
+                        "id": f"{CANARY}-media",
+                        "vars": {"note": CANARY},
+                        "files": {"photo": "data/secret.png", "doc": "data/secret.pdf"},
+                    }
+                ],
+                "scorecard": [{"criterion": "ok", "scorer": {"type": "contains", "value": ""}}],
+                "privacy": {"no_look": no_look},
+            }
+        )
+        config._base_dir = tmp_path  # noqa: SLF001 - test fixture
+        return config
+
+    def test_artifacts_directory_stays_empty(self, tmp_path):
+        settings = make_settings(tmp_path, cache=True)
+        result = run_eval(self.media_config(tmp_path), settings)
+        assert result.counts["succeeded"] == 1
+        artifacts = settings.output_dir / result.run_id / "artifacts"
+        assert list(artifacts.iterdir()) == []
+
+    def test_no_file_bytes_or_paths_are_written(self, tmp_path):
+        settings = make_settings(tmp_path, cache=True)
+        run_eval(self.media_config(tmp_path), settings)
+
+        markers = [self.IMAGE_BYTES, self.PDF_BYTES, b"secret.png", b"secret.pdf", CANARY.encode()]
+        leaks = []
+        roots = [settings.output_dir] + (
+            [settings.cache_dir] if settings.cache_dir.exists() else []
+        )
+        for root in roots:
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                blob = path.read_bytes()
+                leaks += [(str(path), m) for m in markers if m in blob]
+        assert not leaks, f"attachment data written to disk: {leaks}"
+
+    def test_without_no_look_the_attachment_is_archived(self, tmp_path):
+        """Proves the assertions above are testing something."""
+        settings = make_settings(tmp_path)
+        result = run_eval(self.media_config(tmp_path, no_look=False), settings)
+        artifacts = settings.output_dir / result.run_id / "artifacts"
+        stored = list(artifacts.iterdir())
+        assert stored, "media should normally be content-addressed into artifacts/"
+        assert any(self.IMAGE_BYTES in p.read_bytes() for p in stored)
