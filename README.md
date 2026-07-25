@@ -44,9 +44,10 @@ judge against labels you wrote yourself, before you trust it to gate anything.
 or CSV dataset in git, or hundreds of thousands streamed from your own API
 through a case source. Memory is bounded by concurrency, not by case count.
 
-**Including data you're not allowed to read.** No-look mode evaluates
-production traffic and keeps prompts, outputs, and attachments out of every
-artifact — you get the scores, and the data stays where it was.
+**Including data you're not allowed to read.** No-look mode — *eyes-off*
+evaluation, in privacy terms — runs against production traffic and keeps
+prompts, outputs, and attachments out of every artifact: you get the scores,
+the data stays where it was.
 
 **And it tells you whether the change helped.** Compare two runs cell by cell,
 pin a baseline, and fail CI on a regression rather than on a hunch.

@@ -6,6 +6,20 @@ The situation: your prompt needs validating against real production traffic,
 and the reason it needs validating against *real* traffic is the same reason
 nobody may look at it. You want the scores. You cannot have the data.
 
+"No-look" is evaling's name for it. The established vocabulary calls this
+**eyes-off** evaluation — you may run code against data you are not permitted
+to view — and what it does to the results is **data minimization**: only the
+statistics leave. If you are fitting this into a governance process, it is the
+same shape as a trusted research environment, where analysts run code against
+sensitive data and only vetted aggregates are released.
+
+It is **not** differential privacy. evaling makes no formal guarantee about
+what an aggregate reveals, and deliberately does not enforce a minimum group
+size — see [how many cases do you need](#how-many-cases-do-you-need) for what
+that leaves you responsible for. Avoid calling it "blind evaluation" too: in
+ML that already means blinding the *rater* to which system produced an output,
+which is a different technique for a different problem.
+
 Two pieces make this work — a **case source** that streams cases from your
 systems instead of a file, and **no-look mode**, which keeps the data out of
 every artifact evaling produces.

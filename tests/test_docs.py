@@ -125,6 +125,36 @@ class TestLinks:
         assert not broken, f"{path.name} links to missing files: {broken}"
 
 
+def heading_slugs(path: Path) -> set[str]:
+    """GitHub's anchor slugs for a file's headings."""
+    slugs = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("#"):
+            continue
+        title = line.lstrip("#").strip()
+        slug = re.sub(r"[^\w\s-]", "", title.lower())
+        slugs.add(re.sub(r"[\s_]+", "-", slug).strip("-"))
+    return slugs
+
+
+class TestAnchors:
+    """A link to a heading that was renamed points nowhere, silently."""
+
+    @pytest.mark.parametrize("path", documented_files(), ids=lambda p: p.name)
+    def test_in_page_and_cross_page_anchors_resolve(self, path):
+        text = path.read_text(encoding="utf-8")
+        broken = []
+        for target, anchor in re.findall(r"\]\(([^)#]*)#([^)]+)\)", text):
+            if target.startswith(("http://", "https://", "mailto:")):
+                continue
+            destination = (path.parent / target) if target else path
+            if not destination.is_file() or destination.suffix != ".md":
+                continue
+            if anchor.lower() not in heading_slugs(destination):
+                broken.append(f"{target or path.name}#{anchor}")
+        assert not broken, f"{path.name} links to missing headings: {broken}"
+
+
 class TestExamplesAreReal:
     def test_every_example_directory_has_a_config(self):
         examples = sorted(p for p in (REPO / "examples").iterdir() if p.is_dir())
