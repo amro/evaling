@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Compare prompt variants and models from the command line"
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [{ name = "Amro Mousa", email = "amromousa@gmail.com" }]
+authors = [{ name = "Amro Mousa" }]
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1",
