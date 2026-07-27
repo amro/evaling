@@ -25,3 +25,6 @@ htmlcov/
 
 # evaling local data (run outputs, caches)
 .evaling/
+
+# Local tool config (kept on disk, never shipped)
+.claude/

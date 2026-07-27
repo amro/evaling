@@ -1,0 +1,59 @@
+name: Bug report
+description: Something didn't work the way the docs say it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying evaling during alpha. Rough edges are expected —
+        reporting them is the most useful thing you can do right now.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `evaling --version`
+      placeholder: "evaling, version 0.1.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, and what you got instead.
+      placeholder: |
+        $ evaling run --max-cost 1.00
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: >
+        Your eval.yaml, or the smallest version that still shows the problem.
+        Please don't paste API keys — evaling never stores them, and neither
+        should an issue.
+      render: yaml
+
+  - type: dropdown
+    id: offline
+    attributes:
+      label: Does it reproduce with the mock provider?
+      description: >
+        Swapping your model for `provider: mock` tells us whether this is
+        evaling or the model API. Fine to answer "haven't tried".
+      options:
+        - "Yes — reproduces offline"
+        - "No — only with a real provider"
+        - "Haven't tried"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: OS and Python
+      placeholder: "macOS 15, Python 3.12"

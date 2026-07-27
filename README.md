@@ -117,6 +117,18 @@ the current version.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
+## How this was built
+
+evaling was written with heavy use of AI coding tools — most of it with Claude
+Code, working from requirements and design decisions recorded in
+[REQUIREMENTS.md](REQUIREMENTS.md). Every change is reviewed before it lands,
+carries tests, and has to pass the same CI as anything else: lint, formatting,
+a dependency audit, and the full suite on Linux, macOS, and Windows across
+Python 3.10–3.13. The docs and the worked examples are exercised by that suite
+too, so they cannot quietly drift from the code.
+
+Worth saying plainly rather than leaving you to infer it from the commit log.
+
 ## License
 
 [MIT](LICENSE)
