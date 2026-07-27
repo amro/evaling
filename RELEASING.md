@@ -8,23 +8,29 @@ only before or only after publishing, so they have to move together.
 These are accurate today and become wrong the moment the package is on PyPI.
 Update them in the same change as the release, not after.
 
-| File | Line | Says now | Should say |
-| --- | --- | --- | --- |
-| `docs/getting-started.md` | 5 | "evaling is not yet on PyPI (coming with the first public release)" | Install from PyPI, with the checkout as the alternative for contributors |
-| `docs/tutorial.md` | 34 | `uv tool install evaling` | Correct as written — verify it actually works once published |
-| `docs/tutorial.md` | 463 | `- run: uv tool install evaling` | Same; pin a version in the CI example, e.g. `evaling==0.1.0` |
-| `CONTRIBUTING.md` | 21 | `uv tool install --force .` | Correct as written — this is the from-source path and stays |
+The README, tutorial, and getting-started guide all lead with the from-source
+install, because that is the only one that works before publishing. On release
+each needs PyPI promoted to the primary path, with the checkout kept as the
+contributor route.
+
+| File | Says now | Should say |
+| --- | --- | --- |
+| `README.md` | "Not yet on PyPI, so for now install from a checkout" | `uv tool install evaling`, checkout as the alternative |
+| `docs/getting-started.md` | "Not yet on PyPI, so install from a checkout" | Same |
+| `docs/tutorial.md` §1 | Checkout first; "Once evaling is on PyPI this becomes…" | Swap the order; drop the "once published" line |
+| `docs/tutorial.md` CI example | `uv tool install evaling` | Correct already — pin a version, e.g. `evaling==0.1.0` |
+| `CONTRIBUTING.md` | `uv tool install --force .` | Correct already — the from-source path stays |
+
+Find them all:
+
+```sh
+grep -rn "Not yet on PyPI\|not yet on PyPI\|Once evaling is on PyPI" README.md docs/
+```
 
 Also state the current version where it helps someone decide whether the docs
 they are reading match the package they installed. The README status line and
 `docs/getting-started.md` are the two places worth it; everywhere else, the
 version in `evaling --version` is enough.
-
-Check nothing new has drifted in:
-
-```sh
-grep -rn "not yet on PyPI\|coming with the first public release" docs/ README.md
-```
 
 ## 2. Version and changelog
 

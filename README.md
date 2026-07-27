@@ -54,6 +54,21 @@ every artifact: you get the scores, the data stays where it was.
 **And it tells you whether the change helped.** Compare two runs cell by cell,
 pin a baseline, and fail CI on a regression rather than on a hunch.
 
+## Install
+
+Needs Python 3.10+ and [uv](https://docs.astral.sh/uv/). Not yet on PyPI, so
+for now install from a checkout:
+
+```sh
+git clone https://github.com/amro/evaling && cd evaling
+uv tool install .
+evaling --version
+```
+
+Working on evaling itself? Use `uv sync` and `uv run evaling` instead, which
+always reflects your working tree. See
+[getting started](docs/getting-started.md).
+
 ## Quick taste
 
 ```sh

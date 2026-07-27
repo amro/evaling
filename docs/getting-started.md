@@ -2,8 +2,19 @@
 
 ## Install
 
-evaling is not yet on PyPI (coming with the first public release). From a
-checkout:
+Needs Python 3.10+ and [uv](https://docs.astral.sh/uv/). Not yet on PyPI, so
+install from a checkout:
+
+```sh
+git clone https://github.com/amro/evaling && cd evaling
+uv tool install .
+evaling --version
+```
+
+That puts `evaling` on your `PATH`. To work on evaling itself, use the project
+environment instead — `uv run evaling` always reflects your working tree,
+whereas a tool install copies the code and needs `uv tool install --force .`
+to pick up changes:
 
 ```sh
 uv sync

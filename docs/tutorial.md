@@ -28,23 +28,37 @@ costs before you pay for one.
 
 ## 1. Install
 
-evaling needs Python 3.10 or newer.
+evaling needs Python 3.10 or newer and [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uv tool install evaling      # or: pipx install evaling
-evaling --version
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Working from a checkout instead:
+Until the first PyPI release, install from a checkout:
 
 ```sh
 git clone https://github.com/amro/evaling && cd evaling
+uv tool install .
+evaling --version
+```
+
+That puts `evaling` on your `PATH`, which is what the rest of this tutorial
+assumes. If the command isn't found afterwards, `uv tool update-shell` fixes
+your shell profile.
+
+**If you plan to change evaling itself**, use the project environment instead —
+`uv run` always reflects your working tree:
+
+```sh
 uv sync
 uv run evaling --version
 ```
 
-The rest of this tutorial writes `evaling`; from a checkout, prefix each
-command with `uv run`.
+`uv tool install` copies the code rather than linking it, so a tool install
+keeps running the version you installed until you re-run
+`uv tool install --force .`.
+
+Once evaling is on PyPI this becomes `uv tool install evaling`, with no clone.
 
 ## 2. Your first eval, offline
 
