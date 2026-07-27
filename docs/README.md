@@ -19,7 +19,7 @@
 | [Scoring](scoring.md) | Scorers, scorecards, LLM judges, thresholds |
 | [Providers](providers.md) | Anthropic, OpenAI, OpenAI-compatible, local models, `command` |
 | [Secrets](secrets.md) | Where API keys come from, and how they're protected |
-| [No-look evals](no-look.md) | Case sources, and evaluating data nobody may read |
+| [Large datasets](large-datasets.md) | Case sources: streaming hundreds of thousands of cases from your own API |
 | [Storage](storage.md) | Run directories, resuming, caching, programmatic access |
 
 ## Going further
@@ -30,6 +30,7 @@
 | [Evaluating judges](evaluating-judges.md) | Calibrating an autorater against human labels |
 | [MCP server](mcp.md) | Driving evaling from an agent |
 | [Python API](python-api.md) | Using evaling as a library |
+| [No-look evals](no-look.md) | Evaluating data nobody is permitted to read |
 | [Troubleshooting](troubleshooting.md) | Symptoms, causes, fixes |
 
 ## Contributing

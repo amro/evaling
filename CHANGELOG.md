@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Implement `fetch(cursor, limit) -> CasePage` (sync or async); `count()` and
   `close()` are used when present. `CaseSource` is a Protocol, so no import or
   subclass is required. Cases stream, so run size is bounded by concurrency
-  rather than by case count. See `docs/no-look.md`.
+  rather than by case count. See `docs/large-datasets.md`.
 - **No-look mode** (`privacy: {no_look: true}`, or `evaling run --no-look`) —
   for evaluating production data nobody may read afterwards. Rendered prompts,
   model outputs, judge rationales, attachments, provider error bodies, and

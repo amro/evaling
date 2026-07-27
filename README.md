@@ -41,13 +41,15 @@ question is genuinely a matter of judgment — and a meta-eval to check that
 judge against labels you wrote yourself, before you trust it to gate anything.
 
 **At the size you actually have.** A dozen cases inline in the config, a JSONL
-or CSV dataset in git, or hundreds of thousands streamed from your own API
-through a case source. Memory is bounded by concurrency, not by case count.
+or CSV dataset in git, or hundreds of thousands streamed from your own
+warehouse or API through a [case source](docs/large-datasets.md) — Python you
+write that evaling pages through. Memory is bounded by concurrency, not by
+case count, so a 500,000-case run costs no more up front than a ten-case one.
 
-**Including data you're not allowed to read.** No-look mode — *eyes-off*
-evaluation, in privacy terms — runs against production traffic and keeps
-prompts, outputs, and attachments out of every artifact: you get the scores,
-the data stays where it was.
+**Including data you're not allowed to read.** For the narrower case where
+the data is off-limits to humans, [no-look mode](docs/no-look.md) — *eyes-off*
+evaluation, in privacy terms — keeps prompts, outputs, and attachments out of
+every artifact: you get the scores, the data stays where it was.
 
 **And it tells you whether the change helped.** Compare two runs cell by cell,
 pin a baseline, and fail CI on a regression rather than on a hunch.

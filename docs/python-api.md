@@ -277,7 +277,7 @@ cases:
 Source-backed runs never return records in memory (the size isn't known up
 front), so `records_truncated` is always True — use `iter_records()`.
 `SourceError` is raised for a source that can't be loaded or that returns
-something unusable.
+something unusable. Full reference: [large-datasets.md](large-datasets.md).
 
 ## Privacy
 

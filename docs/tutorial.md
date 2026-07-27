@@ -21,7 +21,7 @@ costs before you pay for one.
 7. [Comparing runs](#7-comparing-runs)
 8. [Gating in CI](#8-gating-in-ci)
 9. [Multimodal and multi-turn](#9-multimodal-and-multi-turn)
-10. [Cases from an API, and data you can't read](#10-cases-from-an-api-and-data-you-cant-read)
+10. [Scaling up: cases from your own systems](#10-scaling-up-cases-from-your-own-systems)
 11. [Where to go next](#11-where-to-go-next)
 
 ---
@@ -532,11 +532,11 @@ starting point:
 cp -r examples/support-triage my-eval && cd my-eval && evaling run
 ```
 
-## 10. Cases from an API, and data you can't read
+## 10. Scaling up: cases from your own systems
 
-Inline cases and dataset files both assume the cases are yours to keep. Two
-situations break that: there are far too many, or you are not allowed to look
-at them.
+Inline cases and dataset files both assume your cases fit in a file and are
+yours to check in. Past a certain size that stops being true — the cases live
+in a warehouse or a ticket system, and there are hundreds of thousands of them.
 
 ### A case source
 
@@ -584,10 +584,12 @@ source with no bound will run for as many cases as it returns.
 evaling validate     # fetches one page and renders it — no full walk
 ```
 
-### No-look mode
+### When you also can't read the data
 
-Now the harder version: the data is production traffic, and nobody may read
-it afterwards.
+A narrower case, layered on the same mechanism: the rows are production
+traffic and nobody is permitted to read them afterwards. This is a separate
+feature — most large-dataset runs don't need it — but the two pair naturally,
+since data you may not read tends to live in a system rather than a file.
 
 ```yaml
 privacy:
@@ -642,7 +644,8 @@ completely normal while being wrong. And **a judge still sends your data to
 another vendor** — rationales are dropped from artifacts, but the data leaves
 your process to reach the judge, which is a decision only you can make.
 
-Full reference: [no-look.md](no-look.md).
+Full reference: [large-datasets.md](large-datasets.md) for sources,
+[no-look.md](no-look.md) for the privacy mode.
 
 ## 11. Where to go next
 
@@ -652,7 +655,8 @@ Full reference: [no-look.md](no-look.md).
 - [scoring.md](scoring.md) — every scorer in detail, custom Python scorers
 - [providers.md](providers.md) — all providers, pricing, rate limits, writing
   your own
-- [no-look.md](no-look.md) — case sources, and evaluating data nobody may read
+- [large-datasets.md](large-datasets.md) — case sources and streaming at scale
+- [no-look.md](no-look.md) — evaluating data nobody may read
 - [storage.md](storage.md) — the run format, resuming, programmatic access
 - [python-api.md](python-api.md) — using evaling as a library
 - [cli.md](cli.md) — full command reference

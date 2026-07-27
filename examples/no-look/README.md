@@ -6,6 +6,9 @@ The cases come from a **source** — Python you write that pages an API — rath
 than a file, and `privacy.no_look` keeps prompts, outputs, judge rationales,
 and attachments out of every artifact. Scores, counts, and timings survive.
 
+The two halves are independent. Delete the `privacy:` block and this is an
+ordinary large-dataset eval; see [large-datasets.md](../../docs/large-datasets.md).
+
 ```sh
 cd examples/no-look
 evaling run

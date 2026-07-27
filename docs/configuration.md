@@ -160,7 +160,7 @@ cases:
 
 The factory returns an object with `fetch(cursor, limit)`. Cases stream a page
 at a time, so run size is bounded by concurrency rather than by case count.
-Full reference: [no-look.md](no-look.md).
+Full reference: [large-datasets.md](large-datasets.md).
 
 ## `privacy`
 

@@ -68,7 +68,7 @@ it walks them. Filter inside your source (that's what `params` is for), or use
 Deliberate. A live source can return different rows on the second call, and
 evaling can't verify that it didn't — a run whose halves describe different
 data produces no error and plausible numbers. Bound runs with `limit` and
-`--max-cost` instead. See [no-look.md](no-look.md).
+`--max-cost` instead. See [large-datasets.md](large-datasets.md).
 
 ### `case source fetch() returned X, expected a CasePage`
 
