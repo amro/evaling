@@ -125,6 +125,12 @@ A run directory (`.evaling/runs/<id>/`) contains the config snapshot and
 per-cell results and is usually enough to reproduce a problem — without your
 API keys, which are never stored in it.
 
+## Releasing
+
+See [RELEASING.md](RELEASING.md). Several doc claims are true only before or
+only after publishing, so they have to change in the same commit as the
+release.
+
 ## Security
 
 Don't open a public issue for a vulnerability. Email the maintainer instead.

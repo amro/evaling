@@ -23,7 +23,7 @@ from evaling.config import EvalConfig
 REPO = Path(__file__).resolve().parent.parent
 DOCS = (
     sorted(REPO.glob("docs/*.md"))
-    + [REPO / "README.md", REPO / "CONTRIBUTING.md"]
+    + [REPO / "README.md", REPO / "CONTRIBUTING.md", REPO / "RELEASING.md"]
     # Example READMEs link back into docs/ and are read as often as docs are.
     + sorted(REPO.glob("examples/**/*.md"))
 )
