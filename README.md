@@ -22,6 +22,10 @@ When you're iterating on a prompt, you want fast answers to questions like:
 `evaling` runs your prompt variants against your chosen models over a set of test
 cases, scores the outputs, and shows you a comparison — all from the terminal.
 
+Answering those questions with evidence, rather than by re-reading a handful of
+outputs, is usually what stands between a prompt change and shipping it. The
+aim is to make that comparison cheap enough that you run it every time.
+
 ## What you can evaluate
 
 **Anything you can call.** Anthropic and OpenAI directly; Ollama, vLLM, LM
