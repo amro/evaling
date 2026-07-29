@@ -193,18 +193,27 @@ class TestMechanisms:
 
 
 class TestRedactRecordDirectly:
-    def test_drops_judge_details_only(self):
+    def test_keeps_only_whitelisted_details(self):
+        """Only a user's own Python scorer decides what detail may leave."""
         record = ResultRecord(variant="v", model="m", case_id="c")
         record.messages = [{"role": "user", "parts": [{"type": "text", "text": CANARY}]}]
         record.output = CANARY
         record.scores = {
             "judged": {"weight": 1.0, "score": 1.0, "passed": True, "detail": CANARY},
+            "builtin": {"weight": 1.0, "score": 0.0, "passed": False, "detail": CANARY},
             "mine": {"weight": 1.0, "score": 1.0, "passed": True, "detail": "safe"},
         }
-        redact_record(record, frozenset({"judged"}))
+        redact_record(record, frozenset({"mine"}))
         assert record.messages == [] and record.output is None
         assert "detail" not in record.scores["judged"]
+        assert "detail" not in record.scores["builtin"]
         assert record.scores["mine"]["detail"] == "safe"
+
+    def test_scorer_errors_are_replaced(self):
+        record = ResultRecord(variant="v", model="m", case_id="c")
+        record.scores = {"a": {"weight": 1.0, "score": 0.0, "passed": False, "error": CANARY}}
+        redact_record(record)
+        assert CANARY not in record.scores["a"]["error"]
 
     def test_is_idempotent(self):
         record = ResultRecord(variant="v", model="m", case_id="c", output=CANARY)

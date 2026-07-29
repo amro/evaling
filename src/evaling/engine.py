@@ -194,11 +194,7 @@ async def _run_eval_impl(
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
     _validate_media_support(variants_sel, models_sel, prompts)
-    scorecard = create_scorers(config, providers)
-    # A judge rationale quotes the text it graded, so no-look has to drop it.
-    judge_criteria = frozenset(
-        criterion.criterion for criterion, _ in scorecard if criterion.scorer.type == "llm-judge"
-    )
+
     # The response cache stores prompts and completions verbatim, which is
     # exactly what no-look exists to prevent.
     cache = ResponseCache(settings.cache_dir) if settings.cache and not privacy.no_look else None
@@ -245,6 +241,59 @@ async def _run_eval_impl(
     )
     limiters = {model.id: limiter_for(model) for model in config.models}
 
+    async def _governed_call(model: ModelSpec, rendered) -> Completion:
+        """A model call from outside the matrix — currently an LLM judge.
+
+        A judge is a real, billable model call. Calling the provider directly
+        would put it outside the cost budget and outside that model's own
+        concurrency and rate limits, so `--max-cost` would bound only half of
+        what a run spends.
+        """
+        async with limiters[model.id]:
+            await budget.acquire()
+            completion = None
+            try:
+                request = CompletionRequest(model=model, messages=rendered)
+                retry_kwargs = (
+                    {} if model.max_retries is None else {"max_attempts": model.max_retries + 1}
+                )
+                provider = providers[model.id]
+                completion = await call_with_retries(
+                    lambda: provider.complete(request), **retry_kwargs
+                )
+                return completion
+            finally:
+                await budget.release(
+                    completion.cost_usd if completion else None, failed=completion is None
+                )
+
+    async def _budgeted_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
+        await budget.acquire()
+        completion = None
+        try:
+            request = CompletionRequest(model=model, messages=rendered)
+            provider = providers[model.id]
+            retry_kwargs = (
+                {} if model.max_retries is None else {"max_attempts": model.max_retries + 1}
+            )
+            start = time.perf_counter()
+            completion = await call_with_retries(lambda: provider.complete(request), **retry_kwargs)
+            record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
+            return completion
+        finally:
+            await budget.release(
+                completion.cost_usd if completion else None, failed=completion is None
+            )
+
+    # Built after the limiters and budget, because a judge scorer calls a model
+    # and has to go through both.
+    scorecard = create_scorers(config, providers, call=_governed_call)
+    # Only a user's own Python scorer decides what detail is safe to emit; every
+    # other scorer explains itself by quoting the case content it looked at.
+    keep_detail = frozenset(
+        criterion.criterion for criterion, _ in scorecard if criterion.scorer.type == "python"
+    )
+
     async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
         try:
@@ -256,7 +305,7 @@ async def _run_eval_impl(
         # exports are all structurally incapable of seeing it — rather than
         # each having to remember not to.
         if privacy.no_look:
-            redact_record(record, judge_criteria, hash_case_ids=not privacy.keep_case_ids)
+            redact_record(record, keep_detail, hash_case_ids=not privacy.keep_case_ids)
         await _append(record)
         if on_result is not None:
             # A flaky progress callback must not abort an otherwise-healthy run.
@@ -303,7 +352,9 @@ async def _run_eval_impl(
                 if result.detail is not None:
                     entry["detail"] = result.detail
             except Exception as exc:  # noqa: BLE001 - a broken scorer fails the criterion, not the run
-                entry.update(score=0.0, passed=False, error=_describe_error(exc))
+                entry.update(
+                    score=0.0, passed=False, error=_describe_error(exc, safe=privacy.no_look)
+                )
             record.scores[criterion.criterion] = entry
 
     async def _timed_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
@@ -311,22 +362,6 @@ async def _run_eval_impl(
         # behind this model's own rate limit.
         async with limiters[model.id]:
             return await _budgeted_call(record, model, rendered)
-
-    async def _budgeted_call(record: ResultRecord, model: ModelSpec, rendered) -> Completion:
-        await budget.acquire()
-        completion = None
-        try:
-            request = CompletionRequest(model=model, messages=rendered)
-            provider = providers[model.id]
-            retry_kwargs = (
-                {} if model.max_retries is None else {"max_attempts": model.max_retries + 1}
-            )
-            start = time.perf_counter()
-            completion = await call_with_retries(lambda: provider.complete(request), **retry_kwargs)
-            record.latency_ms = round((time.perf_counter() - start) * 1000, 3)
-            return completion
-        finally:
-            await budget.release(completion.cost_usd if completion else None)
 
     async def _append(record: ResultRecord) -> None:
         # Off-thread: appending is the one synchronous write on every cell's
@@ -550,20 +585,29 @@ class _CostBudget:
         """True once a call completed without a resolvable cost."""
         return self._unknown_cost
 
-    async def release(self, cost: float | None) -> None:
+    async def release(self, cost: float | None, *, failed: bool = False) -> None:
+        """Return a slot. ``failed`` means the call raised rather than completing.
+
+        A failed call tells us nothing about pricing, so it must not be
+        mistaken for an unpriced one: doing so both warned that --max-cost
+        "could not be enforced" on a fully-priced run that merely hit one
+        error, and marked the budget knowable with no cost data, reopening the
+        overshoot window the serial probe exists to close.
+        """
         if self.limit is None:
             return
         async with self._cond:
             self.in_flight -= 1
-            # A completed call always makes the budget knowable, even when its
-            # cost is unknown: an unpriced model contributes 0 to the
-            # projection, so it must not throttle the run. (Requiring a
-            # *priced* call here silently serialized every run against local or
-            # unpriced models to concurrency 1.)
-            self.any_landed = True
-            if cost is None:
-                self._unknown_cost = True
-            else:
+            if not failed:
+                # A completed call always makes the budget knowable, even when
+                # its cost is unknown: an unpriced model contributes 0 to the
+                # projection, so it must not throttle the run. (Requiring a
+                # *priced* call here silently serialized every run against
+                # local or unpriced models to concurrency 1.)
+                self.any_landed = True
+                if cost is None:
+                    self._unknown_cost = True
+            if cost is not None:
                 self.spent += cost
                 self.max_call_cost = max(self.max_call_cost, cost)
             self._cond.notify_all()

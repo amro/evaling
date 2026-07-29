@@ -32,11 +32,17 @@ class JudgeScorer(Scorer):
         rubric: list[Message],
         model: ModelSpec,
         provider: Provider,
+        call=None,
     ):
         super().__init__(params, base_dir)
         self.judge_name = judge_name
         self.model = model
         self.provider = provider
+        #: The engine's governed call, when running inside a run: it applies the
+        #: cost budget and this model's concurrency and rate limits. A judge is
+        #: a billable call like any other, so calling the provider directly puts
+        #: real spend outside --max-cost.
+        self.call = call
         self.rubric = rubric
         self.scale = float(params.get("scale", 1.0))
         if self.scale <= 0:
@@ -69,15 +75,20 @@ class JudgeScorer(Scorer):
                 )
             )
 
-        request = CompletionRequest(model=self.model, messages=rendered)
-        # Honor the judge model's own max_retries, like the engine does for
-        # matrix models — a judge is a model too.
-        retry_kwargs = (
-            {} if self.model.max_retries is None else {"max_attempts": self.model.max_retries + 1}
-        )
-        completion = await call_with_retries(
-            lambda: self.provider.complete(request), **retry_kwargs
-        )
+        if self.call is not None:
+            completion = await self.call(self.model, rendered)
+        else:
+            # Standalone use (a scorer built outside a run): no budget to
+            # respect, so call the provider directly with the same retry policy.
+            request = CompletionRequest(model=self.model, messages=rendered)
+            retry_kwargs = (
+                {}
+                if self.model.max_retries is None
+                else {"max_attempts": self.model.max_retries + 1}
+            )
+            completion = await call_with_retries(
+                lambda: self.provider.complete(request), **retry_kwargs
+            )
         return self._parse_verdict(completion.text)
 
     def _parse_verdict(self, text: str) -> ScoreResult:

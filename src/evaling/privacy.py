@@ -38,25 +38,33 @@ def hash_case_id(case_id: str) -> str:
 
 def redact_record(
     record: ResultRecord,
-    judge_criteria: frozenset[str] = frozenset(),
+    keep_detail: frozenset[str] = frozenset(),
     *,
     hash_case_ids: bool = False,
 ) -> ResultRecord:
     """Strip everything derived from case content. Modifies in place.
 
-    ``judge_criteria`` names the criteria scored by an LLM judge. Their
-    ``detail`` is the judge's rationale, which quotes the text it graded, so it
-    goes. Details from other scorers are kept: a Python scorer's detail is
-    written by the user, who is the right person to decide what is safe to
-    emit — which makes the scorer the place where that judgment belongs.
+    ``keep_detail`` names the criteria whose ``detail`` may survive — the
+    criteria scored by a user-supplied Python function, whose author decides
+    what is safe to emit. Everything else goes, because a scorer that evaluates
+    case content tends to quote it when explaining itself: a failing
+    ``contains`` reports the ``expected`` value it was looking for, an
+    ``agreement`` scorer reports the label and the extracted verdict, and a
+    judge's rationale quotes the text it graded.
+
+    A criterion's ``error`` goes unconditionally. It is an exception message
+    from a scorer that had the output in its hands.
     """
     record.messages = []
     record.output = None
     if hash_case_ids and record.case_id:
         record.case_id = hash_case_id(record.case_id)
     for criterion, entry in record.scores.items():
-        if criterion in judge_criteria:
+        if criterion not in keep_detail:
             entry.pop("detail", None)
+        # Scorer errors quote what the scorer was looking at.
+        if "error" in entry:
+            entry["error"] = "scorer failed — detail withheld (no-look)"
     return record
 
 

@@ -344,3 +344,85 @@ class TestReportDegradesGracefully:
         big = len(render_run_html(self.meta(5000), self.records(5000, failing=10)))
         # 50x the cells must not mean 50x the page.
         assert big < small * 2, f"report grew from {small} to {big} bytes"
+
+
+class TestFailureStopsTheRest:
+    """A fatal error must not leave workers issuing more paid calls.
+
+    `asyncio.gather` propagates the first exception but does not cancel its
+    siblings — they finish the current item and keep pulling new ones. In a run
+    that means more model calls after the failure, made by tasks whose
+    providers the caller is already closing.
+
+    These use a loop that outlives the failure, because that is where the bug
+    is observable: `asyncio.run` cancels stragglers during its own shutdown, so
+    it hides the leak. The MCP server and any embedder of `run_eval_async` have
+    a persistent loop.
+    """
+
+    def drive(self, limit=4, total=200, fail_at=2):
+        """Run to first failure, then let the loop breathe and see what continues."""
+        started, after_raise = [], []
+        failed = {"yet": False}
+
+        async def item(i):
+            started.append(i)
+            if failed["yet"]:
+                after_raise.append(i)
+            if i == fail_at:
+                failed["yet"] = True
+                raise RuntimeError("fatal")
+            await asyncio.sleep(0.002)
+            return i
+
+        async def go():
+            factories = (partial(item, i) for i in range(total))
+            task = asyncio.create_task(consume_bounded(factories, limit, lambda _: None))
+            with pytest.raises(RuntimeError, match="fatal"):
+                await task
+            # The loop keeps running, as it would in a server.
+            await asyncio.sleep(0.2)
+
+        asyncio.run(go())
+        return started, after_raise
+
+    def test_no_new_work_starts_after_the_failure(self):
+        started, after_raise = self.drive()
+        # Siblings already in flight may finish; nothing new may begin.
+        assert len(after_raise) <= 4, (
+            f"{len(after_raise)} cells ran after the failure — workers kept pulling"
+        )
+        assert len(started) <= 8, f"{len(started)} of 200 cells started"
+
+    def test_handle_stops_being_called(self):
+        handled = []
+
+        async def ok():
+            await asyncio.sleep(0.002)
+            return "ok"
+
+        async def boom():
+            raise RuntimeError("fatal")
+
+        async def go():
+            def factories():
+                yield boom
+                for _ in range(200):
+                    yield ok
+
+            task = asyncio.create_task(consume_bounded(factories(), 3, handled.append))
+            with pytest.raises(RuntimeError):
+                await task
+            await asyncio.sleep(0.2)
+
+        asyncio.run(go())
+        assert len(handled) <= 3, f"handle() ran {len(handled)} times after the failure"
+
+    def test_a_clean_run_is_unaffected(self):
+        seen = []
+        asyncio.run(
+            consume_bounded(
+                (partial(asyncio.sleep, 0, result=i) for i in range(50)), 5, seen.append
+            )
+        )
+        assert sorted(seen) == list(range(50))

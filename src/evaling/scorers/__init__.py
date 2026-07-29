@@ -30,7 +30,12 @@ _SIMPLE = {
 }
 
 
-def create_scorer(spec: ScorerSpec, config: EvalConfig, providers: dict[str, Provider]) -> Scorer:
+def create_scorer(
+    spec: ScorerSpec,
+    config: EvalConfig,
+    providers: dict[str, Provider],
+    call=None,
+) -> Scorer:
     params = spec.params
     if spec.type in _SIMPLE:
         return _SIMPLE[spec.type](params, config.base_dir)
@@ -46,15 +51,21 @@ def create_scorer(spec: ScorerSpec, config: EvalConfig, providers: dict[str, Pro
             rubric=resolve_prompt(judge.rubric, config.base_dir),
             model=model,
             provider=providers[judge.model],
+            call=call,
         )
     raise ScoringError(f"unknown scorer type {spec.type!r}")  # pragma: no cover
 
 
 def create_scorers(
-    config: EvalConfig, providers: dict[str, Provider]
+    config: EvalConfig, providers: dict[str, Provider], call=None
 ) -> list[tuple[CriterionSpec, Scorer]]:
-    """Build one scorer per scorecard criterion, failing fast on bad config."""
+    """Build one scorer per scorecard criterion, failing fast on bad config.
+
+    ``call`` is the engine's governed model call. Judges use it so their
+    requests pass through the cost budget and the judge model's own limits;
+    without it they fall back to calling the provider directly.
+    """
     return [
-        (criterion, create_scorer(criterion.scorer, config, providers))
+        (criterion, create_scorer(criterion.scorer, config, providers, call))
         for criterion in config.scorecard
     ]

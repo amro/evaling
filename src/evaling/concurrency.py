@@ -19,9 +19,11 @@ T = TypeVar("T")
 async def bounded_gather(factories: Sequence[Callable[[], Awaitable[T]]], limit: int) -> list[T]:
     """Run awaitable factories with at most ``limit`` in flight.
 
-    Results come back in input order. Exceptions propagate (first one wins),
-    cancelling the rest — callers that need per-item error capture should
-    catch inside the factory.
+    Results come back in input order. The first exception propagates; note
+    that ``asyncio.gather`` does *not* cancel the others, so they run to
+    completion. Callers needing per-item error capture should catch inside the
+    factory. Only used for small fixed collections — see
+    :func:`consume_bounded` for anything sized by user data.
 
     Materializes one task per factory, so this is only appropriate for small
     fixed collections. For a matrix sized by user data, use
@@ -103,7 +105,7 @@ async def consume_bounded(
                 return
             handle(await factory())
 
-    await asyncio.gather(*(worker() for _ in range(limit)))
+    await _run_workers(worker, limit)
 
 
 async def _consume_async(
@@ -128,4 +130,31 @@ async def _consume_async(
                     return
             handle(await factory())
 
-    await asyncio.gather(*(worker() for _ in range(limit)))
+    await _run_workers(worker, limit)
+
+
+async def _run_workers(worker, limit: int) -> None:
+    """Run ``limit`` workers, and on the first failure stop the rest.
+
+    ``asyncio.gather`` propagates the first exception but leaves its siblings
+    running — they finish their current item and then keep pulling new ones.
+    In a run that means a fatal error is followed by more paid model calls,
+    made by tasks whose providers the caller is already closing. TaskGroup
+    would do this, but it is 3.11+ and the floor here is 3.10.
+    """
+    tasks = [asyncio.create_task(worker()) for _ in range(limit)]
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        for task in done:
+            if task.exception() is not None:
+                for other in pending:
+                    other.cancel()
+                # Let the cancellations land before the caller tears anything
+                # down; a cancelled task still needs a turn to unwind.
+                await asyncio.gather(*pending, return_exceptions=True)
+                raise task.exception()
+    except asyncio.CancelledError:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
