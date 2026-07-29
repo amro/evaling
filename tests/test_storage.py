@@ -1,4 +1,6 @@
 import json
+import tracemalloc
+from pathlib import Path
 
 import pytest
 import yaml
@@ -115,6 +117,51 @@ def test_serialize_messages_with_and_without_source(tmp_path):
     without = serialize_messages(rendered, include_source=False)
     assert "source" not in without[0]["parts"][1]
     assert without[0]["parts"][1]["sha256"] == with_source[0]["parts"][1]["sha256"]
+
+
+def test_iter_results_streams_instead_of_slurping(tmp_path, config):
+    # Regression: iter_results read every line into a list before yielding,
+    # so the large runs it exists for were held in memory whole anyway.
+    store = RunStore(tmp_path)
+    writer = store.create_run(config)
+    fat = "x" * 8000
+    with writer.results_path.open("a", encoding="utf-8") as handle:
+        for i in range(1500):
+            line = json.dumps({"variant": "v1", "model": "m1", "case_id": f"c{i}", "output": fat})
+            handle.write(line + "\n")
+    file_size = writer.results_path.stat().st_size  # ~12 MB
+
+    tracemalloc.start()
+    iterator = store.iter_results(writer.run_id)
+    first = next(iterator)
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    iterator.close()
+
+    assert first.case_id == "c0"
+    assert peak < file_size / 4  # a few lines in flight, never the whole file
+
+
+def test_store_artifact_crash_mid_copy_leaves_no_partial(tmp_path, config, monkeypatch):
+    # Regression: a copy that died half-way left a partial file at the final
+    # name, and the existence check then trusted it forever.
+    (tmp_path / "a.png").write_bytes(b"the-full-content")
+    ref = resolve_media("image", "a.png", tmp_path)
+    writer = RunStore(tmp_path / "runs").create_run(config)
+
+    def dies_mid_copy(src, dst, **kwargs):
+        Path(dst).write_bytes(b"the-fu")
+        raise OSError("disk full")
+
+    monkeypatch.setattr("evaling.storage.shutil.copyfile", dies_mid_copy)
+    with pytest.raises(OSError, match="disk full"):
+        writer.store_artifact(ref)
+    monkeypatch.undo()
+
+    # nothing half-written survives the crash, and a retry stores the real bytes
+    assert list((writer.path / "artifacts").iterdir()) == []
+    rel = writer.store_artifact(ref)
+    assert (writer.path / rel).read_bytes() == b"the-full-content"
 
 
 def test_torn_final_line_tolerated(tmp_path, config):

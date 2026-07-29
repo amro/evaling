@@ -134,10 +134,13 @@ def score(output: str, case: dict):
     return {"score": 1.0, "passed": True, "detail": "all fields present"}
 ```
 
-`detail` from a Python scorer survives no-look mode, because you wrote it and
-you are the right person to decide what may leave. Details from an **LLM
-judge** do not survive: a rationale quotes the text it graded, and no judge can
-be relied on to keep that separation.
+**Only a Python scorer's `detail` survives**, because you wrote it and you are
+the right person to decide what may leave. Every other scorer's `detail` is
+dropped, because a scorer that evaluates case content tends to quote it when
+explaining itself: a failing `contains` reports the `expected` value it was
+looking for, `agreement` reports the label and the extracted verdict, and a
+judge's rationale quotes the text it graded. A criterion's `error` is replaced
+too — it is an exception message from a scorer that had the output in hand.
 
 ### Nothing is written and then deleted
 
@@ -150,6 +153,12 @@ Three limits this does not cover, none of which evaling can close: the OS may
 page memory to swap; the `command` provider hands case data to a subprocess
 whose behaviour is its author's responsibility; and attachment source files
 are already on your disk, since evaling reads them rather than copying them.
+
+### Judge calls are governed like any other
+
+A judge is a billable model call, so it passes through `--max-cost` and the
+judge model's own `max_concurrency` and `requests_per_minute`. Its spend counts
+against the ceiling.
 
 ### The response cache is disabled
 

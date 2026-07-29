@@ -3,15 +3,18 @@
 import asyncio
 import base64
 import json
+import time
 
 import httpx
 import pytest
 
 from evaling.config import Case, Message, ModelSpec
+from evaling.content import MediaRef
 from evaling.providers.anthropic import AnthropicProvider
 from evaling.providers.base import CompletionRequest, ProviderError
 from evaling.providers.openai import OpenAICompatibleProvider, OpenAIProvider
 from evaling.render import render_messages
+from helpers import loop_ticks_during
 
 
 def build(provider_cls, spec_data, env=None):
@@ -408,3 +411,75 @@ def test_timeout_s_reaches_the_client():
     assert provider.client().timeout.read == 12.5
     asyncio.run(provider.aclose())
     assert provider._client is None
+
+
+class TestMediaReadsOffTheLoop:
+    """Attachments must be read and encoded off-thread.
+
+    Regression: media bytes were read and base64-encoded synchronously inside
+    complete(), so one large attachment on a slow disk froze every other
+    in-flight request for the duration of the read.
+    """
+
+    def ticks_during_complete(self, provider, messages, tmp_path, monkeypatch):
+        request = make_request(provider.spec, messages, tmp_path)
+
+        def slow_read(ref):
+            time.sleep(0.2)
+            return b"BYTES"
+
+        monkeypatch.setattr(MediaRef, "read_bytes", slow_read)
+
+        async def go():
+            try:
+                return await loop_ticks_during(provider.complete(request))
+            finally:
+                await provider.aclose()
+
+        ticks, _ = asyncio.run(go())
+        return ticks
+
+    def test_anthropic(self, tmp_path, monkeypatch):
+        (tmp_path / "pic.png").write_bytes(b"PNG")
+        provider = build(
+            AnthropicProvider,
+            {"id": "claude-opus-5", "provider": "anthropic"},
+            env={"ANTHROPIC_API_KEY": "k"},
+        )
+        install(provider, json_response(ANTHROPIC_OK))
+        messages = [Message.model_validate({"role": "user", "content": [{"image": "pic.png"}]})]
+        assert self.ticks_during_complete(provider, messages, tmp_path, monkeypatch) >= 3
+
+    def test_openai(self, tmp_path, monkeypatch):
+        (tmp_path / "pic.png").write_bytes(b"PNG")
+        provider = build(
+            OpenAIProvider, {"id": "gpt-5.2", "provider": "openai"}, env={"OPENAI_API_KEY": "k"}
+        )
+        install(provider, json_response(OPENAI_OK))
+        messages = [Message.model_validate({"role": "user", "content": [{"image": "pic.png"}]})]
+        assert self.ticks_during_complete(provider, messages, tmp_path, monkeypatch) >= 3
+
+    def test_openai_audio_is_read_once(self, tmp_path, monkeypatch):
+        # Regression: the audio path built a data URL it then discarded,
+        # reading and encoding the file twice per request.
+        (tmp_path / "clip.mp3").write_bytes(b"MP3DATA")
+        provider = build(
+            OpenAIProvider, {"id": "gpt-5.2", "provider": "openai"}, env={"OPENAI_API_KEY": "k"}
+        )
+        seen = install(provider, json_response(OPENAI_OK))
+        messages = [Message.model_validate({"role": "user", "content": [{"audio": "clip.mp3"}]})]
+        request = make_request(provider.spec, messages, tmp_path)
+
+        reads = []
+        original = MediaRef.read_bytes
+
+        def counting(ref):
+            reads.append(ref.path.name)
+            return original(ref)
+
+        monkeypatch.setattr(MediaRef, "read_bytes", counting)
+        run(provider, request)
+
+        part = json.loads(seen[0].content)["messages"][0]["content"][0]
+        assert part["input_audio"]["data"] == base64.standard_b64encode(b"MP3DATA").decode()
+        assert reads.count("clip.mp3") == 1

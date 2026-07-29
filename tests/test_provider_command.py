@@ -1,5 +1,8 @@
 import asyncio
+import contextlib
 import json
+import os
+import signal
 import sys
 
 import pytest
@@ -82,6 +85,102 @@ print('{"answer": 42}', end="")
 """
     # a model that legitimately outputs JSON must not be mistaken for a usage envelope
     assert run_command(script(tmp_path, body), tmp_path=tmp_path).text == '{"answer": 42}'
+
+
+def test_string_usage_numbers_are_coerced(tmp_path):
+    # JSON from a shell script often quotes its numbers; that must not poison
+    # the run's totals downstream.
+    body = """
+import sys, json
+sys.stdin.read()
+print(json.dumps({"text": "hi", "input_tokens": "12", "output_tokens": 4.0}))
+"""
+    completion = run_command(script(tmp_path, body), tmp_path=tmp_path)
+    assert completion.input_tokens == 12
+    assert completion.output_tokens == 4
+
+
+def test_junk_usage_is_a_provider_error_not_a_crash(tmp_path):
+    body = """
+import sys, json
+sys.stdin.read()
+print(json.dumps({"text": "hi", "input_tokens": "twelve"}))
+"""
+    with pytest.raises(ProviderError, match="input_tokens='twelve'"):
+        run_command(script(tmp_path, body), tmp_path=tmp_path)
+
+
+def test_bad_usage_fails_the_cell_not_the_run(tmp_path):
+    # Regression: a string token count survived into _RunTally.add, and the
+    # raw TypeError there took down the whole run instead of one cell.
+    (tmp_path / "model.py").write_text(
+        "import sys, json\n"
+        "payload = json.load(sys.stdin)\n"
+        "q = payload['messages'][-1]['parts'][0]['text']\n"
+        "if q == 'bad':\n"
+        "    print(json.dumps({'text': 'x', 'input_tokens': ['junk']}))\n"
+        "else:\n"
+        "    print(json.dumps({'text': 'x', 'input_tokens': '7'}))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "eval.yaml").write_text(
+        f"models: [{{id: m, provider: command, command: '{sys.executable} model.py'}}]\n"
+        "variants:\n  - name: v1\n"
+        '    prompt: [{role: user, content: "{{ q }}"}]\n'
+        "cases: [{id: good, vars: {q: fine}}, {id: bad, vars: {q: bad}}]\n"
+        "scorecard: [{criterion: ok, scorer: {type: contains, value: x}}]\n",
+        encoding="utf-8",
+    )
+    result = run_eval(load_config(tmp_path / "eval.yaml"), make_settings(tmp_path))
+    assert result.counts == {"total": 2, "succeeded": 1, "failed": 1, "cached": 0}
+    assert result.totals["input_tokens"] == 7  # the quoted count, coerced
+    by_id = {record.case_id: record for record in result.records}
+    assert "input_tokens" in by_id["bad"].error
+    assert by_id["good"].error is None
+
+
+def test_cancellation_kills_the_child_process(tmp_path, monkeypatch):
+    # Regression: cancelling complete() mid-communicate left the child
+    # running unreaped after the run was torn down.
+    body = """
+import sys, time
+sys.stdin.read()
+time.sleep(30)
+"""
+    command = script(tmp_path, body)
+    spec = ModelSpec.model_validate({"id": "scripted", "provider": "command", "command": command})
+    rendered = render_messages([Message(role="user", content="ping")], Case(), tmp_path)
+    provider = CommandProvider(spec)
+
+    spawned = []
+    real = asyncio.create_subprocess_shell
+
+    async def capture(*args, **kwargs):
+        process = await real(*args, **kwargs)
+        spawned.append(process)
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_shell", capture)
+
+    async def scenario():
+        task = asyncio.create_task(
+            provider.complete(CompletionRequest(model=spec, messages=rendered))
+        )
+        while not spawned:
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)  # let communicate() get in flight
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return spawned[0]
+
+    process = asyncio.run(scenario())
+    try:
+        assert process.returncode is not None  # killed and reaped, not orphaned
+    finally:
+        if process.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(process.pid, signal.SIGKILL)
 
 
 def test_nonzero_exit_is_a_retryable_error(tmp_path):

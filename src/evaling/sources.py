@@ -21,6 +21,7 @@ Cursor-based rather than offset-based, so that rows inserted or deleted during
 a walk do not cause pages to skip or repeat.
 """
 
+import asyncio
 import importlib.util
 import inspect
 from abc import ABC, abstractmethod
@@ -119,10 +120,24 @@ def load_source(spec: str, base_dir: Path, params: dict[str, Any] | None = None)
     return source
 
 
-async def _call_fetch(source: Any, cursor: str | None, limit: int) -> CasePage:
-    result = source.fetch(cursor, limit)
+async def _call_user(fn: Any, *args: Any) -> Any:
+    """Call a user-supplied source method without blocking the event loop.
+
+    A sync ``fetch``/``count``/``close`` that does real I/O — a database
+    query, an HTTP page — would otherwise stall every in-flight model call
+    for its duration, the same reason the engine pushes cache and storage
+    I/O through to_thread.
+    """
+    if inspect.iscoroutinefunction(fn):
+        return await fn(*args)
+    result = await asyncio.to_thread(fn, *args)
     if inspect.isawaitable(result):
         result = await result
+    return result
+
+
+async def _call_fetch(source: Any, cursor: str | None, limit: int) -> CasePage:
+    result = await _call_user(source.fetch, cursor, limit)
     if not isinstance(result, CasePage):
         raise SourceError(
             f"case source fetch() returned {type(result).__name__}, expected a CasePage"
@@ -136,9 +151,7 @@ async def source_count(source: Any) -> int | None:
     if counter is None:
         return None
     try:
-        value = counter()
-        if inspect.isawaitable(value):
-            value = await value
+        value = await _call_user(counter)
     except Exception as exc:
         raise SourceError(f"case source count() raised {type(exc).__name__}: {exc}") from exc
     if value is None:
@@ -152,9 +165,7 @@ async def close_source(source: Any) -> None:
     closer = getattr(source, "close", None)
     if closer is None:
         return
-    result = closer()
-    if inspect.isawaitable(result):
-        await result
+    await _call_user(closer)
 
 
 async def iter_source_cases(

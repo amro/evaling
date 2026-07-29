@@ -104,8 +104,11 @@ stdout is used verbatim as the response — unless it's a JSON object with a
 {"text": "the answer", "input_tokens": 120, "output_tokens": 45, "cost_usd": 0.002}
 ```
 
-A non-zero exit becomes a retryable error carrying stderr. Every media kind is
-allowed, since only your script knows what it can handle.
+`input_tokens`, `output_tokens`, and `cost_usd` must be numbers (numeric
+strings are accepted); anything else fails that cell with a clear error rather
+than corrupting the run's totals. A non-zero exit becomes a retryable error
+carrying stderr. Every media kind is allowed, since only your script knows what
+it can handle.
 
 ## `mock`
 

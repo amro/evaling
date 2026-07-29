@@ -599,3 +599,31 @@ def test_resume_of_complete_run_rejected(tmp_path):
     finished = run_eval(config, settings)
     with pytest.raises(StorageError, match="already complete"):
         run_eval(config, settings, resume_run_id=finished.run_id)
+
+
+def test_rendering_does_not_block_the_loop(tmp_path, monkeypatch):
+    # Regression: render_messages (which reads and hashes every attachment)
+    # ran inline on the event loop, stalling all in-flight model calls for
+    # the duration of the disk reads.
+    import asyncio
+    import time
+
+    import evaling.engine as engine_mod
+    from evaling.engine import run_eval_async
+    from helpers import loop_ticks_during
+
+    real_render = engine_mod.render_messages
+
+    def slow_render(*args, **kwargs):
+        time.sleep(0.2)
+        return real_render(*args, **kwargs)
+
+    monkeypatch.setattr(engine_mod, "render_messages", slow_render)
+    config = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "alpha"}}])
+
+    async def go():
+        return await loop_ticks_during(run_eval_async(config, make_settings(tmp_path)))
+
+    ticks, result = asyncio.run(go())
+    assert result.counts["total"] == 1
+    assert ticks >= 3

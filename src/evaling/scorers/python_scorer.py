@@ -6,6 +6,7 @@ case: dict)`` and may return a bool, a number in [0, 1], or a mapping with
 ``score``/``passed``/``detail``. It may be sync or async.
 """
 
+import asyncio
 import importlib.util
 import inspect
 from numbers import Real
@@ -39,9 +40,14 @@ class PythonScorer(Scorer):
 
     async def score(self, output: str, case: Case) -> ScoreResult:
         try:
-            result = self.fn(output, case.model_dump())
-            if inspect.isawaitable(result):
-                result = await result
+            if inspect.iscoroutinefunction(self.fn):
+                result = await self.fn(output, case.model_dump())
+            else:
+                # Off-thread: a sync scorer doing real work (I/O, a subprocess)
+                # would otherwise stall every in-flight model call.
+                result = await asyncio.to_thread(self.fn, output, case.model_dump())
+                if inspect.isawaitable(result):
+                    result = await result
         except EvalingError:
             raise  # already a clean user-facing message
         except Exception as exc:

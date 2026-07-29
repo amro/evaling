@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from evaling.config.schema import ModelSpec
-from evaling.providers.base import Completion
+from evaling.providers.base import Completion, ProviderError
 from evaling.render import RenderedMessage
 from evaling.storage import serialize_messages
 
@@ -68,11 +68,12 @@ class ResponseCache:
         if not isinstance(data, dict):
             return None
         # Drop unknown keys instead of raising: an entry written by a newer
-        # evaling must be a miss, not a TypeError that fails the cell.
+        # evaling must be a miss, not a TypeError that fails the cell. Same
+        # for junk usage values, which Completion now rejects at construction.
         known = {f.name for f in fields(Completion)}
         try:
             return Completion(**{k: v for k, v in data.items() if k in known})
-        except TypeError:
+        except (TypeError, ProviderError):
             return None
 
     def stats(self) -> dict[str, Any]:

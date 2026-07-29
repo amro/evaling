@@ -59,9 +59,12 @@ cases:
 | `count() -> int \| None` | no | Total, for progress and cost estimates |
 | `close() -> None` | no | Cleanup when the run ends, including on failure |
 
-`fetch` may be `async def` — evaling awaits it if it is a coroutine. `Case`
-takes `id`, `vars`, `files`, `expected`, and `human_label`, exactly as an
-inline case does, so a source can carry attachments like any other case.
+`fetch` may be `async def` — evaling awaits it if it is a coroutine. A
+synchronous `fetch` runs in a thread, so a blocking HTTP client doesn't stall
+the model calls already in flight. The same holds for `count` and `close`.
+
+`Case` takes `id`, `vars`, `files`, `expected`, and `human_label`, exactly as
+an inline case does, so a source can carry attachments like any other case.
 
 You do not have to inherit from anything. `CaseSource` is a
 [`Protocol`](https://peps.python.org/pep-0544/): any object with a `fetch`

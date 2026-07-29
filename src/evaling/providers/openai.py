@@ -9,7 +9,7 @@ from typing import Any
 
 from evaling.content import MediaRef
 from evaling.providers.base import Completion, CompletionRequest
-from evaling.providers.http import HttpProvider, b64
+from evaling.providers.http import HttpProvider, b64_media
 from evaling.providers.pricing import estimate_cost
 from evaling.render import RenderedMessage, RenderedText
 
@@ -35,7 +35,7 @@ class OpenAIProvider(HttpProvider):
     async def complete(self, request: CompletionRequest) -> Completion:
         payload: dict[str, Any] = {
             "model": self.api_model,
-            "messages": [_message(message) for message in request.messages],
+            "messages": [await _message(message) for message in request.messages],
             **self.forwarded_params(),
         }
         base_url = (self.spec.base_url or self.DEFAULT_BASE_URL).rstrip("/")
@@ -81,30 +81,38 @@ class OpenAICompatibleProvider(OpenAIProvider):
     REQUIRES_API_KEY = False
 
 
-def _message(message: RenderedMessage) -> dict[str, Any]:
+async def _message(message: RenderedMessage) -> dict[str, Any]:
     # Plain strings for text-only turns: many OpenAI-compatible servers reject
     # the content-parts array.
     if all(isinstance(part, RenderedText) for part in message.parts):
         return {"role": message.role, "content": message.text}
-    return {"role": message.role, "content": [_part(part) for part in message.parts]}
+    return {"role": message.role, "content": [await _part(part) for part in message.parts]}
 
 
-def _part(part: Any) -> dict[str, Any]:
+async def _part(part: Any) -> dict[str, Any]:
     if isinstance(part, RenderedText):
         return {"type": "text", "text": part.text}
     assert isinstance(part, MediaRef)
-    data_url = f"data:{part.media_type};base64,{b64(part.read_bytes())}"
+    data = await b64_media(part)
     if part.kind == "image":
-        return {"type": "image_url", "image_url": {"url": data_url}}
+        return {"type": "image_url", "image_url": {"url": _data_url(part, data)}}
     if part.kind == "audio":
+        # Bare base64 plus a codec name — the audio API takes no data URL.
         return {
             "type": "input_audio",
             "input_audio": {
-                "data": b64(part.read_bytes()),
+                "data": data,
                 "format": AUDIO_FORMATS.get(part.media_type, part.path.suffix.lstrip(".")),
             },
         }
-    return {"type": "file", "file": {"filename": part.path.name, "file_data": data_url}}
+    return {
+        "type": "file",
+        "file": {"filename": part.path.name, "file_data": _data_url(part, data)},
+    }
+
+
+def _data_url(part: MediaRef, data: str) -> str:
+    return f"data:{part.media_type};base64,{data}"
 
 
 def _join_content(content: Any) -> str:

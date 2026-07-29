@@ -5,6 +5,7 @@ run. Transport and status errors map to ProviderError with an accurate
 ``retryable`` flag so the engine's backoff only retries what is worth retrying.
 """
 
+import asyncio
 import base64
 import os
 from collections.abc import Mapping
@@ -14,6 +15,7 @@ from typing import Any
 import httpx
 
 from evaling.config.schema import ModelSpec
+from evaling.content import MediaRef
 from evaling.providers.base import Provider, ProviderError
 from evaling.secrets import redact
 
@@ -165,3 +167,12 @@ def _error_detail(response: httpx.Response) -> str:
 
 def b64(data: bytes) -> str:
     return base64.standard_b64encode(data).decode("ascii")
+
+
+async def b64_media(ref: MediaRef) -> str:
+    """Read and base64-encode a media file off-thread.
+
+    A large attachment read on the event loop stalls every in-flight call for
+    the duration of the disk read.
+    """
+    return await asyncio.to_thread(lambda: b64(ref.read_bytes()))

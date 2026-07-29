@@ -4,7 +4,7 @@ from typing import Any
 
 from evaling.content import MediaRef
 from evaling.providers.base import Completion, CompletionRequest, ProviderError
-from evaling.providers.http import HttpProvider, b64
+from evaling.providers.http import HttpProvider, b64_media
 from evaling.providers.pricing import estimate_cost
 from evaling.render import RenderedMessage, RenderedText
 
@@ -20,7 +20,7 @@ class AnthropicProvider(HttpProvider):
     SUPPORTED_MEDIA = frozenset({"image", "file"})
 
     async def complete(self, request: CompletionRequest) -> Completion:
-        system, messages = _split_system(request.messages)
+        system, messages = await _split_system(request.messages)
         params = self.forwarded_params()
         payload: dict[str, Any] = {
             "model": self.api_model,
@@ -62,7 +62,7 @@ class AnthropicProvider(HttpProvider):
         )
 
 
-def _split_system(messages: list[RenderedMessage]) -> tuple[str, list[dict[str, Any]]]:
+async def _split_system(messages: list[RenderedMessage]) -> tuple[str, list[dict[str, Any]]]:
     """Anthropic takes system content out of band, not as a message role."""
     system_parts: list[str] = []
     converted: list[dict[str, Any]] = []
@@ -70,22 +70,22 @@ def _split_system(messages: list[RenderedMessage]) -> tuple[str, list[dict[str, 
         if message.role == "system":
             system_parts.append(message.text)
             continue
-        converted.append({"role": message.role, "content": _content_blocks(message)})
+        converted.append({"role": message.role, "content": await _content_blocks(message)})
     return "\n\n".join(part for part in system_parts if part), converted
 
 
-def _content_blocks(message: RenderedMessage) -> list[dict[str, Any]]:
+async def _content_blocks(message: RenderedMessage) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     for part in message.parts:
         if isinstance(part, RenderedText):
             blocks.append({"type": "text", "text": part.text})
         elif isinstance(part, MediaRef):
-            blocks.append(_media_block(part))
+            blocks.append(await _media_block(part))
     return blocks
 
 
-def _media_block(ref: MediaRef) -> dict[str, Any]:
-    source = {"type": "base64", "media_type": ref.media_type, "data": b64(ref.read_bytes())}
+async def _media_block(ref: MediaRef) -> dict[str, Any]:
+    source = {"type": "base64", "media_type": ref.media_type, "data": await b64_media(ref)}
     # PDFs ride as documents; images as images. Other kinds are rejected by
     # SUPPORTED_MEDIA before a request is ever built.
     block_type = "document" if ref.kind == "file" else "image"

@@ -79,6 +79,16 @@ def test_corrupt_cache_entry_is_a_miss(tmp_path):
     assert cache.get(key) is None
 
 
+def test_entry_with_junk_usage_is_a_miss(tmp_path):
+    # Completion validates usage at construction; a tampered or legacy entry
+    # carrying junk must read as a miss, not fail the cell.
+    cache = ResponseCache(tmp_path)
+    key = cache.key_for(spec(), rendered(tmp_path=tmp_path))
+    cache.put(key, Completion(text="ok"))
+    cache._path(key).write_text('{"text": "ok", "input_tokens": "junk"}', encoding="utf-8")
+    assert cache.get(key) is None
+
+
 def test_entries_sharded_by_key_prefix(tmp_path):
     cache = ResponseCache(tmp_path)
     key = cache.key_for(spec(), rendered(tmp_path=tmp_path))

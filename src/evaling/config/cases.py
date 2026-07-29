@@ -89,14 +89,17 @@ def _read_csv(path: Path) -> list[dict[str, Any]]:
 def _row_to_case(path: Path, index: int, row: dict[str, Any]) -> Case:
     data: dict[str, Any] = {"vars": {}, "files": {}}
     for key, value in row.items():
-        if isinstance(value, str) and value.startswith(FILE_PREFIX):
-            data["files"][key] = value[len(FILE_PREFIX) :]
-        elif key == "files":
+        if key == "files":
             if not isinstance(value, dict):
                 raise ConfigError(f"{path}: row {index}: 'files' must be a mapping")
             data["files"].update(value)
         elif key in RESERVED_FIELDS:
+            # Before the file:// check: an `expected` value that happens to
+            # start with file:// is a literal answer, not an attachment
+            # named "expected".
             data[key] = value
+        elif isinstance(value, str) and value.startswith(FILE_PREFIX):
+            data["files"][key] = value[len(FILE_PREFIX) :]
         else:
             data["vars"][key] = value
     try:

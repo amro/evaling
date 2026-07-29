@@ -78,6 +78,20 @@ def test_jsonl_rows_split_reserved_fields_and_vars(tmp_path):
     assert case.files["photo"] == str((tmp_path / "images/dog.jpg").resolve())
 
 
+def test_reserved_field_starting_with_file_prefix_stays_literal(tmp_path):
+    # Regression: the file:// check ran first, so this row silently became an
+    # attachment named "expected" with expected=None.
+    dataset = tmp_path / "cases.jsonl"
+    dataset.write_text(
+        json.dumps({"q": "which file?", "expected": "file:///etc/hosts"}) + "\n",
+        encoding="utf-8",
+    )
+    [case] = load_cases(config_with({"file": "cases.jsonl"}, tmp_path))
+    assert case.expected == "file:///etc/hosts"
+    assert case.files == {}
+    assert case.vars == {"q": "which file?"}
+
+
 def test_jsonl_files_mapping_supported(tmp_path):
     dataset = tmp_path / "data" / "cases.jsonl"
     dataset.parent.mkdir()

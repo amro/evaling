@@ -11,6 +11,7 @@ script report usage too::
 """
 
 import asyncio
+import contextlib
 import json
 from typing import Any
 
@@ -77,6 +78,13 @@ class CommandProvider(Provider):
             raise ProviderError(
                 f"model {self.spec.id!r}: command timed out after {timeout}s", retryable=True
             ) from exc
+        except asyncio.CancelledError:
+            # Cancellation (Ctrl-C, a failing sibling tearing down the run)
+            # must not orphan the child: kill and reap it before propagating.
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+            await process.wait()
+            raise
         return out.decode(errors="replace"), err.decode(errors="replace"), process.returncode
 
     def _completion(self, stdout: str) -> Completion:
@@ -92,20 +100,21 @@ class CommandProvider(Provider):
                 text = str(data["text"])
                 usage = data
 
-        input_tokens = usage.get("input_tokens")
-        output_tokens = usage.get("output_tokens")
-        cost = usage.get("cost_usd")
-        if cost is None:
-            cost = estimate_cost(
-                str(self.spec.params.get("model", self.spec.id)),
-                input_tokens,
-                output_tokens,
-                self.spec.params,
-            )
-        return Completion(
+        # Constructing first lets Completion validate the script's usage — a
+        # junk value fails this cell cleanly instead of crashing the run's
+        # totals — and estimate_cost then works from the coerced counts.
+        completion = Completion(
             text=text,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost,
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            cost_usd=usage.get("cost_usd"),
             raw={"exit_code": 0},
         )
+        if completion.cost_usd is None:
+            completion.cost_usd = estimate_cost(
+                str(self.spec.params.get("model", self.spec.id)),
+                completion.input_tokens,
+                completion.output_tokens,
+                self.spec.params,
+            )
+        return completion

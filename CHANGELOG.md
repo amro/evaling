@@ -98,6 +98,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Usage numbers in a completion (`input_tokens`, `output_tokens`, `cost_usd`)
+  are now validated where the completion is built, so a `command` script
+  emitting `"input_tokens": "12"` is coerced and junk like `"twelve"` fails
+  that one cell with a clean provider error. It previously crashed the whole
+  run with a raw `TypeError` when the totals were summed.
+- Cancelling a `command` provider call mid-run (Ctrl-C, a failing sibling)
+  now kills and reaps the child process instead of leaving it running.
+- Sync user code — a source's `fetch`/`count`/`close` and `python` scorer
+  functions — now runs off-thread, so a scorer or source doing real I/O no
+  longer stalls every in-flight model call. Media attachments are read and
+  base64-encoded off-thread too, both when rendering and inside the
+  `anthropic`/`openai` providers, and the OpenAI audio path no longer reads
+  each file twice.
+- `iter_results` now actually streams: it read the entire results file into
+  memory first, which defeated its purpose on the large runs it exists for.
+- `store_artifact` copies via temp + rename like every other storage write.
+  A crash mid-copy used to leave a partial artifact that the idempotency
+  check then trusted forever.
+- A dataset row whose reserved field starts with `file://` (say,
+  `expected: "file:///etc/hosts"`) keeps it as a literal value. It used to
+  become an attachment named `expected`, with `expected` silently unset.
+
 - The totals line in HTML reports (`72/72 succeeded · …`) overlapped the
   bottom row of the summary table. It carried a negative top margin, so the
   text and the table's last border rendered on top of each other.

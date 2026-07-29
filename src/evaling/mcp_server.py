@@ -148,8 +148,9 @@ async def run_eval_tool(
         "gate": asdict(result.gate) if result.gate else None,
         "warnings": result.warnings,
     }
-    # result.records is empty above the retention cap, so stream from disk.
-    failures = filter_failures(list(result.iter_records()))
+    # result.records is empty above the retention cap, so stream from disk —
+    # without materializing the run, which can be far larger than the failures.
+    failures = filter_failures(result.iter_records())
     if failures:
         summary["failure_count"] = len(failures)
         summary["first_failures"] = [_cell_row(record) for record in failures[:5]]

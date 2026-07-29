@@ -5,6 +5,7 @@ criterion passed. Cells that errored (no output) score 0 and fail — they count
 against pass rates rather than disappearing from them.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -89,8 +90,11 @@ def aggregate(records: list[ResultRecord]) -> dict[str, Any]:
     return aggregator.result()
 
 
-def filter_failures(records: list[ResultRecord]) -> list[ResultRecord]:
-    """Records whose cell did not pass (errored, unscored, or failed criteria)."""
+def filter_failures(records: Iterable[ResultRecord]) -> list[ResultRecord]:
+    """Records whose cell did not pass (errored, unscored, or failed criteria).
+
+    Takes any iterable so a large run can be streamed straight from disk.
+    """
     return [record for record in records if not cell_summary(record)[1]]
 
 

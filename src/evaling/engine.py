@@ -316,7 +316,11 @@ async def _run_eval_impl(
     async def _execute_cell(
         record: ResultRecord, variant_name: str, model: ModelSpec, case: Case
     ) -> None:
-        rendered = render_messages(prompts[variant_name], case, config.base_dir)
+        # Off-thread: rendering reads and hashes every media file the prompt
+        # attaches, and those disk reads would stall every in-flight call.
+        rendered = await asyncio.to_thread(
+            render_messages, prompts[variant_name], case, config.base_dir
+        )
         record.messages = serialize_messages(rendered)
         # Archiving inputs is bookkeeping: a full disk must not cost the cell.
         # Skipped in no-look mode, where the attachment is itself the data.

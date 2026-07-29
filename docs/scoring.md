@@ -52,6 +52,10 @@ judges:
     rubric: prompts/judge-rubric.yaml
 ```
 
+A judge call is billed like any other, so it counts against `--max-cost` and
+obeys the judge model's `max_concurrency` and `requests_per_minute`. Budget for
+it: a scorecard with one judge roughly doubles the calls a run makes.
+
 > **A judge sends your case data to another model.** That is a second
 > processor with its own terms and its own retention. Whether that is
 > acceptable for your data is your call, not evaling's, so it is permitted and
@@ -96,6 +100,8 @@ def score(output: str, case: dict):
 ```
 
 `case` is the full case as a dict (`vars`, `expected`, `human_label`, `files`).
+A synchronous function runs in a thread, so a slow scorer doesn't stall the
+model calls already in flight.
 
 ## Aggregates and thresholds
 

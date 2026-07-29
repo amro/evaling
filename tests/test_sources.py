@@ -11,11 +11,13 @@ from evaling.sources import (
     CasePage,
     CaseSource,
     SourceError,
+    close_source,
     iter_source_cases,
     load_source,
+    source_count,
 )
 from evaling.storage import StorageError
-from helpers import make_settings
+from helpers import loop_ticks_during, make_settings
 
 SOURCE_FILE = '''
 from evaling import Case, CasePage
@@ -208,6 +210,52 @@ class TestIteration:
         source = load_source("src.py:make_source", source_dir)
         with pytest.raises(SourceError, match="page_size"):
             self.collect(source, page_size=0)
+
+
+class TestSyncSourcesDoNotBlockTheLoop:
+    """A sync fetch/count/close doing real I/O must not stall in-flight calls.
+
+    Regression: user methods ran directly on the event loop, so a source
+    paging from a slow database froze every concurrent model call for the
+    duration of each page.
+    """
+
+    class Slow:
+        def fetch(self, cursor, limit):
+            import time
+
+            from evaling import Case
+
+            time.sleep(0.2)
+            return CasePage(cases=[Case(id="c1", vars={})])
+
+        def count(self):
+            import time
+
+            time.sleep(0.2)
+            return 1
+
+        def close(self):
+            import time
+
+            time.sleep(0.2)
+
+    def test_fetch(self):
+        async def walk():
+            return [case async for case in iter_source_cases(self.Slow(), 5, 1)]
+
+        ticks, cases = asyncio.run(loop_ticks_during(walk()))
+        assert len(cases) == 1
+        assert ticks >= 3
+
+    def test_count(self):
+        ticks, total = asyncio.run(loop_ticks_during(source_count(self.Slow())))
+        assert total == 1
+        assert ticks >= 3
+
+    def test_close(self):
+        ticks, _ = asyncio.run(loop_ticks_during(close_source(self.Slow())))
+        assert ticks >= 3
 
 
 class TestRunningFromASource:

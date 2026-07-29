@@ -5,6 +5,7 @@ so new transports (HTTP APIs, subprocesses, future MCP sampling) slot in
 without engine changes.
 """
 
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -44,6 +45,41 @@ class Completion:
     output_tokens: int | None = None
     cost_usd: float | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        # Usage reaches this constructor unvalidated — a command script's
+        # stdout, a cache entry on disk. A string token count used to survive
+        # until the run's totals added it to an int, and that TypeError killed
+        # the whole run instead of one cell. Validate here so every provider
+        # and the cache get the same guarantee.
+        self.input_tokens = _usage_number("input_tokens", self.input_tokens, integral=True)
+        self.output_tokens = _usage_number("output_tokens", self.output_tokens, integral=True)
+        self.cost_usd = _usage_number("cost_usd", self.cost_usd, integral=False)
+
+
+def _usage_number(name: str, value: Any, *, integral: bool) -> int | float | None:
+    """Coerce a usage field from whatever JSON carried it in as.
+
+    The obvious numeric spellings ("12", 12.0) are accepted; anything else
+    raises ProviderError, which the engine records as that cell's error.
+    """
+    if value is None:
+        return None
+    number = None
+    if isinstance(value, (int, float, str)) and not isinstance(value, bool):
+        try:
+            number = float(value)
+        except ValueError:
+            number = None
+    if number is None or not math.isfinite(number) or number < 0:
+        raise ProviderError(f"completion reported {name}={value!r}, expected a non-negative number")
+    if not integral:
+        return number
+    if not number.is_integer():
+        raise ProviderError(
+            f"completion reported {name}={value!r}, expected a whole number of tokens"
+        )
+    return int(number)
 
 
 class Provider(ABC):

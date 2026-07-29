@@ -96,25 +96,40 @@ def snapshot_config(config: EvalConfig, *, redact_cases: bool = False) -> tuple[
     return snapshot, hashlib.sha256(snapshot.encode()).hexdigest()
 
 
-def _read_result_lines(path: Path) -> list[dict[str, Any]]:
-    """Parse results.jsonl, tolerating a torn final line.
+def _iter_result_lines(path: Path) -> Iterator[dict[str, Any]]:
+    """Parse results.jsonl one line at a time, tolerating a torn final line.
 
     A process killed mid-append leaves a truncated last line; that is the
     normal crash artifact resume exists for, so it reads as end-of-file.
-    Corruption anywhere else is a real error.
+    Corruption anywhere else is a real error. One line of lookahead decides
+    which case applies, so the file is never held in memory whole — these
+    files are exactly the ones that grow to millions of lines.
     """
     if not path.is_file():
-        return []
-    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    records = []
-    for index, line in enumerate(lines):
-        try:
-            records.append(json.loads(line))
-        except json.JSONDecodeError as exc:
-            if index == len(lines) - 1:
-                break  # torn tail from a crash mid-write
-            raise StorageError(f"{path}: corrupt record at line {index + 1}") from exc
-    return records
+        return
+    with path.open(encoding="utf-8") as handle:
+        pending: str | None = None
+        number = 0
+        for line in handle:
+            if not line.strip():
+                continue
+            if pending is not None:
+                number += 1
+                try:
+                    yield json.loads(pending)
+                except json.JSONDecodeError as exc:
+                    raise StorageError(f"{path}: corrupt record at line {number}") from exc
+            pending = line
+        if pending is not None:
+            try:
+                data = json.loads(pending)
+            except json.JSONDecodeError:
+                return  # torn tail from a crash mid-write
+            yield data
+
+
+def _read_result_lines(path: Path) -> list[dict[str, Any]]:
+    return list(_iter_result_lines(path))
 
 
 def _utcnow() -> str:
@@ -274,17 +289,7 @@ class RunStore:
         the convenience wrapper for when you genuinely want the list.
         """
         path = self.output_dir / run_id / "results.jsonl"
-        if not path.is_file():
-            return
-        with path.open(encoding="utf-8") as handle:
-            lines = [line for line in handle if line.strip()]
-        for index, line in enumerate(lines):
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError as exc:
-                if index == len(lines) - 1:
-                    return  # torn tail from a crash mid-write
-                raise StorageError(f"{path}: corrupt record at line {index + 1}") from exc
+        for data in _iter_result_lines(path):
             yield record_from_dict(data)
 
     @property
@@ -377,7 +382,16 @@ class RunWriter:
         name = f"{ref.sha256}{ref.path.suffix.lower()}"
         dest = self.path / "artifacts" / name
         if not dest.exists():
-            shutil.copyfile(ref.path, dest)
+            # temp + rename, like every other write here: a crash mid-copy
+            # must not leave a partial file that the existence check then
+            # trusts forever. The random suffix keeps concurrent cells (same
+            # pid, different threads) from interleaving on one temp file.
+            tmp = dest.with_name(f".{name}.tmp{os.getpid()}.{secrets.token_hex(4)}")
+            try:
+                shutil.copyfile(ref.path, tmp)
+                tmp.replace(dest)
+            finally:
+                tmp.unlink(missing_ok=True)
         return f"artifacts/{name}"
 
     def finalize(

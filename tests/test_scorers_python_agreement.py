@@ -7,6 +7,7 @@ from evaling.config import Case
 from evaling.scorers.agreement import AgreementScorer
 from evaling.scorers.base import ScoringError
 from evaling.scorers.python_scorer import PythonScorer
+from helpers import loop_ticks_during
 
 BASE = Path(".")
 
@@ -52,6 +53,15 @@ class TestPython:
         body = "async def score(output, case):\n    return True\n"
         scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
         assert score(scorer, "x").passed
+
+    def test_sync_function_does_not_block_the_loop(self, tmp_path):
+        # Regression: a sync scorer doing real work (a subprocess, an HTTP
+        # call) ran on the event loop and stalled every in-flight model call.
+        body = "import time\ndef score(output, case):\n    time.sleep(0.2)\n    return True\n"
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        ticks, result = asyncio.run(loop_ticks_during(scorer.score("x", Case())))
+        assert result.passed
+        assert ticks >= 3
 
     def test_custom_function_name(self, tmp_path):
         body = "def grade(output, case):\n    return True\n"
