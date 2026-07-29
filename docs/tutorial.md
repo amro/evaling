@@ -392,15 +392,27 @@ For "is this a good explanation?" there's no substring to match. Define a
 judge — a judge model plus a rubric prompt — and score against it:
 
 ```yaml
+models:
+  - id: gpt-5.2
+    provider: openai
+  - id: claude-sonnet-5
+    provider: anthropic
+    role: judge                      # grades; not evaluated itself
+
 judges:
   quality:
-    model: claude-sonnet-5           # an id from your models block
+    model: claude-sonnet-5
     rubric: prompts/judge-rubric.yaml
 
 scorecard:
   - criterion: helpful
     scorer: {type: llm-judge, judge: quality}
 ```
+
+`role: judge` is required on a judge's model. Without it the model would also
+be evaluated as a candidate, which doubles the run and produces a row where
+the judge grades its own output. Use `role: both` if you do want it graded as
+well.
 
 ```yaml
 # prompts/judge-rubric.yaml

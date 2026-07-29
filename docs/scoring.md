@@ -46,6 +46,11 @@ A judge is a first-class prompt: a text-only rubric plus a judge model, defined
 once and reusable across criteria:
 
 ```yaml
+models:
+  - id: claude-sonnet-5
+    provider: anthropic
+    role: judge                   # required: grades, is not evaluated
+
 judges:
   quality-judge:
     model: claude-sonnet-5        # an id from models

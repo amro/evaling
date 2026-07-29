@@ -145,3 +145,43 @@ def test_export_out_to_missing_directory_exits_2_cleanly(two_runs):
     )
     assert result.exit_code == 2
     assert "Traceback" not in result.output
+
+
+class TestJudgeOnlyModelsAreVisible:
+    """The original defect was invisibility, not the default."""
+
+    def config(self, tmp_path, role="judge"):
+        (tmp_path / "rubric.yaml").write_text("- role: user\n  content: '{{ output }}'\n")
+        path = tmp_path / "eval.yaml"
+        path.write_text(
+            "models:\n"
+            "  - {id: main, provider: mock}\n"
+            f"  - {{id: grader, provider: mock, role: {role}, "
+            "params: {response: '{\"score\": 1.0}'}}\n"
+            "variants:\n  - name: v\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: hi}}]\n"
+            "judges: {q: {model: grader, rubric: rubric.yaml}}\n"
+            "scorecard: [{criterion: g, scorer: {type: llm-judge, judge: q}}]\n"
+        )
+        return path
+
+    def run(self, tmp_path, *args):
+        base = ["-o", str(tmp_path / "runs"), "--cache-dir", str(tmp_path / "c")]
+        return CliRunner().invoke(main, base + list(args), env=ENV, catch_exceptions=False)
+
+    def test_the_header_names_a_judge_only_model(self, tmp_path):
+        result = self.run(tmp_path, "run", str(self.config(tmp_path)))
+        assert result.exit_code == 0, result.output
+        assert "grader: judge only, not evaluated" in result.output
+
+    def test_role_both_is_not_announced_as_judge_only(self, tmp_path):
+        result = self.run(tmp_path, "run", str(self.config(tmp_path, role="both")))
+        assert "judge only" not in result.output
+
+    def test_filtering_to_a_judge_only_model_explains_itself(self, tmp_path):
+        result = self.run(tmp_path, "run", "--model", "grader", str(self.config(tmp_path)))
+        assert result.exit_code == 2
+        # rich wraps the message, so compare with whitespace collapsed.
+        message = " ".join(result.output.split())
+        assert "role 'judge'" in message and "so it is not evaluated" in message

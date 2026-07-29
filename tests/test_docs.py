@@ -83,6 +83,38 @@ class TestYamlExamples:
             assert checked, f"{path.name} should contain at least one complete config example"
 
 
+class TestJudgeSnippetsTeachTheRole:
+    """A partial YAML block can teach a config that will not load.
+
+    `test_complete_configs_match_the_schema` only validates blocks with all
+    four required top-level keys, so a `judges:` fragment slips past it. That
+    is how the tutorial came to show a judge config that the schema now
+    rejects: a judge's model must declare `role`.
+    """
+
+    @pytest.mark.parametrize("path", documented_files(), ids=lambda p: p.name)
+    def test_a_judges_block_shows_the_role_it_requires(self, path):
+        offenders = []
+        for line, block in code_blocks(path, "yaml"):
+            data = None
+            try:
+                data = yaml.safe_load(block)
+            except yaml.YAMLError:
+                continue
+            if not isinstance(data, dict) or not data.get("judges"):
+                # `judges:` with no value is a key-only outline of the config
+                # shape, not something anyone copies.
+                continue
+            # A complete config is validated elsewhere; a fragment is not, so
+            # it has to carry the role itself or it teaches a broken pattern.
+            if "role:" not in block:
+                offenders.append(line)
+        assert not offenders, (
+            f"{path.name}: judges block(s) at line(s) {offenders} don't show `role:` on the "
+            "judge's model — a reader copying this gets a config error"
+        )
+
+
 class TestCliDocsMatchReality:
     """docs/cli.md must describe the CLI that exists, not the one that did."""
 

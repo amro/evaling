@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   output. A run also now says which models are judging rather than being
   evaluated — the original defect was less the default than its invisibility.
   **Breaking:** existing configs with a judge need `role: judge` (or
-  `role: both`) on the judge's model.
+  `role: both`) on the judge's model. A config where no model is a candidate,
+  or where `role: both` is set on a model no judge uses, is also rejected —
+  both would otherwise run or declare nothing.
 
 - **Case sources** — cases can now be fetched from your own Python, a page at
   a time, instead of being listed in the config or a dataset file:

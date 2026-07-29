@@ -221,6 +221,11 @@ scorecard:
 Named autoraters used by `llm-judge` scorers:
 
 ```yaml
+models:
+  - id: claude-sonnet-5
+    provider: anthropic
+    role: judge                     # required: grades, is not evaluated
+
 judges:
   quality-judge:
     model: claude-sonnet-5          # must be an id from models

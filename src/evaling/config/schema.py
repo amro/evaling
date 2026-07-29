@@ -257,7 +257,17 @@ class EvalConfig(StrictModel):
                     f"  role: judge   - called by judges, never evaluated\n"
                     f"  role: both    - evaluated as a candidate and used as a judge"
                 )
+        if not any(model.role in ("candidate", "both") for model in self.models):
+            raise ValueError(
+                "no model is a candidate, so there is nothing to evaluate. Give at least "
+                "one model role: candidate (the default) or role: both."
+            )
         for model in self.models:
+            if model.role == "both" and model.id not in judged:
+                raise ValueError(
+                    f"model {model.id!r} has role 'both' but no judge uses it. Use "
+                    f"role: candidate if you only want it evaluated."
+                )
             if model.role == "judge" and model.id not in judged:
                 raise ValueError(
                     f"model {model.id!r} has role 'judge' but no judge uses it, so it would "
