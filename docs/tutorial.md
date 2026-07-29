@@ -446,6 +446,27 @@ change quietly broke while the average went up.
 evaling compare before after --html diff.html
 ```
 
+### Is the difference real?
+
+Before you act on a delta, check it against how many cases produced it. For a
+pass rate near 50% — the widest case — at 95% confidence:
+
+| Cases | Margin of error |
+| --- | --- |
+| 30 | ±18 points |
+| 100 | ±10 points |
+| 400 | ±5 points |
+| 1,000 | ±3 points |
+
+So 72% against 78% on 50 cases is not a result; it's noise. Comparing two
+variants over the *same* cases is more sensitive than those numbers suggest —
+what matters there is how many cases the two disagree on, not the total — but
+the direction of the caution holds either way.
+
+The cheapest fix for an inconclusive comparison is usually more cases rather
+than more tweaking. See
+[how many cases do you need](large-datasets.md#how-many-cases-do-you-need).
+
 ## 8. Gating in CI
 
 Turn thresholds into a build failure:
