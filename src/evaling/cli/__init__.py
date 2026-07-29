@@ -227,6 +227,7 @@ def run(
             f"Running {len(variants_sel)} variants × {len(models_sel)} models over "
             f"[bold]{bound}[/bold] from the case source"
         )
+        _say_judge_only(app, config)
         # `limit` gives a real total; without one the source size is unknown
         # until it is walked, so the progress bar runs indeterminate.
         count = (
@@ -243,6 +244,7 @@ def run(
             f"Running [bold]{count}[/bold] requests "
             f"({len(variants_sel)} variants × {len(models_sel)} models × {len(cases_sel)} cases)"
         )
+        _say_judge_only(app, config)
         if count >= CONFIRM_THRESHOLD and not yes and sys.stdin.isatty():
             click.confirm(f"That is {count} model calls — continue?", abort=True)
 
@@ -372,6 +374,17 @@ def _say_totals(app, counts, totals):
         f"{counts['failed']} failed, {counts['cached']} cached — "
         f"{totals['input_tokens']} in / {totals['output_tokens']} out tokens, ${cost:.4f}"
     )
+
+
+def _say_judge_only(app, config) -> None:
+    """Name models that are judging rather than being evaluated.
+
+    The defect this replaced was not the default but its invisibility: a judge's
+    model silently became a candidate and nothing in the output said so.
+    """
+    judges = [m.id for m in config.models if m.role == "judge"]
+    if judges:
+        app.say(f"  {display.safe(', '.join(judges))}: judge only, not evaluated")
 
 
 def _do_dry_run(app, config, model_filter, variant_filter, case_filter):

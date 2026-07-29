@@ -406,7 +406,12 @@ def judge_matrix_config(tmp_path):
             "models": [
                 {"id": "main", "provider": "mock"},
                 {"id": "other", "provider": "mock"},
-                {"id": "judge-model", "provider": "mock", "params": {"response": '{"score": 1}'}},
+                {
+                    "id": "judge-model",
+                    "provider": "mock",
+                    "role": "judge",
+                    "params": {"response": '{"score": 1}'},
+                },
             ],
             "variants": [{"name": "v1", "prompt": [{"role": "user", "content": "hi"}]}],
             "cases": [{"id": "c1"}],
@@ -433,10 +438,25 @@ def test_model_filter_excludes_judge_from_matrix_but_judging_works(tmp_path):
     assert result.records[0].scores["q"]["passed"] is True
 
 
-def test_unfiltered_judge_config_runs_judge_model_cells_too(tmp_path):
-    # Without filters, every configured model is a matrix member — including
-    # one that also serves as a judge.
+def test_a_judge_model_is_not_evaluated_as_a_candidate(tmp_path):
+    """A judge grades; it is not a system under test unless you say so.
+
+    This used to assert the opposite — that every configured model got matrix
+    cells, judge included. That silently doubled a run's cost and produced a
+    row where the judge scored its own output.
+    """
     config = judge_matrix_config(tmp_path)
+    result = run_eval(config, make_settings(tmp_path))
+    assert {r.model for r in result.records} == {"main", "other"}
+
+
+def test_role_both_is_evaluated_and_judges(tmp_path):
+    config = judge_matrix_config(tmp_path)
+    models = [
+        m.model_copy(update={"role": "both"}) if m.role == "judge" else m for m in config.models
+    ]
+    config = config.model_copy(update={"models": models})
+    config._base_dir = tmp_path  # noqa: SLF001
     result = run_eval(config, make_settings(tmp_path))
     assert {r.model for r in result.records} == {"main", "other", "judge-model"}
 

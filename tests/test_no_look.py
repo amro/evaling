@@ -81,6 +81,7 @@ class TestTheCanaryNeverEscapes:
                     {
                         "id": "judge-model",
                         "provider": "mock",
+                        "role": "judge",
                         # A judge that succeeds and quotes what it graded, which
                         # is what makes a rationale dangerous.
                         "params": {

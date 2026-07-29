@@ -65,6 +65,28 @@ Providers (full reference: [providers.md](providers.md)):
 | `command` | Requires `command`. Shells out: request on stdin, response on stdout. |
 | `mock` | Deterministic fake model, for dry runs and tests. |
 
+### `role` — what a model is here for
+
+```yaml
+models:
+  - id: gpt-5.2
+    provider: openai          # role: candidate (the default)
+  - id: claude-sonnet-5
+    provider: anthropic
+    role: judge               # called by judges, never evaluated
+```
+
+| Role | Meaning |
+| --- | --- |
+| `candidate` (default) | A system under test. Gets matrix cells. |
+| `judge` | Only ever called by an [LLM judge](scoring.md#llm-judges). Never evaluated. |
+| `both` | Evaluated as a candidate *and* used as a judge. |
+
+A model a judge references must say which it is; leaving it at the default is
+a config error naming both ways out. That is deliberate: the alternative was
+a judge's model quietly joining the matrix, which doubled a run's cost and
+added a row where the judge graded its own output.
+
 Per-model options (all optional):
 
 - `api_key_env` — which environment variable holds the API key, for backends
@@ -85,6 +107,7 @@ this model's concurrency cap, and this model's rate limit.
 models:
   - id: claude-sonnet-5
     provider: anthropic
+    role: judge
     max_concurrency: 4
     requests_per_minute: 50
   - id: local-llama            # unconstrained; runs as fast as it can
@@ -231,6 +254,7 @@ settings:
 models:
   - id: claude-sonnet-5
     provider: anthropic
+    role: judge
     params: {max_tokens: 1024}
     max_concurrency: 4
     requests_per_minute: 50

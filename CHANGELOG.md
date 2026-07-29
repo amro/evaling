@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`role` on a model: `candidate` (default), `judge`, or `both`.** A model a
+  judge references must now declare its role, and the config is rejected with
+  a message naming both ways out if it doesn't. Previously every model in
+  `models:` was a system under test, so adding a judge silently doubled a
+  run's cost and produced an aggregate row where the judge graded its own
+  output. A run also now says which models are judging rather than being
+  evaluated — the original defect was less the default than its invisibility.
+  **Breaking:** existing configs with a judge need `role: judge` (or
+  `role: both`) on the judge's model.
+
 - **Case sources** — cases can now be fetched from your own Python, a page at
   a time, instead of being listed in the config or a dataset file:
   `cases: {source: sources/prod.py:make_source, page_size: 200, limit: 5000}`.

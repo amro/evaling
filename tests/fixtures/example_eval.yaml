@@ -7,6 +7,7 @@ settings:
 models:
   - id: claude-sonnet-5
     provider: anthropic
+    role: judge
     params: {max_tokens: 1024}
   - id: local-llama
     provider: openai-compatible

@@ -16,7 +16,12 @@ def judge_config(response, rubric=None, scorer_params=None, tmp_path=None):
         {
             "models": [
                 {"id": "main", "provider": "mock"},
-                {"id": "judge-model", "provider": "mock", "params": {"response": response}},
+                {
+                    "id": "judge-model",
+                    "provider": "mock",
+                    "role": "judge",
+                    "params": {"response": response},
+                },
             ],
             "variants": [{"name": "v1", "prompt": [{"role": "user", "content": "{{ q }}"}]}],
             "cases": [{"vars": {"q": "hi"}}],

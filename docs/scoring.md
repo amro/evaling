@@ -52,6 +52,12 @@ judges:
     rubric: prompts/judge-rubric.yaml
 ```
 
+The judge's model must declare `role: judge` (or `role: both` if you also want
+it evaluated as a candidate) — see
+[role](configuration.md#role-what-a-model-is-here-for). Without it the config
+is rejected, because a model that only judges should not silently become a
+system under test.
+
 A judge call is billed like any other, so it counts against `--max-cost` and
 obeys the judge model's `max_concurrency` and `requests_per_minute`. Budget for
 it: a scorecard with one judge roughly doubles the calls a run makes.

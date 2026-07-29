@@ -248,7 +248,7 @@ class TestJudgeCallsAreGoverned:
             {
                 "models": [
                     {"id": "m", "provider": "mock"},
-                    {"id": "judge", "provider": "mock", **judge_model},
+                    {"id": "judge", "provider": "mock", "role": "judge", **judge_model},
                 ],
                 "variants": [{"name": "v", "prompt": [{"role": "user", "content": "{{ q }}"}]}],
                 "cases": [{"id": f"c{i}", "vars": {"q": str(i)}} for i in range(cases)],

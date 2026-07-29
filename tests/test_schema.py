@@ -217,11 +217,66 @@ def test_llm_judge_unknown_judge_rejected():
 def test_llm_judge_with_defined_judge_valid():
     cfg = EvalConfig.model_validate(
         minimal_config(
+            models=[{"id": "m1", "provider": "mock", "role": "both"}],
             scorecard=[{"criterion": "q", "scorer": {"type": "llm-judge", "judge": "j"}}],
             judges={"j": {"model": "m1", "rubric": "prompts/rubric.yaml"}},
         )
     )
     assert cfg.judges["j"].model == "m1"
+
+
+class TestModelRole:
+    """A judge's model is not a system under test unless you say so."""
+
+    def config(self, **model_overrides):
+        return minimal_config(
+            models=[
+                {"id": "m1", "provider": "mock"},
+                {"id": "j", "provider": "mock", **model_overrides},
+            ],
+            scorecard=[{"criterion": "q", "scorer": {"type": "llm-judge", "judge": "j"}}],
+            judges={"j": {"model": "j", "rubric": "prompts/rubric.yaml"}},
+        )
+
+    def test_default_is_candidate(self):
+        cfg = EvalConfig.model_validate(minimal_config())
+        assert cfg.models[0].role == "candidate"
+
+    def test_a_judges_model_must_declare_its_role(self):
+        """Leaving it at the default is the mistake this exists to catch."""
+        with pytest.raises(ValidationError, match="its role must be explicit"):
+            EvalConfig.model_validate(self.config())
+
+    def test_the_error_names_both_ways_out(self):
+        with pytest.raises(ValidationError) as caught:
+            EvalConfig.model_validate(self.config())
+        message = str(caught.value)
+        assert "role: judge" in message and "role: both" in message
+
+    @pytest.mark.parametrize("role", ["judge", "both"])
+    def test_explicit_roles_are_accepted(self, role):
+        assert EvalConfig.model_validate(self.config(role=role)) is not None
+
+    def test_declaring_candidate_is_still_a_contradiction(self):
+        with pytest.raises(ValidationError, match="its role must be explicit"):
+            EvalConfig.model_validate(self.config(role="candidate"))
+
+    def test_a_judge_role_nobody_uses_is_rejected(self):
+        """Dead config: the model would never be called at all."""
+        bad = minimal_config(
+            models=[
+                {"id": "m1", "provider": "mock"},
+                {"id": "unused", "provider": "mock", "role": "judge"},
+            ]
+        )
+        with pytest.raises(ValidationError, match="no judge uses it"):
+            EvalConfig.model_validate(bad)
+
+    def test_unknown_role_rejected(self):
+        with pytest.raises(ValidationError):
+            EvalConfig.model_validate(
+                minimal_config(models=[{"id": "m1", "provider": "mock", "role": "referee"}])
+            )
 
 
 def test_judge_referencing_unknown_model_rejected():

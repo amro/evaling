@@ -738,13 +738,22 @@ def select_variants_models(
         wanted = set(variants)
         variant_specs = [v for v in variant_specs if v.name in wanted]
 
-    model_specs = config.models
+    # Matrix membership follows the declared role: a judge-only model is called
+    # by its judge, never evaluated as a candidate.
+    model_specs = [m for m in config.models if m.role in ("candidate", "both")]
     if models:
         known = {m.id for m in model_specs}
         unknown = sorted(set(models) - known)
         if unknown:
+            judge_only = {m.id for m in config.models if m.role == "judge"} & set(unknown)
+            hint = (
+                f" ({', '.join(sorted(judge_only))} has role 'judge', so it is not evaluated)"
+                if judge_only
+                else ""
+            )
             raise ConfigError(
-                f"unknown model(s): {', '.join(unknown)} (available: {', '.join(sorted(known))})"
+                f"unknown model(s): {', '.join(unknown)}{hint} "
+                f"(available: {', '.join(sorted(known))})"
             )
         wanted = set(models)
         model_specs = [m for m in model_specs if m.id in wanted]

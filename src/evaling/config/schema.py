@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
+ModelRole = Literal["candidate", "judge", "both"]
 ProviderName = Literal["anthropic", "openai", "openai-compatible", "command", "mock"]
 
 ScorerType = Literal[
@@ -83,6 +84,13 @@ class ModelSpec(StrictModel):
     max_concurrency: int | None = Field(default=None, ge=1)
     # Proactive rate limit: requests per rolling minute for this model.
     requests_per_minute: int | None = Field(default=None, ge=1)
+    # What this model is here for. `candidate` (the default) means it is one of
+    # the systems under test and gets matrix cells; `judge` means it is only
+    # ever called by an llm-judge scorer; `both` is a model you want graded
+    # *and* grading. Declaring a judge's model as a candidate used to be
+    # implicit, which silently doubled a run and added a row where the judge
+    # scored its own output.
+    role: ModelRole = "candidate"
     params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -234,9 +242,28 @@ class EvalConfig(StrictModel):
             _require_unique((c.id for c in self.cases if c.id is not None), "case id")
 
         model_ids = {m.id for m in self.models}
+        judged: dict[str, str] = {}
         for name, judge in self.judges.items():
             if judge.model not in model_ids:
                 raise ValueError(f"judge {name!r} references unknown model {judge.model!r}")
+            judged.setdefault(judge.model, name)
+
+        by_id = {model.id: model for model in self.models}
+        for model_id, judge_name in judged.items():
+            if by_id[model_id].role == "candidate":
+                raise ValueError(
+                    f"model {model_id!r} is used by judge {judge_name!r}, so its role must be "
+                    f"explicit. Add one of:\n"
+                    f"  role: judge   - called by judges, never evaluated\n"
+                    f"  role: both    - evaluated as a candidate and used as a judge"
+                )
+        for model in self.models:
+            if model.role == "judge" and model.id not in judged:
+                raise ValueError(
+                    f"model {model.id!r} has role 'judge' but no judge uses it, so it would "
+                    f"never be called. Reference it from a judge, or give it "
+                    f"role: candidate to evaluate it."
+                )
 
         for crit in self.scorecard:
             if crit.scorer.type == "llm-judge":
