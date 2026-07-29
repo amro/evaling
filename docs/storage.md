@@ -122,11 +122,10 @@ silently give you wrong numbers.
 
 ## Source-backed runs cannot be resumed
 
-When cases come from a [case source](large-datasets.md), `--resume` is refused.
-Resume relies on the config fingerprint proving both runs saw the same cases,
-and a live source can return different rows on the second call — inserted,
-mutated, aged out, or simply a moved time window. The resulting run would
-describe two different populations while looking entirely normal.
+When cases come from a [case source](large-datasets.md), `--resume` is refused —
+resume relies on the config fingerprint proving both runs saw the same cases,
+which a live source cannot guarantee. Reasoning in
+[why resume is refused](large-datasets.md#why-resume-is-refused).
 
 File- and inline-backed runs are unaffected: their data is fingerprinted, so
 resume stays supported there.

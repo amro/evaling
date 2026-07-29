@@ -39,33 +39,24 @@ processing terms, or an internal policy that engineers do not read customer
 records. The prompt still has to be validated against that data, and the
 person doing the validating still may not see it.
 
-**evaling must run inside the boundary.** This is the part that decides whether
-the feature helps or hurts. Your case source runs in evaling's own process and
-hands back plaintext cases; the model call needs the real prompt; the scorer
-needs the real output. The data is in memory throughout. No-look changes what
-*persists and gets shared* — artifacts, reports, CI logs, the response cache —
-and changes nothing about who can reach the data in the first place.
+**evaling must run inside the boundary.** Your case source runs in evaling's own
+process and hands back plaintext; the model call needs the real prompt; the
+scorer needs the real output. The data is in memory throughout. No-look changes
+what *persists and gets shared* — artifacts, reports, CI logs, the cache — and
+nothing about who can reach the data. So it belongs on infrastructure already
+cleared for that data. Running one from a laptop against a production API pulls
+production data onto that laptop, and no setting undoes it. It complements
+access control; it does not replace it.
 
-So a no-look run belongs on infrastructure that is already cleared for that
-data: the same hosts, service accounts, and network as any other job with
-production access. Running one from a laptop against a production API pulls
-production data onto that laptop, and no setting in evaling undoes it. If you
-would not be allowed to write a script that reads those rows, no-look does not
-change that.
+What it buys you is the artifact problem. An ordinary eval writes prompts and
+completions into `results.jsonl`, the cache, and an HTML report you attach to a
+pull request — artifacts that get copied, reach people with no access to the
+source system, and outlive the run. No-look produces only numbers, which is
+what you wanted to share anyway.
 
-What it does buy you, in that setting, is the artifact problem. An ordinary
-eval writes prompts and completions to `results.jsonl`, into the cache, into
-an HTML report you then attach to a pull request. Those artifacts leak, get
-copied, get shared with people who have no access to the source system, and
-outlive the run. No-look means the only thing produced is a set of numbers,
-which is what you wanted to share anyway.
-
-It is a complement to access control, not a substitute for it.
-
-**If you are allowed to read your eval data, don't use this.** It removes the
-response cache, so every run costs full price; it removes your ability to
-inspect a failure directly; and it removes resume. Those are worthwhile trades
-only when the constraint is real.
+**If you are allowed to read your eval data, don't use this.** It costs you the
+cache (every run pays full price), direct inspection of failures, and resume.
+Worthwhile only when the constraint is real.
 
 ---
 
