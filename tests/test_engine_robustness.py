@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 
 from evaling.cache import ResponseCache
-from evaling.config import Case, Message, ModelSpec
+from evaling.config import Case, EvalConfig, Message, ModelSpec
 from evaling.engine import run_eval
 from evaling.providers import _REGISTRY
-from evaling.providers.base import Completion
+from evaling.providers.base import Completion, ProviderError
 from evaling.providers.mock import MockProvider
 from evaling.render import render_messages
 from evaling.storage import RunStore, record_from_dict, write_json_atomic
@@ -232,3 +232,121 @@ class TestStorageDurability:
         result = run_eval(make_config(tmp_path), settings)
         meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
         assert meta["format_version"] >= 1
+
+
+class TestJudgeCallsAreGoverned:
+    """A judge is a billable model call and must obey the same limits.
+
+    JudgeScorer used to call its provider directly, so judge spend was
+    invisible to --max-cost and to the judge model's own rate limits. A run
+    with a $1.00 judge under a $0.05 cap completed for $20.20.
+    """
+
+    def config(self, tmp_path, cases=20, **judge_model):
+        (tmp_path / "rubric.yaml").write_text("- role: user\n  content: 'g {{ output }}'\n")
+        config = EvalConfig.model_validate(
+            {
+                "models": [
+                    {"id": "m", "provider": "mock"},
+                    {"id": "judge", "provider": "mock", **judge_model},
+                ],
+                "variants": [{"name": "v", "prompt": [{"role": "user", "content": "{{ q }}"}]}],
+                "cases": [{"id": f"c{i}", "vars": {"q": str(i)}} for i in range(cases)],
+                "judges": {"j": {"model": "judge", "rubric": "rubric.yaml"}},
+                "scorecard": [{"criterion": "q", "scorer": {"type": "llm-judge", "judge": "j"}}],
+            }
+        )
+        config._base_dir = tmp_path  # noqa: SLF001
+        return config
+
+    def test_judge_spend_counts_against_max_cost(self, tmp_path, monkeypatch):
+        class Priced(MockProvider):
+            async def complete(self, request):
+                await asyncio.sleep(0)
+                # Cells are almost free; only judge spend can breach the cap, so
+                # this cannot pass on matrix cost alone.
+                cost = 1.00 if request.model.id == "judge" else 0.0001
+                return Completion(text='{"score": 1.0}', cost_usd=cost)
+
+        monkeypatch.setitem(_REGISTRY, "mock", Priced)
+        result = run_eval(
+            self.config(tmp_path),
+            make_settings(tmp_path, concurrency=1),
+            model_filter=["m"],
+            max_cost_usd=0.05,
+        )
+        stopped = sum(1 for r in result.records if r.error)
+        assert stopped >= 15, (
+            f"only {stopped}/20 cells stopped. Cells cost $0.002 total, so the $0.05 cap "
+            "can only be breached by judge spend — which escaped the budget."
+        )
+
+    def test_judge_spend_is_reported(self, tmp_path, monkeypatch):
+        """Enforcing it but not reporting it makes the run's own totals lie."""
+
+        class Priced(MockProvider):
+            async def complete(self, request):
+                await asyncio.sleep(0)
+                cost = 1.00 if request.model.id == "judge" else 0.01
+                return Completion(text='{"score": 1.0}', cost_usd=cost)
+
+        monkeypatch.setitem(_REGISTRY, "mock", Priced)
+        result = run_eval(
+            self.config(tmp_path, cases=3), make_settings(tmp_path), model_filter=["m"]
+        )
+        assert result.totals["judge_cost_usd"] == pytest.approx(3.00)
+        assert result.totals["cost_usd"] == pytest.approx(3.03)  # cells + judges
+
+    def test_judge_obeys_its_models_concurrency_cap(self, tmp_path, monkeypatch):
+        """Observable proof the judge goes through its model's limiter."""
+        state = {"now": 0, "peak": 0}
+
+        class Tracked(MockProvider):
+            async def complete(self, request):
+                if request.model.id == "judge":
+                    state["now"] += 1
+                    state["peak"] = max(state["peak"], state["now"])
+                    await asyncio.sleep(0.02)
+                    state["now"] -= 1
+                    return Completion(text='{"score": 1.0}', cost_usd=0.0)
+                await asyncio.sleep(0)
+                return Completion(text="ok", cost_usd=0.0)
+
+        monkeypatch.setitem(_REGISTRY, "mock", Tracked)
+        config = self.config(tmp_path, cases=6, max_concurrency=1)
+        run_eval(config, make_settings(tmp_path, concurrency=6), model_filter=["m"])
+        assert state["peak"] == 1, (
+            f"{state['peak']} judge calls ran at once despite max_concurrency: 1 — "
+            "the judge bypassed its model's limiter"
+        )
+
+
+class TestBudgetDistinguishesFailureFromUnpriced:
+    """A call that raised tells us nothing about pricing.
+
+    Treating it as unpriced warned that --max-cost 'could not be enforced' on a
+    fully-priced run that merely hit one transient error, and marked the budget
+    knowable with no cost data.
+    """
+
+    def test_a_failed_call_does_not_claim_the_model_is_unpriced(self, tmp_path, monkeypatch):
+        class FlakyPriced(MockProvider):
+            calls = 0
+
+            async def complete(self, request):
+                type(self).calls += 1
+                await asyncio.sleep(0)
+                if type(self).calls == 1:
+                    raise ProviderError("upstream hiccup", retryable=False)
+                return Completion(text="ok", cost_usd=0.001)
+
+        monkeypatch.setitem(_REGISTRY, "mock", FlakyPriced)
+        cases = [{"id": f"c{i}", "vars": {"q": str(i)}} for i in range(5)]
+        result = run_eval(
+            make_config(tmp_path, cases=cases),
+            make_settings(tmp_path, concurrency=1),
+            max_cost_usd=1.00,
+        )
+        assert result.counts["failed"] == 1
+        unpriced = [w for w in result.warnings if "pricing" in w]
+        assert not unpriced, f"a failed call was reported as an unpriced model: {unpriced}"

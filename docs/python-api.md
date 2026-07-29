@@ -59,7 +59,7 @@ result = await run_eval_async(config)
 | `path` | `Path` | The run directory |
 | `records` | `list[ResultRecord]` | One per cell |
 | `counts` | `dict` | `total`, `succeeded`, `failed`, `cached` |
-| `totals` | `dict` | Token counts and `cost_usd` |
+| `totals` | `dict` | Token counts, `cost_usd` (cells + judges), `judge_cost_usd` |
 | `aggregates` | `dict` | `overall` plus per variant × model |
 | `gate` | `GateResult \| None` | `None` when no thresholds are configured |
 | `warnings` | `list[str]` | Non-fatal issues, e.g. loose secrets-file permissions |
@@ -285,10 +285,15 @@ something unusable. Full reference: [large-datasets.md](large-datasets.md).
 from evaling import hash_case_id, redact_record
 ```
 
-`redact_record(record, judge_criteria, hash_case_ids=True)` strips everything
+`redact_record(record, keep_detail, hash_case_ids=True)` strips everything
 derived from case content, in place. The engine calls it for you when
 `privacy.no_look` is set; it's exported for the rare case of building your own
 pipeline around `run_eval`.
+
+`keep_detail` is the set of criterion names whose `detail` may survive — the
+ones scored by your own Python function. Everything not named there is
+dropped, so the safe default is `frozenset()`. Note the direction: this is a
+whitelist of what to keep, not a list of what to remove.
 
 `hash_case_id(case_id)` is the same stable hash no-look mode applies, so you
 can find a hashed case in your own data:

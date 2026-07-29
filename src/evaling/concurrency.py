@@ -147,6 +147,10 @@ async def _run_workers(worker, limit: int) -> None:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
         for task in done:
             if task.exception() is not None:
+                # Retrieve every sibling's exception too: an unretrieved one
+                # logs "Task exception was never retrieved" at GC time.
+                for sibling in done:
+                    sibling.exception()
                 for other in pending:
                     other.cancel()
                 # Let the cancellations land before the caller tears anything

@@ -21,6 +21,9 @@ from helpers import make_settings
 
 ENV = {"EVALING_USER_CONFIG": "/nonexistent", "EVALING_SECRETS": ""}
 CANARY = "PATIENT-Zx9Q7-CANARY-8812"
+#: A judge's canned reply lives in the config, so it is legitimately in the
+#: config snapshot. It must never reach a *result*.
+RATIONALE = "JUDGE-SAW-Kq4r7-2210"
 
 
 def private_config(tmp_path, no_look=True, extra=None):
@@ -49,6 +52,101 @@ def private_config(tmp_path, no_look=True, extra=None):
 
 
 class TestTheCanaryNeverEscapes:
+    def failure_config(self, tmp_path):
+        """Every path that can carry case content into an artifact.
+
+        The original canary only ran cells that passed, so it never saw a
+        failure detail — which is exactly where the leak was. This exercises a
+        failing builtin scorer (reports the `expected` it wanted), a judge
+        (rationale quotes what it graded), a scorer that raises (exception
+        message holds the output), and a Python scorer (whose detail is
+        allowed through, and must not carry anything it wasn't given).
+        """
+        (tmp_path / "rubric.yaml").write_text(
+            "- role: user\n  content: 'Grade {{ output }}'\n", encoding="utf-8"
+        )
+        (tmp_path / "boom.py").write_text(
+            "def score(output, case):\n    raise ValueError(f'scorer saw: {output}')\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "safe.py").write_text(
+            "def score(output, case):\n"
+            "    return {'score': 1.0, 'passed': True, 'detail': 'shape ok'}\n",
+            encoding="utf-8",
+        )
+        config = EvalConfig.model_validate(
+            {
+                "models": [
+                    {"id": "mock", "provider": "mock"},
+                    {
+                        "id": "judge-model",
+                        "provider": "mock",
+                        # A judge that succeeds and quotes what it graded, which
+                        # is what makes a rationale dangerous.
+                        "params": {
+                            "response": (
+                                '{"score": 1.0, "passed": true, '
+                                f'"rationale": "the note read {RATIONALE}"}}'
+                            )
+                        },
+                    },
+                ],
+                "variants": [
+                    {"name": "v1", "prompt": [{"role": "user", "content": "Note: {{ note }}"}]}
+                ],
+                "cases": [
+                    {"id": f"{CANARY}-{i}", "vars": {"note": f"{CANARY} {i}"}, "expected": CANARY}
+                    for i in range(3)
+                ],
+                "judges": {"j": {"model": "judge-model", "rubric": "rubric.yaml"}},
+                "scorecard": [
+                    # fails, and its detail names the expected value it wanted
+                    {"criterion": "exact-match", "scorer": {"type": "exact"}},
+                    # the judge returns junk, so the scorer raises with the output in it
+                    {"criterion": "judged", "scorer": {"type": "llm-judge", "judge": "j"}},
+                    # raises, with the model output in the exception message
+                    {"criterion": "raises", "scorer": {"type": "python", "file": "boom.py"}},
+                    # allowed to keep its detail
+                    {"criterion": "mine", "scorer": {"type": "python", "file": "safe.py"}},
+                ],
+                "privacy": {"no_look": True},
+            }
+        )
+        config._base_dir = tmp_path  # noqa: SLF001
+        return config
+
+    def test_failure_paths_leak_nothing(self, tmp_path):
+        """Failing scorers, a broken judge, and a raising scorer."""
+        settings = make_settings(tmp_path, cache=True)
+        result = run_eval(self.failure_config(tmp_path), settings, model_filter=["mock"])
+        assert result.counts["total"] == 3
+
+        # The run really did exercise the paths, not just avoid them.
+        scores = result.records[0].scores
+        assert scores["exact-match"]["passed"] is False  # detail names `expected`
+        assert scores["judged"]["passed"] is True  # judge produced a rationale
+        assert "error" in scores["raises"]  # scorer raised holding the output
+        assert scores["mine"]["detail"] == "shape ok"  # whitelisted, survives
+
+        # Case data must appear nowhere at all.
+        leaked = []
+        for root in (settings.output_dir, settings.cache_dir):
+            for path in root.rglob("*"):
+                if path.is_file() and CANARY in path.read_text(encoding="utf-8", errors="ignore"):
+                    leaked.append(str(path))
+        assert not leaked, f"case data written to disk: {leaked}"
+
+        # The judge's rationale is in the config by construction, so it belongs
+        # in the snapshot — but never in a result.
+        results = (settings.output_dir / result.run_id / "results.jsonl").read_text(
+            encoding="utf-8"
+        )
+        assert RATIONALE not in results, "judge rationale reached results.jsonl"
+        assert CANARY not in results
+
+        in_memory = json.dumps([r.__dict__ for r in result.records], default=str)
+        assert CANARY not in in_memory and RATIONALE not in in_memory
+
     def test_no_artifact_or_rendering_contains_the_data(self, tmp_path):
         settings = make_settings(tmp_path, cache=True)
         result = run_eval(private_config(tmp_path), settings)

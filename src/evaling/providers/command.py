@@ -73,7 +73,9 @@ class CommandProvider(Provider):
                 process.communicate(payload.encode()), timeout=timeout
             )
         except asyncio.TimeoutError as exc:
-            process.kill()
+            # The child may have exited between the timeout and the kill.
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
             await process.wait()
             raise ProviderError(
                 f"model {self.spec.id!r}: command timed out after {timeout}s", retryable=True

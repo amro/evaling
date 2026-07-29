@@ -104,6 +104,13 @@ for record in result.records:
     print(record.variant, record.model, record.case_id, record.output)
 ```
 
+## What `totals` includes
+
+`cost_usd` is what the run actually spent — matrix cells plus any LLM-judge
+calls. `judge_cost_usd` breaks out the judge portion, so per-cell costs sum to
+`cost_usd - judge_cost_usd`. A judge is not a matrix cell, so its spend cannot
+be attributed to one.
+
 ## Large runs
 
 Above 10,000 cells (`evaling.engine.MAX_RETAINED_RECORDS`) a run stops handing

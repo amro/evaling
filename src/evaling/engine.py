@@ -202,6 +202,9 @@ async def _run_eval_impl(
     store = RunStore(settings.output_dir)
     # Resolve the baseline up front: a missing pinned baseline must fail
     # before any model call, not after the run completes.
+    # Fail on a bad scorecard before a run directory exists. Scorers are built
+    # for real further down, once the limiters and budget a judge needs exist.
+    create_scorers(config, providers)
     baseline_id = _resolve_baseline(store, config, baseline_run_id)
     fingerprint = config_fingerprint(config)
     if resume_run_id is not None and source_ref is not None:
@@ -241,6 +244,10 @@ async def _run_eval_impl(
     )
     limiters = {model.id: limiter_for(model) for model in config.models}
 
+    # Judge spend is real spend. It is not attributable to a cell — a judge is
+    # not a matrix member — so it is tracked here and reported separately.
+    judge_spend = [0.0]
+
     async def _governed_call(model: ModelSpec, rendered) -> Completion:
         """A model call from outside the matrix — currently an LLM judge.
 
@@ -263,6 +270,8 @@ async def _run_eval_impl(
                 )
                 return completion
             finally:
+                if completion is not None and completion.cost_usd:
+                    judge_spend[0] += completion.cost_usd
                 await budget.release(
                     completion.cost_usd if completion else None, failed=completion is None
                 )
@@ -418,6 +427,7 @@ async def _run_eval_impl(
 
     await consume_bounded(cell_stream, settings.concurrency, collect)
 
+    tally.judge_cost_usd = judge_spend[0]
     counts, totals = tally.counts, tally.totals
     records = retained if retain else []
 
@@ -515,6 +525,7 @@ class _RunTally:
         self.total = self.succeeded = self.failed = self.cached = 0
         self.input_tokens = self.output_tokens = 0
         self.cost_usd = 0.0
+        self.judge_cost_usd = 0.0
         self._aggregator = Aggregator()
 
     def add(self, record: ResultRecord) -> None:
@@ -541,7 +552,10 @@ class _RunTally:
         return {
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
-            "cost_usd": self.cost_usd,
+            # What the run actually cost, cells plus judges. Per-cell costs sum
+            # to cost_usd - judge_cost_usd, because a judge is not a cell.
+            "cost_usd": round(self.cost_usd + self.judge_cost_usd, 10),
+            "judge_cost_usd": round(self.judge_cost_usd, 10),
         }
 
     @property

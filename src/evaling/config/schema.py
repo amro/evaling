@@ -224,6 +224,10 @@ class EvalConfig(StrictModel):
     def _cross_references(self) -> "EvalConfig":
         _require_unique((m.id for m in self.models), "model id")
         _require_unique((v.name for v in self.variants), "variant name")
+        # Duplicates silently collapse in a record's scores, and in no-look
+        # mode a name whitelisted for a Python scorer would then carry another
+        # scorer's detail past redaction.
+        _require_unique((c.criterion for c in self.scorecard), "criterion")
         if isinstance(self.cases, list):
             if not self.cases:
                 raise ValueError("cases: at least one case is required")

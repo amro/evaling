@@ -98,6 +98,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **No-look mode leaked case content on every failure path.** A failing
+  `contains` criterion wrote the case's `expected` value into
+  `scores[*].detail`, and a scorer that raised wrote the model output into
+  `scores[*].error`. Redaction now whitelists — only a criterion scored by your
+  own Python function keeps its `detail`, since every other scorer explains
+  itself by quoting what it looked at — and criterion errors are replaced. The
+  canary test missed this because it only ran cells that passed; it now
+  exercises a failing scorer, a judge rationale, and a scorer that raises.
+- **Duplicate criterion names are rejected.** They silently collapsed in a
+  record's scores, and in no-look mode a name whitelisted for a Python scorer
+  could carry another scorer's detail past redaction.
+- **LLM-judge calls bypassed `--max-cost`** and the judge model's own
+  concurrency and rate limits, because the scorer called its provider
+  directly. A run with a $1.00 judge under a $0.05 ceiling completed for
+  $20.20. Judge spend now counts against the budget, obeys the judge model's
+  limits, and appears in `totals` as `judge_cost_usd` (with `cost_usd` now
+  covering cells plus judges).
+- **A fatal error left workers running.** `asyncio.gather` propagates the first
+  exception without cancelling its siblings, so the pool kept pulling new cells
+  and issuing paid calls after a run had already failed — 197 of 200 cells in a
+  loop that outlived the failure. Workers are now cancelled and awaited first.
+- **A failed call was treated as an unpriced one**, so a single transient error
+  on a fully-priced run warned that `--max-cost` "could not be enforced", and
+  marked the budget knowable with no cost data.
+- A bad scorecard no longer leaves an unfinalized run directory behind: the
+  scorecard is validated before anything is written.
+
 - Usage numbers in a completion (`input_tokens`, `output_tokens`, `cost_usd`)
   are now validated where the completion is built, so a `command` script
   emitting `"input_tokens": "12"` is coerced and junk like `"twelve"` fails

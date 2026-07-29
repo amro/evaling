@@ -76,7 +76,8 @@ flag that turns it off.
 | --- | --- |
 | Rendered prompts (`messages`) | They contain the case data |
 | Model output | Usually contains it back |
-| Judge rationales | A judge quotes the text it graded |
+| Scorer `detail` (except your own Python scorer's) | A scorer explains itself by quoting what it looked at |
+| Criterion `error` | An exception message from a scorer holding the output |
 | Attachments | Never written to `artifacts/` |
 | Inline cases in the config snapshot | A config with inline cases *is* the data |
 | Provider error bodies | A rejected request often comes back with the input attached |
