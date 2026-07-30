@@ -1,5 +1,11 @@
 from evaling.config import Thresholds
-from evaling.scoring import aggregate, cell_summary, evaluate_gate
+from evaling.scoring import (
+    aggregate,
+    cell_summary,
+    compare_aggregates,
+    evaluate_gate,
+    selection_note,
+)
 from evaling.storage import ResultRecord
 
 
@@ -133,3 +139,148 @@ class TestGate:
         )
         assert not gate.passed
         assert [c["passed"] for c in gate.checks] == [False, True, True]
+
+
+class TestTheOverallBlockOfAComparison:
+    """The summary line people actually read, and nothing asserted it.
+
+    Mutation testing found this: flipping `b - a` to `b + a` in the overall
+    pass-rate delta survived the entire suite, as did renaming the key. The
+    per-cell deltas were covered; the overall block they roll up to was not.
+    """
+
+    def aggregates(self, score, pass_rate):
+        return {
+            "overall": {"cases": 2, "score": score, "pass_rate": pass_rate, "errors": 0},
+            "matrix": [
+                {
+                    "variant": "v",
+                    "model": "m",
+                    "cases": 2,
+                    "score": score,
+                    "pass_rate": pass_rate,
+                    "errors": 0,
+                }
+            ],
+        }
+
+    def test_the_overall_deltas_are_b_minus_a(self):
+        diff = compare_aggregates(self.aggregates(0.25, 0.5), self.aggregates(0.75, 1.0))
+        assert diff["overall"]["score_delta"] == 0.5
+        assert diff["overall"]["pass_rate_delta"] == 0.5
+
+    def test_a_regression_is_negative(self):
+        """Addition would give the same magnitude with the wrong sign."""
+        diff = compare_aggregates(self.aggregates(0.75, 1.0), self.aggregates(0.25, 0.5))
+        assert diff["overall"]["score_delta"] == -0.5
+        assert diff["overall"]["pass_rate_delta"] == -0.5
+
+    def test_the_overall_block_carries_both_sides(self):
+        diff = compare_aggregates(self.aggregates(0.25, 0.5), self.aggregates(0.75, 1.0))
+        assert diff["overall"] == {
+            "score_a": 0.25,
+            "score_b": 0.75,
+            "score_delta": 0.5,
+            "pass_rate_a": 0.5,
+            "pass_rate_b": 1.0,
+            "pass_rate_delta": 0.5,
+        }
+
+    def test_no_change_is_zero_not_a_sum(self):
+        diff = compare_aggregates(self.aggregates(0.5, 0.5), self.aggregates(0.5, 0.5))
+        assert diff["overall"]["score_delta"] == 0.0
+        assert diff["overall"]["pass_rate_delta"] == 0.0
+
+    def test_a_run_with_no_matrix_does_not_crash(self):
+        """`.get("matrix", [])` has a default for a reason."""
+        bare = {"overall": {"cases": 0, "score": 0.0, "pass_rate": 0.0, "errors": 0}}
+        diff = compare_aggregates(bare, bare)
+        assert diff["cells"] == []
+
+
+class TestTheDifferentPopulationsWarning:
+    """Same draw parameters over different-sized case sets.
+
+    A seed selects by position, so the same `--sample 5 --sample-seed 7` over
+    40 cases and over 400 picks different cases entirely. Mutation testing
+    found this branch untested.
+    """
+
+    def meta(self, run_id, sample, seed, available):
+        return {"id": run_id, "selection": {"sample": sample, "seed": seed, "available": available}}
+
+    def test_the_same_draw_over_different_populations_is_flagged(self):
+        note = selection_note(self.meta("a", 5, 7, 40), self.meta("b", 5, 7, 400))
+        assert note is not None
+        assert "different sets of cases" in note
+        assert "40" in note and "400" in note
+
+    def test_the_same_draw_over_the_same_population_is_not(self):
+        assert selection_note(self.meta("a", 5, 7, 40), self.meta("b", 5, 7, 40)) is None
+
+    def test_it_explains_why_a_seed_is_not_enough(self):
+        note = selection_note(self.meta("a", 5, 7, 40), self.meta("b", 5, 7, 400))
+        assert "position" in note
+
+
+class TestTheGateBoundary:
+    """`>=`, not `>`: a run that exactly meets its threshold passes.
+
+    Mutation testing found `min_score`'s boundary untested — every existing
+    case sat comfortably above or below it. A threshold you cannot exactly
+    meet fails a run for hitting its target, and `min_score: 0.8` against a
+    score of 0.8 is the case a user is most likely to actually hit.
+    """
+
+    def test_a_score_exactly_at_the_minimum_passes(self):
+        gate = evaluate_gate(Thresholds(min_score=0.8), {"score": 0.8, "pass_rate": 1.0})
+        assert gate.passed
+
+    def test_a_pass_rate_exactly_at_the_minimum_passes(self):
+        gate = evaluate_gate(Thresholds(min_pass_rate=0.9), {"score": 1.0, "pass_rate": 0.9})
+        assert gate.passed
+
+    def test_a_score_just_below_the_minimum_fails(self):
+        gate = evaluate_gate(Thresholds(min_score=0.8), {"score": 0.7999, "pass_rate": 1.0})
+        assert not gate.passed
+
+    def test_a_baseline_exactly_matched_is_not_a_regression(self):
+        same = {"score": 0.5, "pass_rate": 0.5}
+        assert evaluate_gate(Thresholds(baseline="regression"), same, dict(same)).passed
+
+
+class TestWhatAFailedCheckReports:
+    """`name` and `detail` are the machine-readable contract.
+
+    CI reads them out of `--json run`, so renaming either key silently breaks
+    every pipeline consuming it. Nothing asserted their presence.
+    """
+
+    def test_each_check_names_the_threshold_it_evaluated(self):
+        gate = evaluate_gate(
+            Thresholds(min_pass_rate=0.9, min_score=0.8), {"score": 0.1, "pass_rate": 0.1}
+        )
+        assert [check["name"] for check in gate.checks] == ["min_pass_rate", "min_score"]
+        assert all(check["passed"] is False for check in gate.checks)
+
+    def test_a_detail_states_the_measurement_against_the_requirement(self):
+        gate = evaluate_gate(Thresholds(min_score=0.8), {"score": 0.25, "pass_rate": 1.0})
+        [check] = gate.checks
+        assert check["detail"] == "score 0.250 vs required 0.800"
+
+    def test_a_pass_rate_detail_is_a_percentage(self):
+        gate = evaluate_gate(Thresholds(min_pass_rate=0.9), {"score": 1.0, "pass_rate": 0.5})
+        [check] = gate.checks
+        assert check["detail"] == "pass rate 50.00% vs required 90.00%"
+
+    def test_a_baseline_check_reports_both_measures(self):
+        gate = evaluate_gate(
+            Thresholds(baseline="regression"),
+            {"score": 0.4, "pass_rate": 0.4},
+            {"score": 0.8, "pass_rate": 0.8},
+        )
+        [check] = gate.checks
+        assert check["name"] == "baseline"
+        assert (
+            check["detail"] == "score 0.400 vs baseline 0.800; pass rate 40.00% vs baseline 80.00%"
+        )

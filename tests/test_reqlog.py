@@ -272,6 +272,22 @@ class TestItNeverBreaksARun:
         written = entries(project / "trace.jsonl")
         assert len(written) == 1
 
+    def test_an_unusual_value_is_rendered_rather_than_dropped(self, project):
+        """`default=str` is what keeps a Path or a datetime in the trace.
+
+        Without it the whole entry raises and falls back to a placeholder
+        line, losing the call it was recording. Asserting only that *a* line
+        was written could not tell the two apart — mutation testing could.
+        """
+        from pathlib import Path
+
+        log = RequestLog(project / "trace.jsonl")
+        log.record(model="m", where=Path("/tmp/somewhere"), count=3)
+        [written] = entries(project / "trace.jsonl")
+        assert written["where"] == "/tmp/somewhere"
+        assert written["count"] == 3
+        assert "error" not in written, "the entry fell back instead of serializing"
+
 
 class TestThroughTheCli:
     def test_the_flag_writes_the_file_and_says_so(self, project):
