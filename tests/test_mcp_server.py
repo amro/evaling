@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+from datetime import timedelta
 
 import pytest
+import yaml
 
 from evaling.engine import run_eval
 from evaling.errors import EvalingError
@@ -309,7 +311,10 @@ class TestOverTheProtocol:
             )
             async with (
                 stdio_client(params) as (read, write),
-                ClientSession(read, write) as session,
+                # A server that starts but never answers — a stray print() to
+                # stdout corrupting the framing, say — would otherwise hang the
+                # CI job to its limit instead of failing.
+                ClientSession(read, write, read_timeout_seconds=timedelta(seconds=30)) as session,
             ):
                 init = await session.initialize()
                 return await body(session, init)
@@ -374,3 +379,77 @@ class TestOverTheProtocol:
         strictness = self.drive(project, body)
         permissive = [name for name, value in strictness.items() if value is not False]
         assert not permissive, f"these tools accept unknown arguments: {permissive}"
+
+    def test_an_unknown_argument_is_refused(self, project):
+        """A misspelled argument must not read as a successful default run."""
+
+        async def body(session, init):
+            result = await session.call_tool("run_eval", {"config": "somewhere-else.yaml"})
+            return result.isError, result.content[0].text
+
+        is_error, text = self.drive(project, body)
+        assert is_error is True, "an unknown argument was accepted and dropped"
+        assert "config" in text
+
+
+class TestProgressNotifications:
+    """The fire-and-forget progress path, which had no coverage at any layer.
+
+    In-process rather than a subprocess: `create_connected_server_and_client_session`
+    runs the whole JSON-RPC layer over memory streams, so this is fast enough
+    not to need the slow marker.
+    """
+
+    def collect(self, tmp_path, cases=3):
+        config = make_config(
+            tmp_path, cases=[{"id": f"c{i}", "vars": {"q": str(i)}} for i in range(cases)]
+        )
+        (tmp_path / "eval.yaml").write_text(
+            yaml.safe_dump(config.model_dump(mode="json")), encoding="utf-8"
+        )
+        seen = []
+
+        async def go():
+            from mcp.shared.memory import create_connected_server_and_client_session as connect
+
+            server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
+
+            async def on_progress(progress, total, message):
+                seen.append((progress, total, message))
+
+            async with connect(server._mcp_server) as session:
+                result = await session.call_tool(
+                    "run_eval",
+                    {"config_path": str(tmp_path / "eval.yaml")},
+                    progress_callback=on_progress,
+                )
+                return json.loads(result.content[0].text)
+
+        return asyncio.run(go()), seen
+
+    def test_a_notification_arrives_for_every_cell(self, tmp_path):
+        summary, seen = self.collect(tmp_path)
+        assert summary["counts"]["total"] == 3
+        assert len(seen) == 3, f"expected one notification per cell, got {seen}"
+        assert [p for p, _, _ in seen] == [1.0, 2.0, 3.0]
+        assert all(total == 3.0 for _, total, _ in seen)
+        assert seen[-1][2] == "3/3 cells"
+
+    def test_a_run_without_a_listener_still_completes(self, tmp_path):
+        """Progress is fire-and-forget: no client callback must not fail a run."""
+
+        async def go():
+            from mcp.shared.memory import create_connected_server_and_client_session as connect
+
+            config = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "x"}}])
+            (tmp_path / "eval.yaml").write_text(
+                yaml.safe_dump(config.model_dump(mode="json")), encoding="utf-8"
+            )
+            server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
+            async with connect(server._mcp_server) as session:
+                result = await session.call_tool(
+                    "run_eval", {"config_path": str(tmp_path / "eval.yaml")}
+                )
+                return json.loads(result.content[0].text)
+
+        assert asyncio.run(go())["counts"]["succeeded"] == 1

@@ -112,10 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The MCP server reported the MCP SDK's version as its own, so an agent asking
   what it was connected to heard `1.28.1` rather than evaling's version.
-- MCP tools now advertise `additionalProperties: false`. Previously a
-  misspelled argument was accepted and dropped, so `run_eval` with a typo'd
-  `config_path` ran the default config and reported success — the failure mode
-  that looks like it worked.
+- MCP tool arguments are now validated against the advertised schema, so an
+  unknown or misspelled one is refused. Previously it was accepted and
+  silently dropped, so `run_eval` with a typo'd `config_path` ran the default
+  config and reported success — the failure mode that looks like it worked, on
+  the one tool that spends money. Argument types are checked too.
 
 - **No-look mode leaked case content on every failure path.** A failing
   `contains` criterion wrote the case's `expected` value into

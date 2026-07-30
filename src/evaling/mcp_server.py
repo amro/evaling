@@ -377,34 +377,39 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
     ) -> dict[str, Any]:
         return render_prompt_tool(config_path_arg or config_path or "eval.yaml", variant, case_id)
 
-    _forbid_unknown_arguments(server)
+    _reject_unknown_arguments(server)
     return server
 
 
-def _forbid_unknown_arguments(server) -> None:
-    """Advertise that a tool takes exactly the arguments it declares.
+def _reject_unknown_arguments(server) -> None:
+    """Make a tool take exactly the arguments it declares, and refuse the rest.
 
-    Without this the generated schema permits anything, so an agent that
-    misspells `config_path` gets a successful run of the *default* config
-    rather than an error — the worst kind of wrong, since it looks like it
-    worked. A conforming client checks arguments against the advertised schema
-    and refuses first.
+    Without this, an agent that misspells `config_path` gets a successful run
+    of the *default* config instead of an error — the worst kind of wrong,
+    because it looks like it worked, on the one tool that spends money.
 
-    Note this is advertisement, not enforcement: FastMCP validates arguments
-    with a Pydantic model that ignores extras, so a client that skips schema
-    validation still has its unknown argument dropped silently. Reaching into
-    the tool manager is the only way to set this today, so it is best-effort —
-    a test asserts the schemas really are strict, which is what catches an SDK
-    change rather than users doing so.
+    Two halves. The generated schema permits any extra property, so each tool's
+    schema is marked closed. And FastMCP registers its call handler with
+    ``validate_input=False``, so nothing checks arguments against that schema —
+    re-registering the same handler with validation on makes the server refuse
+    an unknown argument rather than dropping it.
+
+    ``validate_input`` is public API on the lowlevel server, which the ``mcp``
+    floor in pyproject guarantees. Setting the schema needs the tool manager's
+    internals, so that half is best-effort; a test asserts the schemas really
+    are closed, so an SDK change breaks CI rather than a user's server.
     """
     manager = getattr(server, "_tool_manager", None)
     tools = getattr(manager, "_tools", None)
-    if not isinstance(tools, dict):  # pragma: no cover - SDK internals moved
-        return
-    for tool in tools.values():
-        schema = getattr(tool, "parameters", None)
-        if isinstance(schema, dict):
-            schema.setdefault("additionalProperties", False)
+    if isinstance(tools, dict):
+        for tool in tools.values():
+            schema = getattr(tool, "parameters", None)
+            if isinstance(schema, dict):
+                schema.setdefault("additionalProperties", False)
+    # Same handler, validation on. jsonschema also checks argument *types*,
+    # so a client sending "2" where an integer is declared is refused rather
+    # than quietly coerced.
+    server._mcp_server.call_tool(validate_input=True)(server.call_tool)
 
 
 async def _report(ctx, done: int, total: int) -> None:

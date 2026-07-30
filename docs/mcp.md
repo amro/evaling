@@ -7,16 +7,6 @@ eval, read the scores, drill into what failed, iterate.
 CI does **not** need this — use the CLI there (exit codes plus `--json` or
 `--html`). MCP is for interactive, agent-driven iteration.
 
-
-## Argument names must match exactly
-
-Tool schemas declare `additionalProperties: false`, so a client that validates
-arguments against the schema refuses a misspelled one. If yours doesn't
-validate, an unknown argument is dropped silently by the MCP SDK — which for
-`run_eval` means a successful run of the *default* config rather than the one
-you meant. Check the parameter names in `list_tools` rather than guessing;
-`run_eval` takes `config_path`, not `config`.
-
 ## Install
 
 The MCP SDK is an optional extra, so CLI-only users don't carry it:
@@ -94,6 +84,21 @@ With `variant` and `case_id`, returns the exact messages that case renders to.
 With neither, validates the entire config and reports any render errors. Either
 way no model is called, which makes it the cheap way to check an edit before
 spending anything.
+
+## Argument names must match exactly
+
+Tool arguments are validated against the advertised schema, so a misspelled or
+unknown argument is refused:
+
+```
+Input validation error: Additional properties are not allowed ('config' was unexpected)
+```
+
+That matters most for `run_eval`, which spends money: without validation a
+typo'd `config_path` would have run the *default* config and reported success.
+Types are checked too, so send `2` rather than `"2"` for an integer. Take
+parameter names from `list_tools` rather than guessing — `run_eval` takes
+`config_path`, not `config`.
 
 ## Design notes
 
