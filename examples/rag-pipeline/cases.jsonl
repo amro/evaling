@@ -1,0 +1,9 @@
+{"id": "q-refund-time", "question": "How long does a refund take to reach my card?", "expected": "10 business days", "answerable": true}
+{"id": "q-refund-transfer", "question": "I paid by bank transfer, how long is the refund?", "expected": "15 business days", "answerable": true}
+{"id": "q-express", "question": "When does express shipping arrive?", "expected": "next business day", "answerable": true}
+{"id": "q-po-box", "question": "Can you ship to a PO box?", "expected": "do not ship to PO boxes", "answerable": true}
+{"id": "q-2fa", "question": "What happens to my sessions if 2fa is reset?", "expected": "signed out on all devices", "answerable": true}
+{"id": "q-battery", "question": "How long is the warranty on batteries?", "expected": "12 months", "answerable": true}
+{"id": "q-warranty-proof", "question": "How do I get a refund for a faulty item under warranty?", "expected": "photograph of the serial plate", "answerable": true}
+{"id": "q-gift-card", "question": "Do gift cards expire?", "expected": "", "answerable": false}
+{"id": "q-stores", "question": "Which countries have a physical store I could visit?", "expected": "", "answerable": false}

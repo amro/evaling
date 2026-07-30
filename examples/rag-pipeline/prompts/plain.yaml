@@ -1,0 +1,7 @@
+# Answer the question. No constraint on where the answer comes from — which is
+# how most pipelines start, and why they confabulate.
+- role: system
+  content: |
+    Answer the customer's question using the support documentation.
+- role: user
+  content: "{{ question }}"

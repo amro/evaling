@@ -1,0 +1,64 @@
+# Evaluating a RAG pipeline, not a prompt.
+#
+# The system under test is `pipeline.py`: retrieve from a local corpus, then
+# answer. It runs through the `command` provider, which is what lets evaling
+# evaluate anything you can invoke — an agent, a RAG chain, a local binary —
+# rather than only a chat API.
+#
+# Runs offline: retrieval is real, generation is a deterministic stand-in.
+# Swap that one function for a model call and this config is unchanged.
+#
+#   evaling validate    # check it renders; calls nothing
+#   evaling run         # 2 variants x 2 retrieval configs x 9 cases = 36 cells
+#   evaling show latest --failures
+#
+# What it measures, on two axes at once:
+#
+#   the prompt      two of the nine questions are not covered by the corpus at
+#                   all. The grounded prompt says so; the plain one answers
+#                   from whatever came back first.
+#   the retrieval   one question's answer lives in the second-ranked document,
+#                   so top_k=1 cannot reach it however good the prompt is.
+#
+# Both are pipeline properties rather than prompt properties, which is the
+# reason to evaluate the system instead of the wording.
+
+models:
+  # Not two models: two retrieval configurations of one pipeline. `params` is
+  # passed through to the script, so anything it can read is a dimension you
+  # can put on the matrix — chunk size, reranker, index version.
+  - id: retrieve-1
+    provider: command
+    command: python3 pipeline.py
+    params: {top_k: 1}
+  - id: retrieve-3
+    provider: command
+    command: python3 pipeline.py
+    params: {top_k: 3}
+
+variants:
+  - name: plain
+    prompt: prompts/plain.yaml
+  - name: grounded
+    prompt: prompts/grounded.yaml
+
+cases:
+  file: cases.jsonl
+
+scorecard:
+  # The one that matters: right answer when there is one, an admission when
+  # there isn't. Weighted heavily because a confabulated answer is worse than
+  # a missing one.
+  - criterion: answered-honestly
+    scorer: {type: python, file: scorers/answered.py}
+    weight: 3
+  # Retrieval you can audit: an answer citing its source can be checked, and
+  # one that can't be checked has to be taken on faith.
+  - criterion: cites-a-document
+    scorer: {type: python, file: scorers/cited.py}
+    weight: 1
+
+thresholds:
+  # Deliberately modest: this matrix contains a configuration meant to be bad,
+  # so the overall number is not the interesting one. Read the matrix.
+  min_pass_rate: 0.4

@@ -133,6 +133,31 @@ class TestSubstantialExamples:
         # The model that wraps JSON in prose fails the format criteria outright.
         assert by_cell[("structured", "chatty")]["pass_rate"] == 0.0
 
+    def test_rag_pipeline_discriminates_on_both_axes(self, tmp_path):
+        """A worked `command`-provider example: the system is the thing tested.
+
+        Both differences it demonstrates have to survive, because either one
+        vanishing turns the example into a matrix where nothing matters.
+        """
+        config = load_config(E2E / "rag-pipeline" / "eval.yaml")
+        result = run_eval(config, make_settings(tmp_path))
+        assert result.counts["total"] == 36
+        assert result.counts["failed"] == 0
+
+        by_cell = {(cell["variant"], cell["model"]): cell for cell in result.aggregates["matrix"]}
+        # The grounded prompt declines what the corpus doesn't cover.
+        assert (
+            by_cell[("grounded", "retrieve-3")]["score"] > by_cell[("plain", "retrieve-3")]["score"]
+        )
+        # ...and deeper retrieval reaches an answer the top document lacks,
+        # which no prompt can fix.
+        assert (
+            by_cell[("grounded", "retrieve-3")]["score"]
+            > by_cell[("grounded", "retrieve-1")]["score"]
+        )
+        # The plain prompt never cites a source, so it passes nothing.
+        assert by_cell[("plain", "retrieve-1")]["pass_rate"] == 0.0
+
     def test_no_look_example_leaks_nothing(self, tmp_path):
         config = load_config(E2E / "no-look" / "eval.yaml")
         settings = make_settings(tmp_path)

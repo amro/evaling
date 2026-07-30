@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`examples/rag-pipeline/`** — a worked `command`-provider example where the
+  thing under test is a system rather than a prompt: retrieve from a corpus,
+  then answer. The only existing `command` example was a keyword classifier,
+  which demonstrated the wire protocol but not the point.
+
+  It discriminates on two axes. The prompt changes pipeline *behaviour* — two
+  of the nine questions are not covered by the corpus, and the grounded prompt
+  declines while the plain one answers from whatever came back first. And the
+  retrieval configuration is a matrix dimension: one answer lives in the
+  second-ranked document, so `top_k: 1` cannot reach it however good the
+  prompt is. That second case is the argument for evaluating the system — a
+  prompt eval would have reported the prompt was fine. Offline and
+  deterministic; swap one function for a real model call.
+
 - **`evaling calibrate --from-run RUN --labels FILE`** — scaffolds an eval
   that measures how well a judge agrees with you, from a run you already made
   plus your ratings of its outputs. `docs/evaluating-judges.md` described the
