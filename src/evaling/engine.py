@@ -56,6 +56,12 @@ from evaling.storage import (
     snapshot_config,
 )
 
+#: Cell count above which a caller is asked to confirm before anything is
+#: spent. Lives here rather than in the CLI because every surface that can
+#: start a run needs the same number — the CLI had it alone, which left the
+#: one surface with the least human supervision as the one with no ceiling.
+CONFIRM_THRESHOLD = 100
+
 #: Above this many cells a run stops handing every record back in memory.
 #: Counts, totals, and aggregates are unaffected — they are accumulated as the
 #: run proceeds — but ``records`` would be hundreds of megabytes of prompts and

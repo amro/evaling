@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The large-matrix confirmation now applies over MCP.** `run` asks before
+  100+ model calls, but only at a terminal — so CI skipped it deliberately
+  (a prompt would hang the build; `--max-cost` is the guard there) and MCP
+  skipped it entirely, leaving the surface with the least human supervision as
+  the one with no ceiling. `run_eval` now refuses a matrix that size unless
+  `max_cost_usd`, `sample`, or `confirm_large: true` is passed, and the error
+  names all three.
+
 - **`--fail-fast`** on `run` (and `fail_fast` over MCP): stop at the first
   failing cell instead of paying for the rest of the matrix. The stop is
   graceful — cells already in flight finish and are recorded, and the run

@@ -87,6 +87,21 @@ It returns the run id, counts, totals, the aggregate matrix, the gate verdict,
 and up to five failing cells — not the full records. Ask for the rest with
 `get_run`.
 
+### Large runs are confirmed, not just started
+
+A call of 100 model calls or more is refused unless it is bounded or
+acknowledged:
+
+```
+this run is 4200 model calls, which is above the 100-call confirmation
+threshold. Pass max_cost_usd to cap the spend, sample to run a subset, or
+confirm_large=true to run it as-is.
+```
+
+The CLI shows the same confirmation, but only at a terminal — which left the
+surface with no human watching as the one with no ceiling. `max_cost_usd` is
+usually the right answer, since it bounds the bill rather than the count.
+
 ### `get_run`
 
 `detail="summary"` (default) returns aggregates only. `detail="failures"`

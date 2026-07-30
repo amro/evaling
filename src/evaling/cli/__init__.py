@@ -19,15 +19,13 @@ from evaling.cli.scaffold import scaffold_project
 from evaling.config import load_config, resolve_settings
 from evaling.config.loader import load_project_settings
 from evaling.config.schema import CaseSourceRef
+from evaling.engine import CONFIRM_THRESHOLD, run_eval, select_matrix, select_variants_models
 from evaling.engine import dry_run as engine_dry_run
-from evaling.engine import run_eval, select_matrix, select_variants_models
 from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.report import render_compare_html, render_run_html
 from evaling.scoring import compare_aggregates
 from evaling.storage import RunStore
-
-CONFIRM_THRESHOLD = 100  # request count above which `run` asks before spending
 
 
 class App:
