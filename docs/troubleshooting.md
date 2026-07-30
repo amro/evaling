@@ -123,6 +123,13 @@ last page rather than repeating the final cursor.
 `--max-cost` reached its ceiling. This is admission control, not a failure:
 evaling stops issuing new calls and tells you how many cells it skipped.
 Raise the ceiling or narrow the matrix with `--model` / `--variant` / `--case`.
+Resume it with a higher ceiling and it finishes the cells it skipped.
+
+Thresholds are evaluated over the cells that actually ran. If the ceiling was
+reached before any of them, there is nothing to judge and the run reports
+`gate not evaluated — no cell ran` rather than a verdict — a pass rate of 0%
+over 0 cases is missing data, not a measured regression. The run still exits
+`1`, because it did not evaluate what it was asked to.
 
 ### `variant 'v' uses video content, which model 'm' (provider 'openai') does not support`
 

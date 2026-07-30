@@ -305,6 +305,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A run that evaluated nothing announced a quality regression.** Aggregates
+  report `pass_rate: 0.0` when no cell ran — a "no data" fallback — and a
+  threshold read it as "0% of cases passed" and failed the gate. So a
+  `--max-cost` ceiling reached before the first call printed
+  `gate FAILED — pass rate 0.00% vs required 50.00%`, which is a claim about
+  quality that nothing had measured, in the same output as a warning saying
+  the scores covered only what was attempted.
+
+  Thresholds are still evaluated over whatever cells ran; zero cells now
+  yields no verdict, reported as `gate not evaluated — no cell ran`, and
+  `gate` is `null` in `--json`. The run still exits `1` — it did not evaluate
+  what it was asked to — but now for the honest reason, which is also the one
+  CI can act on: `incomplete: cost ceiling` rather than a phantom regression.
+
+- **`--label latest` and `--label baseline` were refused after the run
+  appeared to start.** Both are reserved because `resolve_ref` resolves them
+  before labels, so a run carrying one would be shadowed and unreachable by
+  name. The check lived only in `create_run`, which the engine reaches after
+  the CLI has printed `Running N requests` and painted a progress bar —
+  nothing was spent and no run directory was left, but it read as a crash
+  rather than a refusal. The CLI now checks before the run starts, beside the
+  existing `--log-requests` pre-flight; the store keeps its own check for
+  library and MCP callers.
+
 - **The test suite could reach the network and spend a real API key.**
   "Tests never touch the network, no real API keys" was a rule in
   `CONTRIBUTING.md` and nothing else, and it was already being broken: one

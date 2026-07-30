@@ -68,7 +68,10 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   recorded, so the partial run is worth reading.
 
   A sampled run is still gated: `thresholds` are evaluated over the sample, so
-  a small one can fail the build on noise. Use `--sample` for the smoke check
+  a small one can fail the build on noise. The same is true of a run cut short
+  by `--max-cost` — thresholds see the cells that ran. If none did, there is
+  no verdict at all and the run exits `1` as incomplete rather than claiming a
+  regression it never measured. Use `--sample` for the smoke check
   and let the unsampled run be the one that decides.
 
 - **Publish a report artifact** — a single self-contained HTML file, viewable
@@ -102,6 +105,11 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   ```sh
   evaling --json run | jq -e '.gate.passed'
   ```
+
+  `gate` is `null` when there was no verdict to give — no thresholds
+  configured, or no cell ran (see `--max-cost` below). `jq -e` fails on
+  `null`, and the exit code of `run` already reflects it, so neither case
+  passes a build by accident.
 
 ## Gating on production data
 
