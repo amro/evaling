@@ -42,12 +42,25 @@ def read_text(path: Path, error: type[EvalingError], *, missing: str) -> str:
         raise error(f"could not read {path}: {exc}") from exc
 
 
-def read_yaml(path: Path, error: type[EvalingError], *, missing: str) -> Any:
-    """Parsed YAML from a file, or ``error``. Never a traceback."""
+def read_yaml(
+    path: Path, error: type[EvalingError], *, missing: str, quote_content: bool = True
+) -> Any:
+    """Parsed YAML from a file, or ``error``. Never a traceback.
+
+    ``quote_content=False`` for a file whose contents are secret: PyYAML's
+    error message embeds the line it failed on, which is exactly the line
+    holding the key when a secrets file is malformed. The position is still
+    reported, because that is what someone needs to fix it.
+    """
     raw = read_text(path, error, missing=missing)
     try:
         return yaml.safe_load(raw)
     except yaml.YAMLError as exc:
+        if not quote_content:
+            mark = getattr(exc, "problem_mark", None)
+            where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+            problem = getattr(exc, "problem", None) or "could not be parsed"
+            raise error(f"{path}: invalid YAML{where}: {problem}") from exc
         raise error(f"{path}: invalid YAML: {exc}") from exc
     except RecursionError as exc:
         # PyYAML composes recursively, so nesting deeper than the interpreter's

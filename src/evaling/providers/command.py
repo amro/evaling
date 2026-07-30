@@ -18,6 +18,7 @@ from typing import Any
 
 from evaling.providers.base import Completion, CompletionRequest, Provider, ProviderError
 from evaling.providers.pricing import estimate_cost
+from evaling.secrets import redact
 from evaling.storage import serialize_messages
 
 DEFAULT_TIMEOUT_S = 300.0
@@ -32,6 +33,11 @@ class CommandProvider(Provider):
         # Secrets reach the script through its environment — a wrapper around a
         # real API usually needs the same key evaling would have used.
         super().__init__(spec, env=env, base_dir=base_dir, request_log=request_log)
+        #: Values to scrub from anything the script says back.
+        self._secret_values = list(getattr(env, "secret_values", ()) or [])
+        key_env = spec.api_key_env or ""
+        if key_env and env is not None and env.get(key_env):
+            self._secret_values.append(env[key_env])
 
     async def complete(self, request: CompletionRequest) -> Completion:
         payload = json.dumps(
@@ -60,7 +66,9 @@ class CommandProvider(Provider):
             )
 
         if code != 0:
-            detail = stderr.strip() or stdout.strip() or "<no output>"
+            # Redacted: the script runs with evaling's environment, so its own
+            # diagnostics routinely echo the credential it was handed.
+            detail = redact(stderr.strip() or stdout.strip() or "<no output>", self._secret_values)
             raise ProviderError(
                 f"model {self.spec.id!r}: command exited {code}: {detail[:300]}",
                 # A failing script is usually deterministic, but transient

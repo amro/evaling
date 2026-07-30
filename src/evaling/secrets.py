@@ -58,7 +58,11 @@ def candidate_paths(
 
 
 def _load_file(path: Path) -> dict[str, str]:
-    data = read_yaml(path, SecretsError, missing=f"secrets file not found: {path}")
+    # quote_content=False: a syntax error in this file is a syntax error on a
+    # line that holds a credential, and PyYAML quotes the line it failed on.
+    data = read_yaml(
+        path, SecretsError, missing=f"secrets file not found: {path}", quote_content=False
+    )
     if data is None:
         return {}
     if not isinstance(data, dict):

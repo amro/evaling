@@ -110,7 +110,10 @@ class HttpProvider(Provider):
         try:
             return response.json()
         except ValueError as exc:
-            body = response.text[:200]
+            # Redacted like every other body that reaches an error: a gateway
+            # reflecting the auth header into a non-JSON response would
+            # otherwise put a live key into results.jsonl.
+            body = self._redact(response.text[:200])
             raise ProviderError(
                 f"model {self.spec.id!r}: response was not JSON: {body!r}", retryable=False
             ) from exc
