@@ -614,7 +614,9 @@ def show(app, ref, failures, case_id):
 @cli_errors
 def list_runs(app, limit):
     """List stored runs, newest first."""
-    runs = list(reversed(app.store().list_runs()))[:limit]
+    # Clamped like the MCP tool: a negative limit silently dropped the oldest
+    # run via negative slicing, and 0 printed "no runs yet" while runs existed.
+    runs = list(reversed(app.store().list_runs()))[: max(1, limit)]
     if app.json_output:
         app.echo_json(runs)
         return

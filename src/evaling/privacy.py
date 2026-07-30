@@ -19,6 +19,7 @@ case content.
 import hashlib
 from typing import Any
 
+from evaling.secrets import redact
 from evaling.storage import ResultRecord
 
 #: Stand-in for a case id when ids are hashed.
@@ -34,6 +35,29 @@ def hash_case_id(case_id: str) -> str:
     """
     digest = hashlib.sha256(case_id.encode("utf-8")).hexdigest()
     return f"{HASH_PREFIX}{digest[:HASH_LENGTH]}"
+
+
+def scrub_secrets(record: ResultRecord, values: "list[str] | tuple[str, ...]") -> ResultRecord:
+    """Remove known credentials from anything a record carries. In place.
+
+    Unlike no-look this is always on. A model can return a credential —
+    a gateway echoing a header, a `command` wrapper printing its own
+    environment — and `results.jsonl` is shared, exported, and attached to
+    issues. Only errors were covered before, so the guarantee in
+    ``HttpProvider._redact`` ("never let a secret reach an error message, a
+    log, or results.jsonl") held for two of the three.
+    """
+    if not values:
+        return record
+    if record.output:
+        record.output = redact(record.output, values)
+    if record.error:
+        record.error = redact(record.error, values)
+    for entry in record.scores.values():
+        for field in ("detail", "error"):
+            if isinstance(entry.get(field), str):
+                entry[field] = redact(entry[field], values)
+    return record
 
 
 def redact_record(

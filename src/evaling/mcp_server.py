@@ -152,11 +152,11 @@ async def run_eval_tool(
                 "there is no population to draw from. Set `limit` in the config to take "
                 "fewer, or sample inside your source."
             )
-        if config.cases.limit is None and max_cost_usd is None:
+        if config.cases.limit is None and max_cost_usd is None and not confirm_large:
             raise ConfigError(
                 "this config fetches cases from a source with no `limit`, so the number "
                 "of model calls is whatever the source returns. Set `limit` in the "
-                "config, or pass max_cost_usd."
+                "config, pass max_cost_usd, or pass confirm_large to run it anyway."
             )
         variants_sel, models_sel = select_variants_models(config, models=models, variants=variants)
         total = (
@@ -333,7 +333,7 @@ def list_runs_tool(
     store = _store(output_dir, config_path)
     runs = list(reversed(store.list_runs()))
     rows = []
-    for meta in runs[: max(1, limit)]:
+    for meta in runs[: max(1, limit)]:  # clamped; the CLI clamps identically
         overall = (meta.get("aggregates") or {}).get("overall") or {}
         rows.append(
             {
@@ -402,6 +402,9 @@ def render_prompt_tool(
 
 
 def build_server(output_dir: str | None = None, config_path: str | None = None):
+    # Bound once here so the tool wrappers below can take `config_path` as
+    # their own parameter name without shadowing the server's default.
+    default_config = config_path
     """Register the tools on a FastMCP server (import is lazy: optional dep)."""
     try:
         from mcp.server.fastmcp import Context, FastMCP
@@ -477,11 +480,14 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
 
     @server.tool(description=render_prompt_tool.__doc__)
     def render_prompt(
-        config_path_arg: str | None = None,
+        config_path: str | None = None,
         variant: str | None = None,
         case_id: str | None = None,
     ) -> dict[str, Any]:
-        return render_prompt_tool(config_path_arg or config_path or "eval.yaml", variant, case_id)
+        # Named `config_path` like every other tool. It used to carry the
+        # wrapper's own variable name, so an agent passing the argument that
+        # works everywhere else got told it was unknown.
+        return render_prompt_tool(config_path or default_config or "eval.yaml", variant, case_id)
 
     _reject_unknown_arguments(server)
     return server

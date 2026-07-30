@@ -234,7 +234,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compiling the same template 30,000 times and keeping every result alive.
   Throughput improved ~21% (1,030 → 1,250 cells/sec against the mock provider).
 
+### Added
+
+- **Two harnesses that cover a class instead of an instance**, after five
+  rounds of finding the same shapes one at a time.
+
+  `tests/test_surface_parity.py` drives one scenario table through both the
+  CLI and the MCP server and asserts they agree about what they refuse. The
+  surfaces had diverged five separate times — the large-matrix confirmation,
+  `sample_seed` without `sample`, source-backed refusals, `--yes` against an
+  unbounded source, `list --limit` clamping — each found by a person, after
+  shipping. Deliberate differences are listed with their reasons, so "missing"
+  reads differently from "decided".
+
+  `tests/test_hostile_content.py` builds one run whose every text field is
+  hostile — unbalanced rich markup, a spreadsheet formula, a script tag, a
+  markdown table break, a credential, an RTL override — and drives every
+  reading command and every MCP tool over it, asserting nothing crashes,
+  nothing is interpreted, and no secret survives. Adding a command means
+  adding one line.
+
 ### Fixed
+
+- **`render_prompt`'s config argument is now `config_path`**, like every other
+  MCP tool; it had carried the wrapper's own variable name, so an agent
+  passing the argument that works everywhere else was told it was unknown.
+  `list --limit 0` and negative limits now clamp on the CLI as they already
+  did over MCP, and `confirm_large` acknowledges an unbounded source the way
+  `--yes` does on the CLI.
+
+- **A credential returned *by* a model was stored verbatim.** `results.jsonl`,
+  exports, and reports are shared and attached to issues, and a gateway
+  echoing a header or a `command` wrapper printing its environment puts a key
+  in the model's output — not just in an error, which was the only path
+  covered. Every credential a run knows about is now scrubbed from stored
+  output, errors, and scorer details at the same choke point where no-look
+  redaction happens.
 
 - **A pinned baseline pointing at an unfinished run failed the run after full
   spend**, contradicting the "must fail before any model call" intent — the

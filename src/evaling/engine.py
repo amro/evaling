@@ -36,7 +36,7 @@ from evaling.config.settings import resolve_settings
 from evaling.content import MediaRef
 from evaling.errors import EvalingError
 from evaling.limits import limiter_for
-from evaling.privacy import hash_case_id, redact_record
+from evaling.privacy import hash_case_id, redact_record, scrub_secrets
 from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
@@ -214,6 +214,7 @@ async def _run_eval_impl(
         settings = resolve_settings(None, config.settings, base_dir=config.base_dir)
 
     privacy = config.privacy
+    secret_values = _known_credentials(providers)
     source_ref = config.cases if isinstance(config.cases, CaseSourceRef) else None
     store = RunStore(settings.output_dir)
 
@@ -426,10 +427,11 @@ async def _run_eval_impl(
             return None
         except Exception as exc:  # noqa: BLE001 - per-cell isolation: no cell may kill the run
             record.error = _describe_error(exc, safe=privacy.no_look)
-        # The one place case data can leave this function. Redacting here, in
-        # place, means storage, callbacks, progress display, reports, and
-        # exports are all structurally incapable of seeing it — rather than
-        # each having to remember not to.
+        # The one place a record leaves this function. Both scrubs happen
+        # here so that storage, callbacks, the progress display, reports, and
+        # exports are structurally incapable of seeing what they should not —
+        # rather than each having to remember.
+        scrub_secrets(record, secret_values)
         if privacy.no_look:
             redact_record(record, keep_detail, hash_case_ids=not privacy.keep_case_ids)
         if budget_gone[0]:
@@ -722,6 +724,20 @@ def _check_resumable_matrix(
         "with cells from two different selections. Resume with the same filters the run "
         "started with, or start a fresh run."
     )
+
+
+def _known_credentials(providers: dict[str, Any]) -> list[str]:
+    """Every credential this run could accidentally persist.
+
+    Values from a secrets file, plus the key each model resolved from the
+    environment — the latter is not in the secrets list and is the usual case.
+    """
+    values: list[str] = []
+    for provider in providers.values():
+        values.extend(getattr(provider.env, "secret_values", ()) or ())
+        values.append(provider.credential)
+    # Deduplicated, order preserved, empties dropped.
+    return list(dict.fromkeys(value for value in values if value))
 
 
 def _prior_judge_cost(store: RunStore, resume_run_id: str | None) -> float:

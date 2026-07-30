@@ -167,9 +167,13 @@ class TestProviderIntegration:
 
         script = tmp_path / "show_env.py"
         script.write_text(
+            # Reports *whether* it got the value, not the value: echoing a
+            # credential is exactly what the output scrub now removes, so a
+            # test that checks for it verifies the scrub instead.
             "import os, sys, json\n"
             "sys.stdin.read()\n"
-            "print(os.environ.get('MY_SERVICE_KEY', 'MISSING'), end='')\n"
+            "got = os.environ.get('MY_SERVICE_KEY')\n"
+            "print('MATCHED' if got == 'from-secrets' else f'MISSING:{got!r}', end='')\n"
         )
         write_secrets(tmp_path / PROJECT_SECRETS_NAME, "MY_SERVICE_KEY: from-secrets\n")
         config = make_config(
@@ -184,7 +188,7 @@ class TestProviderIntegration:
             cases=[{"id": "c1", "vars": {"q": "x"}}],
         )
         result = run_eval(config, make_settings(tmp_path))
-        assert result.records[0].output == "from-secrets"
+        assert result.records[0].output == "MATCHED"
 
 
 class TestRunIntegration:

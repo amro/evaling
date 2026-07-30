@@ -107,24 +107,32 @@ class Provider(ABC):
         #: request they sent and the response they got. None by default: this
         #: is a debugging aid, not part of a run.
         self.request_log = request_log
-        if request_log is not None:
-            # Register this model's key with the log before anything is
-            # written. Only the provider knows which variable holds it, and a
-            # key from the real environment is not in the secrets-file list —
-            # so without this, a gateway that echoes the header into an error
-            # body would put a live credential on disk.
-            key_env = spec.api_key_env or getattr(type(self), "DEFAULT_API_KEY_ENV", "")
-            if key_env:
-                # os.environ when no env was supplied, because that is where
-                # the providers themselves will look for the key.
-                lookup = os.environ if env is None else env
-                request_log.add_secret(lookup.get(key_env))
         #: Environment used for API-key lookups: the real environment plus any
         #: secrets file. None means "use os.environ".
+        #: Assigned before the registration below, which reads it.
         self.env = env
+        if request_log is not None:
+            # Registered before anything is written: only the provider knows
+            # which variable holds its key, and a key from the real
+            # environment is not in the secrets-file list.
+            request_log.add_secret(self.credential)
         #: Directory of the config that declared this model. Relative paths in
         #: a model spec resolve against it, like every other path in a config.
         self.base_dir = base_dir
+
+    @property
+    def credential(self) -> "str | None":
+        """The API key this model will use, if it has one.
+
+        One definition, so everything that must not persist a credential —
+        the request log, error redaction, stored output — agrees about what
+        the credential is.
+        """
+        key_env = self.spec.api_key_env or getattr(type(self), "DEFAULT_API_KEY_ENV", "")
+        if not key_env:
+            return None
+        lookup = os.environ if self.env is None else self.env
+        return lookup.get(key_env)
 
     @abstractmethod
     async def complete(self, request: CompletionRequest) -> Completion:
