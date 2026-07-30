@@ -345,5 +345,5 @@ open. For complete per-cell data at that size use `export --format csv`, or
 | Code | Meaning |
 |---|---|
 | 0 | Success (and gate passed, if configured) |
-| 1 | The gate failed, `--fail-fast` stopped the run, or `--max-cost` left it incomplete |
+| 1 | The gate failed, `--fail-fast` stopped the run, `--max-cost` left it incomplete, or the run evaluated no cells at all |
 | 2 | Config, usage, or reference errors |

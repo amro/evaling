@@ -1,9 +1,9 @@
 # Using evaling in CI
 
 `evaling run` is CI-native: its exit code is the verdict (`0` pass, `1` gate
-failed, `--fail-fast` stopped the run, or `--max-cost` left it incomplete, `2`
-config error), nothing ever prompts, and `--json`/`export` produce
-machine-readable artifacts.
+failed, `--fail-fast` stopped the run, `--max-cost` left it incomplete, or
+nothing ran at all, `2` config error), nothing ever prompts, and
+`--json`/`export` produce machine-readable artifacts.
 
 ## Gate on absolute quality
 
