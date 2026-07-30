@@ -38,9 +38,14 @@ def assert_no_secret(text: str, secret: str = KEY) -> None:
     assert not found, f"credential fragment {found[0]!r} leaked into: {text[:300]!r}"
 
 
-def settings_for(path):
+def settings_for(path, cache=False):
     return Settings.model_validate(
-        {"output_dir": str(path / "runs"), "cache": False, "concurrency": 1}
+        {
+            "output_dir": str(path / "runs"),
+            "cache_dir": str(path / "cache"),
+            "cache": cache,
+            "concurrency": 1,
+        }
     )
 
 
@@ -203,3 +208,60 @@ class TestACommandScriptsOutputIsRedacted:
         meta, records = store.load_meta(result.run_id), store.load_results(result.run_id)
         for fmt in ("json", "csv", "md", "html"):
             assert_no_secret(export_run(meta, records, fmt))
+
+
+class TestTheResponseCacheIsScrubbedToo:
+    """The cache is on by default, and it stores the completion before the record.
+
+    Scrubbing only the record left the credential in `.evaling/cache/` on the
+    normal path, while every test — which disables the cache — saw a clean
+    run. Found by running the real binary, not by the suite.
+    """
+
+    def project(self, tmp_path):
+        (tmp_path / "leaky.py").write_text(
+            "import json, os, sys\n"
+            "sys.stdin.read()\n"
+            "print(json.dumps({'text': 'answer ' + os.environ.get('MY_KEY', '')}))\n",
+            encoding="utf-8",
+        )
+        secrets = tmp_path / ".evaling.secrets.yaml"
+        secrets.write_text(f"MY_KEY: {KEY}\n", encoding="utf-8")
+        secrets.chmod(0o600)
+        (tmp_path / "eval.yaml").write_text(
+            "models:\n"
+            "  - id: wrapped\n"
+            "    provider: command\n"
+            "    command: python3 leaky.py\n"
+            "    api_key_env: MY_KEY\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: a}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def everything_written(self, tmp_path):
+        return "".join(
+            path.read_text(encoding="utf-8", errors="ignore")
+            for path in tmp_path.rglob("*")
+            if path.is_file() and path.name != ".evaling.secrets.yaml"
+        )
+
+    def test_nothing_on_disk_carries_it_with_the_cache_on(self, tmp_path):
+        path = self.project(tmp_path)
+        run_eval(load_config(path / "eval.yaml"), settings_for(path, cache=True))
+        assert (path / "cache").is_dir(), "the cache was not exercised"
+        assert_no_secret(self.everything_written(path))
+
+    def test_a_cache_hit_still_serves_scrubbed_text(self, tmp_path):
+        """The second run reads the cache rather than the script."""
+        path = self.project(tmp_path)
+        settings = settings_for(path, cache=True)
+        run_eval(load_config(path / "eval.yaml"), settings)
+        second = run_eval(load_config(path / "eval.yaml"), settings)
+
+        assert second.counts["cached"] == 1, "the second run did not hit the cache"
+        assert_no_secret(second.records[0].output or "")
+        assert_no_secret(self.everything_written(path))

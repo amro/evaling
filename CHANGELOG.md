@@ -263,13 +263,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did over MCP, and `confirm_large` acknowledges an unbounded source the way
   `--yes` does on the CLI.
 
-- **A credential returned *by* a model was stored verbatim.** `results.jsonl`,
+- **A credential returned *by* a model was stored verbatim** — including in
+  the response cache, which is on by default. `results.jsonl`,
   exports, and reports are shared and attached to issues, and a gateway
   echoing a header or a `command` wrapper printing its environment puts a key
   in the model's output — not just in an error, which was the only path
   covered. Every credential a run knows about is now scrubbed from stored
-  output, errors, and scorer details at the same choke point where no-look
-  redaction happens.
+  output, errors, and scorer details. The scrub happens as the completion
+  returns rather than on the record, because the cache stores the completion
+  first — scrubbing the record alone left the key in `.evaling/cache/` on the
+  default path while the tests, which disable caching, saw a clean run.
 
 - **A pinned baseline pointing at an unfinished run failed the run after full
   spend**, contradicting the "must fail before any model call" intent — the

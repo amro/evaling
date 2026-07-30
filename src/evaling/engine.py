@@ -43,7 +43,7 @@ from evaling.render import render_messages
 from evaling.reqlog import open_log
 from evaling.scorers import create_scorers
 from evaling.scoring import Aggregator, GateResult, cell_summary, evaluate_gate
-from evaling.secrets import build_env
+from evaling.secrets import build_env, redact
 from evaling.sources import (
     close_source,
     iter_source_cases,
@@ -503,7 +503,13 @@ async def _run_eval_impl(
         # Per-model limits first: don't hold a cost-budget slot while queued
         # behind this model's own rate limit.
         async with limiters[model.id]:
-            return await _budgeted_call(record, model, rendered)
+            completion = await _budgeted_call(record, model, rendered)
+        # Scrubbed here rather than on the record, because the response cache
+        # stores this object first — and the cache is on by default, so
+        # scrubbing only the record left the credential on disk in the normal
+        # case while the tests, which disable the cache, saw nothing.
+        completion.text = redact(completion.text, secret_values)
+        return completion
 
     async def _append(record: ResultRecord) -> None:
         # Off-thread: appending is the one synchronous write on every cell's
