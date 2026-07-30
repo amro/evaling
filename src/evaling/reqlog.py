@@ -31,6 +31,32 @@ from evaling.errors import EvalingError
 from evaling.secrets import redact
 
 
+def _refuse_to_clobber(path: Path) -> None:
+    """Refuse a target that is not an empty file or a trace we wrote.
+
+    Each run truncates its log, and `--log-requests eval.yaml` is an easy
+    thing to type. Destroying the file someone pointed at is not a thing a
+    debugging flag gets to do, so anything whose first line is not JSON is
+    treated as somebody else's.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            first = handle.readline().strip()
+    except OSError:
+        return  # unreadable: the open below will report it properly
+    if first:
+        try:
+            json.loads(first)
+        except ValueError:
+            raise EvalingError(
+                f"refusing to overwrite {path}: it already has content and does not look "
+                "like a request log. Each run truncates its log, so point --log-requests "
+                "at a new file."
+            ) from None
+
+
 class RequestLog:
     """Append-only JSONL. One line per provider call."""
 
@@ -41,6 +67,7 @@ class RequestLog:
     def __init__(self, path: str | Path, secret_values: "list[str] | tuple[str, ...]" = ()):
         self.path = Path(path)
         self._secrets = [value for value in secret_values if value]
+        _refuse_to_clobber(self.path)
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             # Truncate: a log that accumulates across runs is unreadable, and

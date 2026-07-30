@@ -117,11 +117,33 @@ def _row_to_case(path: Path, index: int, row: dict[str, Any]) -> Case:
 def _resolve_files(case: Case, base_dir: Path) -> Case:
     if not case.files:
         return case
-    resolved = {
-        name: str((path if (path := Path(raw)).is_absolute() else base_dir / path).resolve())
-        for name, raw in case.files.items()
-    }
+    resolved = {name: _resolve_attachment(raw, base_dir) for name, raw in case.files.items()}
     return case.model_copy(update={"files": resolved})
+
+
+def _resolve_attachment(raw: str, base_dir: Path) -> str:
+    """One attachment path, resolved and kept where it belongs.
+
+    A relative path must stay under the file that declared it. Datasets arrive
+    from elsewhere — a vendor, a colleague, an export — and evaling reads every
+    attachment, hashes it, sends it to a model API, and archives it in the run
+    directory. `file://../../../.ssh/id_rsa` in a CSV would do all four.
+
+    Absolute paths are left alone: those are a deliberate choice by whoever
+    wrote the config, not something a dataset can smuggle in.
+    """
+    path = Path(raw)
+    if path.is_absolute():
+        return str(path.resolve())
+    root = base_dir.resolve()
+    resolved = (root / path).resolve()
+    if resolved != root and root not in resolved.parents:
+        raise ConfigError(
+            f"attachment {raw!r} resolves outside {root}, which a dataset may not do. "
+            "Move the file under that directory, or name it with an absolute path if "
+            "reaching outside is intended."
+        )
+    return str(resolved)
 
 
 def _assign_ids(cases: list[Case]) -> list[Case]:

@@ -92,6 +92,10 @@ evaling run --sample 3 --log-requests trace.jsonl
 jq -r 'select(.status >= 400) | .response // .response_text' trace.jsonl
 ```
 
+The target must be a new file or a previous trace: pointing it at something
+else — `--log-requests eval.yaml` is an easy thing to type — is refused rather
+than truncated.
+
 **Headers are never written.** The API key travels in a header, so the way to
 guarantee the file cannot contain one is to have no code path that writes
 them. Values from your secrets file are additionally redacted from the bodies,

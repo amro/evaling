@@ -28,6 +28,11 @@ thresholds: # optional — pass/fail gates for CI
 Relative paths inside the config (prompt files, case files, attachments)
 resolve relative to the config file's directory.
 
+A relative attachment path must also stay *under* that directory. Datasets
+arrive from elsewhere, and evaling reads every attachment, sends it to a model
+API, and archives it — so `file://../../secrets.pdf` in a CSV is refused. Use
+an absolute path when reaching outside is deliberate.
+
 ## `settings`
 
 ```yaml

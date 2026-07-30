@@ -274,6 +274,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A dataset could name a file outside its own directory.** evaling reads
+  every attachment, hashes it, sends it to a model API, and archives it in the
+  run directory — so `file://../../../.ssh/id_rsa` in a CSV from a vendor or a
+  colleague did all four. A relative attachment path must now stay under the
+  file that declared it; absolute paths are unaffected, since those are a
+  deliberate choice rather than something a dataset can smuggle in.
+
+- **`--log-requests` truncated whatever it was pointed at.** Each run starts a
+  fresh trace, so `--log-requests eval.yaml` destroyed the config. It now
+  refuses any target that already has content and does not look like a trace.
+
 - **`render_prompt`'s config argument is now `config_path`**, like every other
   MCP tool; it had carried the wrapper's own variable name, so an agent
   passing the argument that works everywhere else was told it was unknown.
