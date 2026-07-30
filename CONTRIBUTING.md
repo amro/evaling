@@ -88,11 +88,26 @@ trusting it. Classes established as equivalent, so you can skip them:
 | Prose changed or case-flipped | Killing these means asserting exact message text, which makes messages unimprovable. Assert fragments. |
 | `.get(key, default)` default changed | The schema guarantees the key. Defensive code. |
 | `if total_weight == 0:` branch | Weights must be positive, so the branch is unreachable. |
+| `encoding="utf-8"` → `"UTF-8"` | Codec names are case-insensitive. |
+| `encoding=` → `None`, `newline=` → `None` | Locale- and platform-dependent; identical on POSIX, and ruff's `PLW1514` is what guards the real rule. |
+| A branch behind `os.name != "posix"` | Unreachable on the machines the suite runs on. |
+| `path.open("r", ...)` → `path.open(...)` | `"r"` is the default mode. |
 
-What triage has actually found, and what a real gap looks like: the sign on
-the overall pass-rate delta (`b - a` → `b + a`) survived the whole suite, as
-did `>=` → `>` on `min_score` — a run scoring exactly its threshold. Both
-were cases where every existing test sat comfortably away from the boundary.
+What triage has actually found, and what a real gap looks like. Boundaries
+where every existing test sat comfortably to one side: the sign on the
+overall pass-rate delta (`b - a` → `b + a`), `>=` → `>` on `min_score`, the
+eight-character floor below which a "secret" is too short to redact. Loops
+where `continue` became `break` and no test walked past the skipped item —
+one of which meant a project with no `.evaling.secrets.yaml` would silently
+never read `~/.config/evaling/secrets.yaml` either. Arithmetic nothing
+pinned: the input-token half of the cost estimate contributed nothing at all
+and no test noticed. And a whole function — `scrub_secrets` — that every
+test reached only through a full run, where the engine had already redacted
+the text upstream, leaving the credential path itself unexercised.
+
+The pattern in most of them is a test that asserts *that* something happened
+rather than *what* happened: a line was written, an error was raised, a
+figure was produced.
 
 CI runs this weekly and reports; it is not a gate. Check the run for
 `segfault` and `Failed to run clean test` before reading the survivor count —

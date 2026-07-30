@@ -305,6 +305,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A full mutation-testing triage, and what it found.** Every surviving
+  mutant in the modules that encode invariants was classified. The genuine
+  gaps, now covered: `load_secrets` stopped searching at the first *missing*
+  candidate file, so a project without `.evaling.secrets.yaml` would never
+  have read `~/.config/evaling/secrets.yaml` — nothing walked past a missing
+  candidate; the input-token half of the cost estimate could contribute
+  nothing without a test noticing; `scrub_secrets` was exercised only through
+  full runs where the engine had already redacted the text, leaving the
+  credential path itself unexercised; the request log's serialization
+  fallback was marked unreachable and was not (a circular structure reaches
+  it); a one-byte file and a non-UTF-8 file at the `--log-requests` target;
+  the eight-character floor below which a value is too short to redact; the
+  reported line and column of a YAML error; a BOM at the start of a file.
+
+  No behaviour changed — these were all missing tests rather than broken
+  code. Survivors: 135 → 77, all of them now in the equivalence classes
+  documented in `CONTRIBUTING.md`.
+
 - **A run that evaluated nothing announced a quality regression.** Aggregates
   report `pass_rate: 0.0` when no cell ran — a "no data" fallback — and a
   threshold read it as "0% of cases passed" and failed the gate. So a
