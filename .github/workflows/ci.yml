@@ -59,4 +59,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --group dev
-      - run: uv run pytest -m perf
+      # --durations so the numbers are in the log: these guards are loose by
+      # design, and without visible timings drift is only noticed when one
+      # finally trips.
+      - run: uv run pytest -m perf --durations=0
