@@ -28,6 +28,7 @@ from evaling.config.schema import (
     CaseSourceRef,
     EvalConfig,
     ModelSpec,
+    Privacy,
     Settings,
     VariantSpec,
 )
@@ -35,7 +36,7 @@ from evaling.config.settings import resolve_settings
 from evaling.content import MediaRef
 from evaling.errors import EvalingError
 from evaling.limits import limiter_for
-from evaling.privacy import redact_record
+from evaling.privacy import hash_case_id, redact_record
 from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
@@ -673,6 +674,13 @@ def _check_resumable_matrix(
     )
 
 
+def _reported_case_id(case_id: str, privacy: "Privacy") -> str:
+    """The id as it may be shown, which under no-look is the hashed one."""
+    if privacy.no_look and not privacy.keep_case_ids:
+        return hash_case_id(case_id)
+    return case_id
+
+
 def _resolve_sample(
     store: RunStore,
     resume_run_id: str | None,
@@ -1063,12 +1071,12 @@ def _dry_run_source(
                 try:
                     render_messages(prompts[variant.name], case, config.base_dir)
                 except Exception as exc:  # noqa: BLE001 - reported per cell, like the engine
-                    error = _describe_error(exc)
+                    error = _describe_error(exc, safe=config.privacy.no_look)
                 cells.append(
                     {
                         "variant": variant.name,
                         "model": model.id,
-                        "case_id": case.id,
+                        "case_id": _reported_case_id(case.id or "", config.privacy),
                         "error": error,
                     }
                 )
@@ -1137,6 +1145,7 @@ def dry_run(
         sample=sample,
         sample_seed=sample_seed,
     )
+    privacy = config.privacy
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
@@ -1155,12 +1164,17 @@ def dry_run(
                 try:
                     render_messages(prompts[variant.name], case, config.base_dir)
                 except Exception as exc:  # noqa: BLE001 - reported per cell, like the engine
-                    error = _describe_error(exc)
+                    # A render error quotes the template and the value it
+                    # choked on, so under no-look it is case content.
+                    error = _describe_error(exc, safe=privacy.no_look)
                 cells.append(
                     {
                         "variant": variant.name,
                         "model": model.id,
-                        "case_id": case.id,
+                        # An id from a production system identifies a record as
+                        # surely as the record does — the same reason a run
+                        # hashes them.
+                        "case_id": _reported_case_id(case.id or "", privacy),
                         "error": error,
                     }
                 )

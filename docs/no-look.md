@@ -55,8 +55,9 @@ source system, and outlive the run. No-look produces only numbers, which is
 what you wanted to share anyway.
 
 **If you are allowed to read your eval data, don't use this.** It costs you the
-cache (every run pays full price), direct inspection of failures, resume, and
-`--log-requests`.
+cache (every run pays full price), direct inspection of failures, resume,
+`--log-requests`, and the MCP `render_prompt` tool — rendering a case is
+reading it, so there is nothing that tool could usefully return.
 Worthwhile only when the constraint is real.
 
 ---

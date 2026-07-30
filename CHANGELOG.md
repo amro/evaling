@@ -236,6 +236,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Three paths a credential could take out of evaling**, all of them text
+  arriving from elsewhere that evaling relayed. A YAML syntax error in a
+  secrets file is by construction an error on a line holding a key, and
+  PyYAML quotes that line — `evaling doctor` printed it, in the output the
+  docs call safe to paste into an issue. The "response was not JSON" branch
+  built its error from raw response text without redacting, so a gateway
+  reflecting the auth header wrote a live key into `results.jsonl`. And a
+  `command` script's stderr — which routinely echoes the key evaling handed
+  it — went to disk verbatim.
+
+- **No-look mode leaked through the paths that render without running.**
+  `evaling validate` and `run --dry-run` reported raw case ids and render
+  errors quoting case content, and the MCP `render_prompt` tool returned fully
+  rendered messages with no privacy check at all. Ids are now hashed and
+  errors withheld on those paths; `render_prompt` is refused outright, since
+  rendering a case *is* reading it and a redacted render answers no question.
+
 - **`--log-requests` could write an API key to disk.** Redaction covered
   values from a secrets file only, so a key from the real environment — the
   normal case — was not scrubbed, and a gateway that echoes the request header

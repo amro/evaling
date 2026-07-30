@@ -14,6 +14,7 @@ from click.testing import CliRunner
 from evaling.cli import main
 from evaling.config import EvalConfig
 from evaling.engine import run_eval
+from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.privacy import hash_case_id, redact_record
 from evaling.storage import ResultRecord, RunStore
@@ -455,3 +456,102 @@ class TestAttachmentsNeverReachDisk:
         stored = list(artifacts.iterdir())
         assert stored, "media should normally be content-addressed into artifacts/"
         assert any(self.IMAGE_BYTES in p.read_bytes() for p in stored)
+
+
+class TestValidationLeaksNothingEither:
+    """The canary covers a *run*. Validation is a separate path to the same data.
+
+    `evaling validate`, `run --dry-run`, and the MCP `render_prompt` tool all
+    render cases without running them — and rendering a case is reading it.
+    Each of these leaked before: raw case ids from the dry run, and fully
+    rendered messages from render_prompt.
+    """
+
+    CANARY = "patient-jane.doe@example.com"
+
+    @pytest.fixture
+    def project(self, tmp_path):
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            f"cases: [{{id: '{self.CANARY}', vars: {{q: 'SECRETVALUE'}}}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n'
+            "privacy: {no_look: true}\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_a_dry_run_hashes_the_case_id(self, project):
+        from evaling.config import load_config
+        from evaling.engine import dry_run
+
+        report = dry_run(load_config(project / "eval.yaml"))
+        [cell] = report.cells
+        assert cell["case_id"] != self.CANARY
+        assert cell["case_id"].startswith("case-")
+
+    def test_validate_prints_neither_the_id_nor_the_data(self, project):
+        from click.testing import CliRunner
+
+        from evaling.cli import main
+
+        for args in (["validate"], ["run", "--dry-run"]):
+            result = CliRunner().invoke(
+                main,
+                ["-c", str(project / "eval.yaml"), "--json", *args],
+                env={"EVALING_USER_CONFIG": "/nonexistent"},
+                catch_exceptions=False,
+            )
+            assert self.CANARY not in result.output, args
+            assert "SECRETVALUE" not in result.output, args
+
+    def test_a_render_error_does_not_quote_the_case(self, tmp_path):
+        """A template error names the value it choked on."""
+        from evaling.config import load_config
+        from evaling.engine import dry_run
+
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ missing_var }}"}]\n'
+            f"cases: [{{id: '{self.CANARY}', vars: {{q: 'SECRETVALUE'}}}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n'
+            "privacy: {no_look: true}\n",
+            encoding="utf-8",
+        )
+        [cell] = dry_run(load_config(tmp_path / "eval.yaml")).cells
+        assert cell["error"], "the render should have failed"
+        assert "withheld" in cell["error"]
+        assert self.CANARY not in cell["error"]
+
+    def test_render_prompt_over_mcp_is_refused(self, project):
+        from evaling.mcp_server import render_prompt_tool
+
+        with pytest.raises(EvalingError, match="cannot show a no-look config"):
+            render_prompt_tool(
+                config_path=str(project / "eval.yaml"), variant="v1", case_id=self.CANARY
+            )
+
+    def test_render_prompt_validation_mode_is_refused_too(self, project):
+        """With no arguments it validates the whole config — same data, same path."""
+        from evaling.mcp_server import render_prompt_tool
+
+        with pytest.raises(EvalingError, match="cannot show a no-look config"):
+            render_prompt_tool(config_path=str(project / "eval.yaml"))
+
+    def test_an_ordinary_config_is_untouched(self, tmp_path):
+        from evaling.mcp_server import render_prompt_tool
+
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: alpha}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        out = render_prompt_tool(
+            config_path=str(tmp_path / "eval.yaml"), variant="v1", case_id="c1"
+        )
+        assert out["messages"][0]["parts"][0]["text"] == "alpha"

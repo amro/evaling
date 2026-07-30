@@ -366,6 +366,15 @@ def render_prompt_tool(
     cheapest way to check a config edit before spending anything.
     """
     config = load_config(config_path)
+    if config.privacy.no_look:
+        # The whole point of this tool is to show rendered case content, which
+        # is precisely what the mode exists to withhold. Refused rather than
+        # redacted: a render with the case data removed answers no question.
+        raise ConfigError(
+            "render_prompt cannot show a no-look config's prompts: rendering a case is "
+            "showing its data, which is what no-look mode prevents. Use a config over "
+            "data you are allowed to read to check a template."
+        )
     if variant is None or case_id is None:
         report = dry_run(config)
         return {
