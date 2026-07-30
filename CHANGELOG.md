@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--fail-fast`** on `run` (and `fail_fast` over MCP): stop at the first
+  failing cell instead of paying for the rest of the matrix. The stop is
+  graceful — cells already in flight finish and are recorded, and the run
+  finalizes, so the partial run is readable with `evaling show`. It exits `1`
+  whether or not thresholds are configured, since a build that stopped early
+  but exited `0` would read as a pass. `stopped_early` appears in the run
+  metadata, the `--json` output, and the MCP summary.
+
 - **`--sample N`** on `run` and `validate` (and `sample` over MCP): evaluate a
   random N of the selected cases. The fast loop while a prompt is still
   moving, instead of hand-listing `--case` ids.

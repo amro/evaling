@@ -167,6 +167,11 @@ def main(ctx, config_path, output_dir, cache_dir, no_color, quiet, verbose, json
     default=None,
     help="Stop issuing model calls once accumulated cost reaches this many USD.",
 )
+@click.option(
+    "--fail-fast",
+    is_flag=True,
+    help="Stop at the first failing cell instead of running the whole matrix.",
+)
 @click.option("-y", "--yes", is_flag=True, help="Skip the large-matrix confirmation.")
 @click.option(
     "--no-look",
@@ -202,6 +207,7 @@ def run(
     sample_seed,
     dry,
     max_cost,
+    fail_fast,
     no_look,
     yes,
     no_cache,
@@ -330,6 +336,7 @@ def run(
         "sample": sample,
         "sample_seed": sample_seed,
     }
+    filters["fail_fast"] = fail_fast
     if progress is not None:
         with progress:
             result = _execute(
@@ -368,6 +375,7 @@ def run(
                 "gate": gate,
                 "warnings": result.warnings,
                 "selection": result.selection,
+                "stopped_early": result.stopped_early,
                 **({"html": str(html_path)} if html_path else {}),
             }
         )
@@ -390,9 +398,12 @@ def run(
         app.say(f"run [bold]{result.run_id}[/bold] stored in {result.path}")
         if html_path:
             app.say(f"report written to [bold]{html_path}[/bold]")
-    if gate and not gate["passed"]:
+    # --fail-fast exits non-zero on its own: it only stops because a cell
+    # failed, and a build that ended early but exited 0 would read as a pass.
+    gate_failed = bool(gate and not gate["passed"])
+    if gate_failed or result.stopped_early:
         if app.quiet and not app.json_output:
-            app.err.print("[red]gate FAILED[/red]")
+            app.err.print("[red]gate FAILED[/red]" if gate_failed else "[red]stopped early[/red]")
         raise SystemExit(1)
 
 

@@ -117,6 +117,7 @@ async def run_eval_tool(
     label: str | None = None,
     no_cache: bool = False,
     max_cost_usd: float | None = None,
+    fail_fast: bool = False,
     output_dir: str | None = None,
     on_progress=None,
 ) -> dict[str, Any]:
@@ -182,6 +183,7 @@ async def run_eval_tool(
         sample=sample,
         sample_seed=sample_seed,
         max_cost_usd=max_cost_usd,
+        fail_fast=fail_fast,
         on_result=on_result,
     )
     summary = {
@@ -195,6 +197,9 @@ async def run_eval_tool(
     if result.selection:
         # The seed is what lets the agent repeat the draw on the next call.
         summary["selection"] = result.selection
+    if result.stopped_early:
+        # Otherwise the counts read as a whole matrix that happened to be small.
+        summary["stopped_early"] = True
     # result.records is empty above the retention cap, so stream from disk —
     # without materializing the run, which can be far larger than the failures.
     failures = filter_failures(result.iter_records())
@@ -376,6 +381,7 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         label: str | None = None,
         no_cache: bool = False,
         max_cost_usd: float | None = None,
+        fail_fast: bool = False,
     ) -> dict[str, Any]:
         import asyncio
         import contextlib
@@ -395,6 +401,7 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
             label=label,
             no_cache=no_cache,
             max_cost_usd=max_cost_usd,
+            fail_fast=fail_fast,
             output_dir=output_dir,
             on_progress=on_progress,
         )

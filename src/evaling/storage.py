@@ -406,9 +406,14 @@ class RunWriter:
         aggregates: dict[str, Any] | None = None,
         gate: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
+        stopped_early: bool = False,
     ) -> None:
         self.meta.update(
             status="complete",
+            # Complete, but deliberately short: --fail-fast ended it at the
+            # first failing cell. Distinct from a run that was interrupted,
+            # which never reaches finalize at all.
+            stopped_early=stopped_early,
             finished_at=_utcnow(),
             counts=counts,
             totals=totals,

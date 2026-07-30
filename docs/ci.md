@@ -54,6 +54,18 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   - run: evaling run --yes --max-cost 5.00
   ```
 
+- **Smoke check before the real matrix**, so a broken prompt costs one cell
+  instead of all of them:
+
+  ```yaml
+  - run: evaling run --yes --sample 10 --fail-fast
+  - run: evaling run --yes --baseline regression
+  ```
+
+  `--fail-fast` stops at the first failing cell and exits 1 whether or not
+  thresholds are configured. Cells already in flight still finish and are
+  recorded, so the partial run is worth reading.
+
 - **Publish a report artifact** — a single self-contained HTML file, viewable
   straight from the Actions artifact download:
 

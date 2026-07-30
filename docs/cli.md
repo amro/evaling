@@ -59,6 +59,7 @@ configured thresholds fail, `2` on config errors.
 | `--sample-seed N` | Repeat an earlier draw; requires `--sample` |
 | `--dry-run` | Validate config, render every prompt, print the request count — no model calls. Exits 2 if anything fails to render. |
 | `--max-cost USD` | Stop issuing model calls once accumulated cost reaches the limit; remaining cells record a skip error. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
+| `--fail-fast` | Stop at the first failing cell; exits 1 (see below) |
 | `-y, --yes` | Skip the confirmation shown for 100+ request matrices |
 | `--no-cache` | Bypass the response cache |
 | `--resume RUN` | Finish an interrupted run (same config required; the run keeps its original label — `--label` is ignored) |
@@ -75,6 +76,24 @@ used automatically (pin one first with `evaling baseline set`).
 `privacy.no_look: true` cannot be loosened from the command line. A run whose
 cases come from a source refuses to start without `limit` or `--max-cost`, and
 cannot be resumed; see [no-look.md](no-look.md) for why.
+
+#### Failing fast
+
+`--fail-fast` stops the run as soon as a cell fails, so a broken prompt costs
+one cell rather than the whole matrix. Cells already in flight finish and are
+recorded — the run finalizes normally and everything that ran is readable with
+`evaling show` afterwards.
+
+It exits `1` on its own, gate or no gate: a build that stopped early but
+exited `0` would read as a pass. The run's summary and `--json` output both
+carry `stopped_early`.
+
+Best paired with `--sample` for a smoke check before the real matrix:
+
+```sh
+evaling run --sample 10 --fail-fast   # does anything work at all?
+evaling run --baseline regression     # the run that decides the build
+```
 
 #### Sampling
 

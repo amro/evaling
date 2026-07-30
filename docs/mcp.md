@@ -65,7 +65,8 @@ Run references work as in the CLI: a run id, a label, `latest`, or `baseline`.
 Blocking: it returns when the run finishes, emitting MCP progress
 notifications as cells complete. Optional `models`, `variants`, `cases` narrow
 the matrix; `label` names the run; `no_cache` bypasses the cache;
-`max_cost_usd` caps spend.
+`max_cost_usd` caps spend; `fail_fast` stops at the first failing cell and
+sets `stopped_early` in the response.
 
 `sample` runs a random N of the selected cases — the cheap way to check
 whether a prompt edit helped before paying for the whole matrix. The response

@@ -40,7 +40,7 @@ from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
 from evaling.scorers import create_scorers
-from evaling.scoring import Aggregator, GateResult, evaluate_gate
+from evaling.scoring import Aggregator, GateResult, cell_summary, evaluate_gate
 from evaling.secrets import build_env
 from evaling.sources import (
     close_source,
@@ -80,6 +80,9 @@ class RunResult:
     warnings: list[str] = field(default_factory=list)
     #: True when the run was too large to keep in memory; use iter_records().
     records_truncated: bool = False
+    #: True when --fail-fast ended the run at the first failing cell, so the
+    #: matrix is deliberately incomplete rather than merely unfinished.
+    stopped_early: bool = False
     #: How the cases were narrowed, when they were: ``{sample, seed, available}``.
     #: The seed is what makes a sampled run repeatable, so it is reported back
     #: as well as stored — a draw nobody can reproduce is not much of a draw.
@@ -103,6 +106,7 @@ def run_eval(
     sample: int | None = None,
     sample_seed: int | None = None,
     max_cost_usd: float | None = None,
+    fail_fast: bool = False,
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
     return asyncio.run(
@@ -118,6 +122,7 @@ def run_eval(
             sample=sample,
             sample_seed=sample_seed,
             max_cost_usd=max_cost_usd,
+            fail_fast=fail_fast,
             on_result=on_result,
         )
     )
@@ -136,6 +141,7 @@ async def run_eval_async(
     sample: int | None = None,
     sample_seed: int | None = None,
     max_cost_usd: float | None = None,
+    fail_fast: bool = False,
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
     # ALL configured models get providers (judges need theirs); only selected
@@ -159,6 +165,7 @@ async def run_eval_async(
             sample=sample,
             sample_seed=sample_seed,
             max_cost_usd=max_cost_usd,
+            fail_fast=fail_fast,
             on_result=on_result,
             extra_warnings=secret_warnings,
         )
@@ -182,6 +189,7 @@ async def _run_eval_impl(
     sample: int | None,
     sample_seed: int | None,
     max_cost_usd: float | None,
+    fail_fast: bool,
     on_result: Callable[[ResultRecord], None] | None,
     extra_warnings: list[str] | None = None,
 ) -> RunResult:
@@ -342,6 +350,10 @@ async def _run_eval_impl(
         criterion.criterion for criterion, _ in scorecard if criterion.scorer.type == "python"
     )
 
+    # A one-element list rather than a plain bool: `execute` and the cell
+    # generator are separate closures and both need to see the same flag.
+    stop_early = [False]
+
     async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
         try:
@@ -354,6 +366,11 @@ async def _run_eval_impl(
         # each having to remember not to.
         if privacy.no_look:
             redact_record(record, keep_detail, hash_case_ids=not privacy.keep_case_ids)
+        if fail_fast and not cell_summary(record)[1]:
+            # Set, not raised: cells already in flight finish and are recorded,
+            # and the run finalizes normally. An exception here would discard
+            # a partly-paid-for run to report the failure it was asked to find.
+            stop_early[0] = True
         await _append(record)
         if on_result is not None:
             # A flaky progress callback must not abort an otherwise-healthy run.
@@ -433,6 +450,8 @@ async def _run_eval_impl(
                 async for case in iter_source_cases(source, source_ref.page_size, source_ref.limit):
                     for variant in variants_sel:
                         for model in models_sel:
+                            if stop_early[0]:
+                                return
                             yield partial(execute, variant.name, model, case)
             finally:
                 await close_source(source)
@@ -440,13 +459,20 @@ async def _run_eval_impl(
         cell_stream = factories()
         expected_total = None
     else:
-        cell_stream = (
-            partial(execute, variant.name, model, case)
-            for variant in variants_sel
-            for model in models_sel
-            for case in cases
-            if (variant.name, model.id, case.id) not in done
-        )
+
+        def fixed_cells():
+            for variant in variants_sel:
+                for model in models_sel:
+                    for case in cases:
+                        # Checked as each cell is handed out rather than up
+                        # front, which is what makes --fail-fast stop the run
+                        # without cancelling work already paid for.
+                        if stop_early[0]:
+                            return
+                        if (variant.name, model.id, case.id) not in done:
+                            yield partial(execute, variant.name, model, case)
+
+        cell_stream = fixed_cells()
         expected_total = len(variants_sel) * len(models_sel) * len(cases)
 
     # Decide up front whether records will be handed back, so a large run never
@@ -471,6 +497,11 @@ async def _run_eval_impl(
     records = retained if retain else []
 
     warnings: list[str] = list(extra_warnings or [])
+    if stop_early[0]:
+        warnings.append(
+            f"stopped early: --fail-fast, after {tally.total} of "
+            f"{expected_total if expected_total is not None else 'an unknown number of'} cells"
+        )
     if max_cost_usd is not None and budget.unknown_cost_seen:
         warnings.append(
             "--max-cost could not be enforced for every call: some models "
@@ -481,7 +512,14 @@ async def _run_eval_impl(
     aggregates = tally.aggregates
     baseline_overall = _load_baseline_overall(store, baseline_id)
     gate = evaluate_gate(config.thresholds, aggregates["overall"], baseline_overall)
-    writer.finalize(counts, totals, aggregates, asdict(gate) if gate else None, warnings)
+    writer.finalize(
+        counts,
+        totals,
+        aggregates,
+        asdict(gate) if gate else None,
+        warnings,
+        stopped_early=stop_early[0],
+    )
     return RunResult(
         run_id=writer.run_id,
         path=writer.path,
@@ -493,6 +531,7 @@ async def _run_eval_impl(
         gate=gate,
         warnings=warnings,
         selection=selection,
+        stopped_early=stop_early[0],
     )
 
 
