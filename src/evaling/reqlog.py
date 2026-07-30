@@ -124,6 +124,9 @@ def check_target(path: "str | Path | None", *, no_look: bool) -> None:
             "completions verbatim, which is exactly what the mode exists to prevent. "
             "Reproduce the problem on data you are allowed to read instead."
         )
+    # Here too, not only in RequestLog: the CLI calls this before it starts a
+    # run, and a refusal that arrives after the progress bar reads as a crash.
+    _refuse_to_clobber(Path(path))
 
 
 def open_log(path: "str | Path | None", env: Any, *, no_look: bool) -> "RequestLog | None":
