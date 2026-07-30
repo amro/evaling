@@ -19,28 +19,75 @@ Without it, `evaling mcp` exits with that install hint.
 
 ## Connect
 
-Register evaling as an MCP server in your client. For Claude Code:
+### Claude Code
 
 ```sh
+cd /path/to/your/eval-project
 claude mcp add evaling -- evaling mcp
 ```
 
-Or by config, in any MCP client:
+Added from the project directory, so the server starts there.
+
+### Claude Desktop
+
+`claude_desktop_config.json` — macOS:
+`~/Library/Application Support/Claude/claude_desktop_config.json`, Windows:
+`%APPDATA%\Claude\claude_desktop_config.json`.
 
 ```json
 {
   "mcpServers": {
     "evaling": {
       "command": "evaling",
-      "args": ["mcp"]
+      "args": ["-c", "/absolute/path/to/eval.yaml", "mcp"]
     }
   }
 }
 ```
 
-Run it from your eval project directory — relative `config_path` values and the
-output directory resolve exactly as they do for the CLI, so the agent sees the
-same runs you see.
+### Cursor
+
+`.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` globally:
+
+```json
+{
+  "mcpServers": {
+    "evaling": {
+      "command": "evaling",
+      "args": ["-c", "/absolute/path/to/eval.yaml", "mcp"]
+    }
+  }
+}
+```
+
+### Any other MCP client
+
+```json
+{
+  "mcpServers": {
+    "evaling": {
+      "command": "evaling",
+      "args": ["mcp"],
+      "cwd": "/absolute/path/to/your/eval-project"
+    }
+  }
+}
+```
+
+### Use absolute paths, or set the working directory
+
+A desktop app launches the server from wherever the app happens to be, not
+from your project — so `evaling mcp` with no arguments looks for `eval.yaml`
+in the wrong place and fails with `config file not found`.
+
+Either set `cwd` if your client supports it, or pass an absolute `-c`. With an
+absolute `-c`, runs land beside that config (see
+[configuration.md](configuration.md#where-a-relative-directory-points)), so the
+agent and your own `evaling list` see the same history.
+
+If `evaling` isn't on the PATH your client sees — common with a tool installed
+into a user directory — give the full path to the binary as `command`.
+`evaling doctor` prints it under `executable`.
 
 ## Tools
 
@@ -55,6 +102,20 @@ same runs you see.
 | `render_prompt` | Render a case's prompt, or validate the whole config — no model calls |
 
 Run references work as in the CLI: a run id, a label, `latest`, or `baseline`.
+
+Responses are shaped for a model to parse, so they are not identical to the
+CLI's `--json`. The one that catches people out is the run listing:
+
+| | `evaling --json list` | `list_runs` |
+|---|---|---|
+| Shape | a bare array of runs | `{"runs": [...], "total": N, "baseline": ...}` |
+| Run id key | `id` | `run_id` |
+| Contents | the full stored metadata per run | the six fields worth summarizing |
+
+So a script written against one does not read the other. The CLI form is the
+raw record; the MCP form is a summary with the total and the pinned baseline
+alongside it, because an agent asking "what runs are there" almost always
+wants those two next.
 
 ### `run_eval`
 

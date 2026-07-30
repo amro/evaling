@@ -1100,3 +1100,53 @@ class TestLargeMatrixGuard:
         )
         with pytest.raises(EvalingError, match="confirmation threshold"):
             self.call(tmp_path)
+
+
+class TestTheTwoListingsDifferOnPurpose:
+    """`evaling --json list` and `list_runs` return different shapes.
+
+    Documented in cli.md and mcp.md, and pinned here so the documentation
+    cannot quietly become wrong. The CLI form is the raw stored record; the
+    MCP form is a summary with the total and pinned baseline alongside,
+    because an agent asking what runs exist almost always wants those next.
+    """
+
+    @pytest.fixture
+    def with_a_run(self, tmp_path):
+        (tmp_path / "eval.yaml").write_text(CONFIG, encoding="utf-8")
+        asyncio.run(
+            run_eval_tool(
+                config_path=str(tmp_path / "eval.yaml"), output_dir=str(tmp_path / "runs")
+            )
+        )
+        return tmp_path
+
+    def test_the_cli_returns_a_bare_array_keyed_id(self, with_a_run):
+        result = CliRunner().invoke(
+            main,
+            ["-o", str(with_a_run / "runs"), "--json", "list"],
+            env={"EVALING_USER_CONFIG": "/nonexistent"},
+            catch_exceptions=False,
+        )
+        payload = json.loads(result.output)
+        assert isinstance(payload, list)
+        assert "id" in payload[0] and "run_id" not in payload[0]
+
+    def test_mcp_returns_an_object_keyed_run_id(self, with_a_run):
+        payload = list_runs_tool(output_dir=str(with_a_run / "runs"))
+        assert set(payload) == {"runs", "total", "baseline"}
+        assert "run_id" in payload["runs"][0] and "id" not in payload["runs"][0]
+
+    def test_they_agree_on_which_runs_exist(self, with_a_run):
+        """Different shapes, same history — that part is not allowed to drift."""
+        result = CliRunner().invoke(
+            main,
+            ["-o", str(with_a_run / "runs"), "--json", "list"],
+            env={"EVALING_USER_CONFIG": "/nonexistent"},
+            catch_exceptions=False,
+        )
+        from_cli = [row["id"] for row in json.loads(result.output)]
+        from_mcp = [
+            row["run_id"] for row in list_runs_tool(output_dir=str(with_a_run / "runs"))["runs"]
+        ]
+        assert from_cli == from_mcp

@@ -167,6 +167,11 @@ reasons via `--failures`, or one case across all variants × models via
 
 Stored runs, newest first (default 20).
 
+With `--json`, `list` prints a **bare array** of the full stored metadata for
+each run, keyed `id`. The MCP `list_runs` tool returns a different shape —
+`{"runs": [...], "total", "baseline"}`, keyed `run_id` — so a script written
+against one will not read the other. See [mcp.md](mcp.md#tools).
+
 ### `evaling compare RUN_A RUN_B [--html PATH]`
 
 Per variant×model score and pass-rate deltas, with regressions in red, plus

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Copy-pasteable MCP client configuration** per client (Claude Code, Claude
+  Desktop, Cursor, generic) in `docs/mcp.md`, including the case that actually
+  bites: a desktop app launches the server from wherever the app is, not from
+  your project, so `evaling mcp` with no arguments looks for `eval.yaml` in the
+  wrong place. Use `cwd` or an absolute `-c`.
+
+- Documented that `evaling --json list` and the MCP `list_runs` tool return
+  different shapes — a bare array keyed `id` versus
+  `{"runs", "total", "baseline"}` keyed `run_id` — so a script written against
+  one does not read the other. A test pins both so the documentation cannot
+  quietly become wrong.
+
 - **`examples/rag-pipeline/`** — a worked `command`-provider example where the
   thing under test is a system rather than a prompt: retrieve from a corpus,
   then answer. The only existing `command` example was a keyword classifier,
