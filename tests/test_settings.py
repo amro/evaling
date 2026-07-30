@@ -170,9 +170,13 @@ class TestRelativeDirectoriesAnchorToTheConfig:
         assert settings.output_dir == tmp_path / "runs"
 
     def test_an_absolute_path_in_the_config_is_left_alone(self, tmp_path):
-        eval_settings = Settings.model_validate({"output_dir": "/somewhere/else"})
-        settings = resolve(eval_settings=eval_settings, base_dir=tmp_path)
-        assert settings.output_dir == Path("/somewhere/else")
+        # A real absolute path, not "/somewhere/else": on Windows that is
+        # rooted but not absolute, so it would legitimately be anchored and
+        # this test would fail there for the wrong reason.
+        elsewhere = (tmp_path / "elsewhere").resolve()
+        eval_settings = Settings.model_validate({"output_dir": str(elsewhere)})
+        settings = resolve(eval_settings=eval_settings, base_dir=tmp_path / "project")
+        assert settings.output_dir == elsewhere
 
     def test_a_relative_path_in_the_user_config_lands_beside_the_eval_config(self, tmp_path):
         """One rule for every file: relative means relative to the project."""

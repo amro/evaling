@@ -26,14 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   then answer. The only existing `command` example was a keyword classifier,
   which demonstrated the wire protocol but not the point.
 
-  It discriminates on two axes. The prompt changes pipeline *behaviour* — two
-  of the nine questions are not covered by the corpus, and the grounded prompt
-  declines while the plain one answers from whatever came back first. And the
-  retrieval configuration is a matrix dimension: one answer lives in the
-  second-ranked document, so `top_k: 1` cannot reach it however good the
-  prompt is. That second case is the argument for evaluating the system — a
-  prompt eval would have reported the prompt was fine. Offline and
-  deterministic; swap one function for a real model call.
+  It discriminates on two axes — the prompt, which changes pipeline behaviour
+  rather than wording, and the retrieval configuration, which is a matrix
+  dimension. Offline and deterministic; swap one function for a real model
+  call. See its README for what each axis demonstrates.
 
 - **`evaling calibrate --from-run RUN --labels FILE`** — scaffolds an eval
   that measures how well a judge agrees with you, from a run you already made
@@ -78,8 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (a prompt would hang the build; `--max-cost` is the guard there) and MCP
   skipped it entirely, leaving the surface with the least human supervision as
   the one with no ceiling. `run_eval` now refuses a matrix that size unless
-  `max_cost_usd`, `sample`, or `confirm_large: true` is passed, and the error
-  names all three.
+  `max_cost_usd` or `confirm_large: true` is passed, or `sample` brings the
+  cell count under the threshold. The error names all three.
 
 - **`--fail-fast`** on `run` (and `fail_fast` over MCP): stop at the first
   failing cell instead of paying for the rest of the matrix. The stop is
@@ -107,7 +103,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   different draws. A comparison attributes every delta to whatever you
   changed, and that reading is wrong when the case sets differ, in a way that
   leaves the numbers looking entirely plausible.
-
 
 - **Performance guards in CI** (`tests/test_performance.py`, marker `perf`,
   its own workflow job with coverage off). Memory flatness and throughput had
@@ -182,14 +177,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/python-api.md`, `docs/architecture.md`, a documentation index at
   `docs/README.md`, and `CONTRIBUTING.md`.
 - The worked example evals moved from `tests/fixtures/e2e/` to
-  [`examples/`](examples/) with a README. The test suite still runs all four
+  [`examples/`](examples/) with a README. The test suite still runs them all
   end to end, so they cannot drift from the code.
 - The documentation is now tested (`tests/test_docs.py`): YAML examples are
   validated against the real config schema, `docs/cli.md` is checked against
   actual `--help` output for undocumented commands and flags, and relative
   links must resolve.
 - CI runs macOS and Windows in addition to Linux 3.10–3.13.
-
 
 - AAC audio (`.aac`). `.m4a` already covered AAC in an MP4 container; this adds
   raw ADTS streams.
@@ -217,7 +211,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   land for anyone who passes `-c` with a path outside their working
   directory**; pass `--output-dir` to keep the old location.
 
-
 - The engine no longer materializes the matrix. Cells stream through a fixed
   worker pool, so in-flight tasks are bounded by `concurrency` rather than by
   the number of cells, and aggregates are accumulated per record instead of
@@ -240,6 +233,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--log-requests` could write an API key to disk.** Redaction covered
+  values from a secrets file only, so a key from the real environment — the
+  normal case — was not scrubbed, and a gateway that echoes the request header
+  into its error body put a live credential in the trace. The stored run
+  record redacted it correctly all along; the log had no equivalent. Providers
+  now register the key they resolved with the log before anything is written.
+
+- **A resumed run could be finished with different filters than it started
+  with.** The config fingerprint covers the config and every file it
+  references, but not the flags, so `--resume` alongside a different
+  `--case`/`--model`/`--variant` ran whatever the new filters selected and
+  marked the run complete. With `--sample` it was worse: the draw is by
+  position into the filtered list, so resuming over a smaller population
+  produced a run whose cells came from two different case sets, with entirely
+  ordinary numbers. The matrix a run set out to execute is now recorded and
+  compared on resume.
+
+- `evaling calibrate` on a run with several models paired each rating with an
+  arbitrary model's output. Three models produce three answers and the rating
+  refers to one of them, so this built a calibration set measuring agreement
+  against outputs the rater may never have seen. It now requires `--model`,
+  as it already did `--variant`.
+
+- `evaling doctor --check-providers` threw away the whole report when the
+  config was broken — on precisely the machine that needed it — and exited 0
+  when every provider check failed. Both fixed; a failing check now exits 1.
+
 - **A malformed config produced a traceback instead of a message** in two
   cases, both found by the new fuzzing in `tests/test_config_fuzz.py`. A file
   that isn't valid UTF-8 — saved as UTF-16, or as latin-1 with an accent in it
@@ -253,7 +273,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   five hand-rolled ones that each caught a different subset. Malformed CSV
   (`csv.Error`: a NUL byte, an over-long field) is reported the same way
   instead of escaping.
-
 
 - Empty option values are no longer read as "use the default". `--baseline ""`
   quietly disabled the regression gate CI exists to enforce, `evaling run ""`

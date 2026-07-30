@@ -145,6 +145,30 @@ class TestPairingOutputsWithRatings:
         chosen = build_cases(records, {"a1": 5}, variant="v2")
         assert chosen[0]["answer"] == "say alpha"
 
+    def test_a_run_with_several_models_needs_one_named(self, tmp_path):
+        """Three models produced three answers; the rating refers to one.
+
+        Taking whichever was written first builds a calibration set measuring
+        agreement against outputs the rater may never have seen — plausible
+        numbers about the wrong thing.
+        """
+        (tmp_path / "eval.yaml").write_text(
+            CONFIG.replace(
+                "models: [{id: mock, provider: mock}]",
+                "models: [{id: m1, provider: mock},"
+                " {id: m2, provider: mock, params: {response: different}}]",
+            ),
+            encoding="utf-8",
+        )
+        settings = Settings.model_validate({"output_dir": str(tmp_path / "runs"), "cache": False})
+        result = run_eval(load_config(tmp_path / "eval.yaml"), settings)
+        records = RunStore(tmp_path / "runs").load_results(result.run_id)
+
+        with pytest.raises(CalibrationError, match="--model"):
+            build_cases(records, {"a1": 5})
+        chosen = build_cases(records, {"a1": 5}, model="m2")
+        assert chosen[0]["answer"] == "different"
+
     def test_labels_that_match_nothing_say_so(self, rated):
         path, result = rated
         records = RunStore(path / "runs").load_results(result.run_id)

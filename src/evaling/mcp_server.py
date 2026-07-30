@@ -124,6 +124,10 @@ async def run_eval_tool(
     on_progress=None,
 ) -> dict[str, Any]:
     """Run the eval matrix to completion and return its summary."""
+    if sample_seed is not None and sample is None:
+        # The CLI refuses this for the same reason: accepting it silently
+        # would look like the draw had been pinned.
+        raise ConfigError("sample_seed has no effect without sample")
     config = load_config(config_path)
     settings = resolve_settings(
         {

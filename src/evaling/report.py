@@ -11,7 +11,7 @@ goes through ``esc()``.
 from html import escape
 from typing import Any
 
-from evaling.scoring import cell_summary
+from evaling.scoring import cell_summary, selection_note
 from evaling.storage import ResultRecord
 
 STYLE = """
@@ -45,6 +45,8 @@ code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; 
 .banner.fail { background: var(--fail-bg); color: var(--fail); border-color: var(--fail); }
 .banner ul { margin: .5rem 0 0; padding-left: 1.2rem; font-weight: 400; }
 .totals { color: var(--muted); font-size: .9rem; margin: .75rem 0 1.5rem; }
+.warn { border-left: 3px solid #b45309; background: rgba(180,83,9,.08);
+        padding: .6rem .8rem; margin: .75rem 0; font-size: .9rem; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
 th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 600; }
@@ -365,11 +367,17 @@ def render_compare_html(
             notes.append(f"<p class='totals'>{text}: {listed}</p>")
 
     overall = diff["overall"]
+    # Above the table, not below it. This file is the artifact people share,
+    # and a caveat that arrives after the numbers arrives too late to change
+    # how they are read.
+    caveat = selection_note(meta_a, meta_b)
+    warning = f"<p class='warn'>{esc(caveat)}</p>" if caveat else ""
     body = (
         f"<h1>evaling compare</h1>"
         f"<p class='sub'><span class='mono'>{esc(meta_a.get('id'))}</span> → "
         f"<span class='mono'>{esc(meta_b.get('id'))}</span></p>"
-        "<div class='scroll'><table><thead><tr>"
+        + warning
+        + "<div class='scroll'><table><thead><tr>"
         "<th>Variant</th><th>Model</th><th class='num'>Score</th><th class='num'>Δ</th>"
         "<th class='num'>Pass rate</th><th class='num'>Δ</th>"
         f"</tr></thead><tbody>{rows}</tbody></table></div>"

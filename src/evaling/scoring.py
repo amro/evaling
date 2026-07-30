@@ -150,7 +150,7 @@ def selection_note(meta_a: dict[str, Any], meta_b: dict[str, Any]) -> str | None
     numbers stay plausible and part of every delta is just which cases each
     run happened to draw.
     """
-    a, b = meta_a.get("selection"), meta_b.get("selection")
+    a, b = _coverage(meta_a), _coverage(meta_b)
     if not a and not b:
         return None
     if not a or not b:
@@ -166,7 +166,30 @@ def selection_note(meta_a: dict[str, Any], meta_b: dict[str, Any]) -> str | None
             f"against {b['sample']} with seed {b['seed']}), so they cover different cases. "
             "Re-run with the same --sample and --sample-seed to compare like with like."
         )
+    if a.get("available") != b.get("available"):
+        # Same draw parameters over different populations: the same seed picks
+        # by position, so the cases themselves differ.
+        return (
+            f"the two runs drew the same sample from different sets of cases "
+            f"({a['available']} against {b['available']}), so the draws do not line up. "
+            "A seed selects by position, not by case id."
+        )
     return None
+
+
+def _coverage(meta: dict[str, Any]) -> dict[str, Any] | None:
+    """A run's sampling, or None when it covered everything.
+
+    `--sample N` with N at or above the number of cases takes them all, which
+    is full coverage however it was spelled — flagging it against an unsampled
+    run of the same cases would be a warning about nothing.
+    """
+    selection = meta.get("selection")
+    if not selection:
+        return None
+    if selection.get("sample") >= selection.get("available", 0):
+        return None
+    return selection
 
 
 @dataclass

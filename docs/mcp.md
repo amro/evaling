@@ -78,7 +78,9 @@ Added from the project directory, so the server starts there.
 
 A desktop app launches the server from wherever the app happens to be, not
 from your project — so `evaling mcp` with no arguments looks for `eval.yaml`
-in the wrong place and fails with `config file not found`.
+in the wrong place. The server starts normally and every tool that needs the
+config then fails with `config file not found: eval.yaml`, which reads as a
+broken server rather than a misplaced one.
 
 Either set `cwd` if your client supports it, or pass an absolute `-c`. With an
 absolute `-c`, runs land beside that config (see
@@ -86,8 +88,13 @@ absolute `-c`, runs land beside that config (see
 agent and your own `evaling list` see the same history.
 
 If `evaling` isn't on the PATH your client sees — common with a tool installed
-into a user directory — give the full path to the binary as `command`.
-`evaling doctor` prints it under `executable`.
+into a user directory — give the full path as `command`. `evaling doctor`
+prints it on the `evaling` line; `which evaling` (`where evaling` on Windows)
+also works.
+
+Note that doctor's `python` line is the interpreter, not the launcher. If you
+would rather use that, the module entry point takes the same arguments:
+`"command": "/path/to/python", "args": ["-m", "evaling", "mcp"]`.
 
 ## Tools
 

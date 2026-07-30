@@ -805,10 +805,11 @@ def cache_clear(app, older_than, yes):
 @click.option(
     "--variant", default=None, help="Which variant's output to rate, if the run has several."
 )
+@click.option("--model", default=None, help="Which model's output to rate, if the run has several.")
 @click.option("--judge-model", default="claude-sonnet-5", help="Model the judge will run on.")
 @pass_app
 @cli_errors
-def calibrate(app, ref, labels, out_dir, variant, judge_model):
+def calibrate(app, ref, labels, out_dir, variant, model, judge_model):
     """Scaffold an eval that measures how well a judge agrees with you.
 
     Takes a finished run plus your ratings of its outputs and writes a
@@ -826,7 +827,7 @@ def calibrate(app, ref, labels, out_dir, variant, judge_model):
     run_id = store.resolve_ref(ref)
     records = store.load_results(run_id)
     ratings = calibration.load_labels(Path(labels))
-    cases = calibration.build_cases(records, ratings, variant=variant)
+    cases = calibration.build_cases(records, ratings, variant=variant, model=model)
     unlabelled = len({r.case_id for r in records if r.error is None}) - len(cases)
 
     created = calibration.scaffold(
@@ -865,9 +866,14 @@ def doctor(app, check_providers):
     report = diagnostics.collect(app.config_path or "eval.yaml", app._cli_settings)
     probes = None
     if check_providers:
-        config = load_config(_config_target(None, app))
-        app.say("calling each model once — this spends a little money")
-        probes = diagnostics.probe(config, config.base_dir)
+        try:
+            config = load_config(_config_target(None, app))
+            app.say("calling each model once — this spends a little money")
+            probes = diagnostics.probe(config, config.base_dir)
+        except EvalingError as exc:
+            # The report is the point, and this is the machine that needed it.
+            # Letting the probe's failure escape threw the whole thing away.
+            report.problems.append(f"could not check providers: {exc}")
 
     if app.json_output:
         payload = report.as_dict()
@@ -880,8 +886,11 @@ def doctor(app, check_providers):
             # to be pasted into an issue, and rich's wrapping mangles that.
             app.console.print(line, soft_wrap=True)
     # Exit 1 on findings, so `evaling doctor` is usable as a setup check in a
-    # script rather than something a human has to read.
-    if report.problems:
+    # script rather than something a human has to read. A provider that could
+    # not be reached counts: checking credentials is the reason to pass
+    # --check-providers, and a script needs the verdict, not the paragraph.
+    unreachable = [entry for entry in (probes or []) if not entry["reachable"]]
+    if report.problems or unreachable:
         raise SystemExit(1)
 
 

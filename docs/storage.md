@@ -32,12 +32,25 @@ created in the same millisecond still order correctly.
   "finished_at": "2026-07-24T14:15:41Z",
   "config_sha256": "…",
   "counts": {"total": 8, "succeeded": 7, "failed": 1, "cached": 4},
-  "totals": {"input_tokens": 5120, "output_tokens": 890, "cost_usd": 0.023}
+  "totals": {"input_tokens": 5120, "output_tokens": 890, "cost_usd": 0.023},
+  "matrix": {"variants": 2, "models": 2, "cases": 2, "available": 40},
+  "selection": {"sample": 2, "seed": 2894127714, "available": 40},
+  "stopped_early": false
 }
 ```
 
 `status` is `running` until the run finalizes — a crashed or interrupted run
 keeps that status, which is how unfinished runs are recognized.
+`stopped_early` distinguishes a run that `--fail-fast` ended deliberately from
+one that never finished at all.
+
+`matrix` is what the run set out to execute. `--resume` compares it, so a run
+cannot be finished with different `--case`/`--model`/`--variant` filters than
+it started with — the config fingerprint covers the config, not the flags.
+
+`selection` is present only for a sampled run, and carries the seed that
+produced the draw. `--resume` reuses it, and `evaling compare` reads it to
+warn when two runs did not cover the same cases.
 
 ## `results.jsonl`
 

@@ -188,6 +188,7 @@ class RunStore:
         config_sha256: str | None = None,
         redact_cases: bool = False,
         selection: dict[str, Any] | None = None,
+        matrix: dict[str, Any] | None = None,
     ) -> "RunWriter":
         """Create a run directory.
 
@@ -238,6 +239,10 @@ class RunStore:
             # back so the second half of a run draws the same sample as the
             # first.
             "selection": selection,
+            # The shape the run set out to execute. Resume compares it, so a
+            # run cannot be finished with a different set of filters than it
+            # started with.
+            "matrix": matrix,
             "counts": None,
             "totals": None,
         }

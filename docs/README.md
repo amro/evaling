@@ -6,8 +6,9 @@
   eval, real providers, datasets, judges, comparing runs, CI gating. Start
   here if you're new.
 - [Getting started](getting-started.md) — the short version.
-- [Examples](../examples/) — four complete, runnable evals (text and
-  multimodal, single- and multi-turn), exercised by the test suite.
+- [Examples](../examples/) — seven complete, runnable evals: text and
+  multimodal, a RAG pipeline behind the `command` provider, and a no-look run
+  over a paging source. All exercised by the test suite.
 
 ## Using evaling
 

@@ -131,10 +131,10 @@ uv run ruff format . # format
 
 Changes are documented in the [CHANGELOG](CHANGELOG.md).
 
-Complete sample evals (text and multimodal, single- and multi-turn) live in
-[`examples/`](examples/) — the test suite runs them end to end against the
-built-in mock provider on every commit, so they are guaranteed to work with
-the current version.
+Seven complete sample evals live in [`examples/`](examples/) — text and
+multimodal, single- and multi-turn, a RAG pipeline behind the `command`
+provider, and a no-look run over a paging source. The test suite runs them all
+end to end on every commit, so they work with the current version.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 

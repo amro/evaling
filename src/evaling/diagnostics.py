@@ -17,6 +17,7 @@ decides where that line is.
 import asyncio
 import os
 import platform
+import shutil
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -88,6 +89,9 @@ def _describe_install() -> dict[str, Any]:
         "version": __version__,
         "python": sys.version.split()[0],
         "executable": sys.executable,
+        # The launcher, not the interpreter. An MCP client needs this one, and
+        # sys.executable is the wrong answer to that question.
+        "evaling_path": shutil.which("evaling"),
         "platform": platform.platform(),
         "mcp_extra": find_spec("mcp") is not None,
     }
@@ -261,10 +265,17 @@ def _describe_runs(settings: Settings, problems: list[str]) -> dict[str, Any]:
 
 
 def _writable(path: Path) -> bool:
-    """Whether a run could actually be written here, checked by trying."""
-    probe = path / ".evaling-write-probe"
+    """Whether a run could be written here, checked by trying.
+
+    Probes the nearest directory that already exists rather than creating the
+    target: a command whose job is to describe a machine should not change it,
+    and a missing output directory is not itself a problem — a run creates it.
+    """
+    target = path
+    while not target.exists() and target.parent != target:
+        target = target.parent
+    probe = target / ".evaling-write-probe"
     try:
-        path.mkdir(parents=True, exist_ok=True)
         probe.write_text("", encoding="utf-8")
         probe.unlink()
         return True

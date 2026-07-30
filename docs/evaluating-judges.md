@@ -52,8 +52,8 @@ models:
 variants:
   - name: rubric-strict
     prompt: rubrics/strict.yaml
-  - name: rubric-detailed
-    prompt: rubrics/detailed.yaml
+  - name: rubric-lenient
+    prompt: rubrics/lenient.yaml
 
 cases:
   file: calibration.jsonl

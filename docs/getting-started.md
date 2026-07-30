@@ -59,9 +59,14 @@ models and evaluating your own scripts. Before spending money, preview what a
 run will do:
 
 ```sh
+evaling doctor                 # is the key evaling needs actually resolving?
 evaling run --dry-run          # validates config, renders every prompt, counts requests
+evaling run --sample 10        # a random ten cases, to see whether it works at all
 evaling run --max-cost 1.00    # hard ceiling on spend
 ```
+
+`doctor` shows every setting with the layer that set it, which is the fastest
+answer to "why isn't it using what I told it to use".
 
 ## Read the results
 

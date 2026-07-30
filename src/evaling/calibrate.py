@@ -87,23 +87,34 @@ def _number_if_possible(value: Any) -> Any:
 
 
 def build_cases(
-    records: list[ResultRecord], labels: dict[str, Any], *, variant: str | None = None
+    records: list[ResultRecord],
+    labels: dict[str, Any],
+    *,
+    variant: str | None = None,
+    model: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Pair each rated output with its rating.
+    """Pair each rated output with its rating: one row per rated case.
 
-    One row per rated case, not per cell: a judge grades an answer, and the
-    same answer appearing under three models is one thing to grade, not three.
-    ``variant`` picks which variant's output to use when the run has several.
+    A run with several variants or several models produced several different
+    answers per case, and the rating refers to one of them. Picking whichever
+    happened to be written first would build a calibration set measuring
+    agreement against outputs the rater may never have seen — plausible
+    numbers about the wrong thing — so it is an error to be ambiguous here.
     """
     usable = [r for r in records if r.error is None and r.output]
     if variant is not None:
         usable = [r for r in usable if r.variant == variant]
-    variants = {record.variant for record in usable}
-    if variant is None and len(variants) > 1:
-        raise CalibrationError(
-            f"the run has several variants ({', '.join(sorted(variants))}), so it is ambiguous "
-            "which output should be rated. Pass --variant to choose one."
-        )
+    if model is not None:
+        usable = [r for r in usable if r.model == model]
+    for kind, chosen, values in (
+        ("variant", variant, {r.variant for r in usable}),
+        ("model", model, {r.model for r in usable}),
+    ):
+        if chosen is None and len(values) > 1:
+            raise CalibrationError(
+                f"the run has several {kind}s ({', '.join(sorted(values))}), so it is "
+                f"ambiguous which output your ratings refer to. Pass --{kind} to choose one."
+            )
 
     cases, seen = [], set()
     for record in usable:
@@ -255,10 +266,11 @@ Before trusting the result:
   ratings has learned to be careless.
 - **30–50 rated answers** is usually enough to separate rubric candidates.
   Fewer than that and the difference between two rubrics is inside the noise —
-  see [how many cases you need](../docs/large-datasets.md#how-many-cases-do-you-need).
+  see https://github.com/amro/evaling/blob/main/docs/large-datasets.md
 - **Edit the rubrics.** The two here are a starting point, not candidates
   someone chose for your task.
 
 Once a rubric wins, it becomes the `rubric:` of a judge in your real eval's
-`judges:` block. See [evaluating-judges.md](../docs/evaluating-judges.md).
+`judges:` block. See
+https://github.com/amro/evaling/blob/main/docs/evaluating-judges.md
 """

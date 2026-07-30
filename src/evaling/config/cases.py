@@ -70,9 +70,10 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _read_csv(path: Path) -> list[dict[str, Any]]:
     raw = read_text(path, ConfigError, missing=f"case file not found: {path}")
-    # StringIO with newline="" rather than the file handle, so decoding
-    # failures are reported by read_text alongside every other file's. The
-    # empty newline still keeps quoted fields with embedded newlines intact.
+    # StringIO rather than the file handle, so decoding failures are reported
+    # by read_text alongside every other file's. Note that read_text has
+    # already applied universal newlines, so a quoted field containing CRLF
+    # arrives here with LF — the row survives, the line ending is normalized.
     try:
         reader = csv.DictReader(io.StringIO(raw, newline=""))
         if reader.fieldnames is None:

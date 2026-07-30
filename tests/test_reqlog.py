@@ -132,6 +132,47 @@ class TestItNeverLeaksCredentials:
         # ...and the useful half is still there.
         assert "max_tokens" in text and "200" in text
 
+    def test_an_environment_key_reflected_in_a_response_is_redacted(self, tmp_path, monkeypatch):
+        """The case the first version of this got wrong.
+
+        Redaction covered secrets-*file* values only, so a key from the real
+        environment — the normal case — was not scrubbed. A gateway that
+        echoes the request header into its error body then wrote a live
+        credential to disk, while the stored run record redacted it correctly.
+        """
+        key = "sk-ant-live-key-from-the-environment"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            # A misconfigured gateway reflecting what it was sent.
+            return httpx.Response(
+                500, json={"error": {"message": f"bad auth header: {request.headers['x-api-key']}"}}
+            )
+
+        transport = httpx.MockTransport(handler)
+        original = httpx.AsyncClient.__init__
+
+        def patched(self, *args, **kwargs):
+            kwargs["transport"] = transport
+            original(self, *args, **kwargs)
+
+        monkeypatch.setattr(httpx.AsyncClient, "__init__", patched)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", key)
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: claude, provider: anthropic, max_retries: 0}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: alpha}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        log = tmp_path / "trace.jsonl"
+        run_eval(load_config(tmp_path / "eval.yaml"), settings_for(tmp_path), log_requests=log)
+
+        text = log.read_text(encoding="utf-8")
+        assert "bad auth header" in text, "the reflected body was not logged at all"
+        assert key not in text
+        assert "<redacted>" in text
+
     def test_a_secret_reflected_in_a_response_is_redacted(self, tmp_path):
         """A gateway that echoes credentials into its body must not persist one."""
 

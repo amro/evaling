@@ -196,6 +196,9 @@ def doctor_lines(report, probes=None) -> list[str]:
     lines.append(f"  version      {safe(install['version'])}")
     lines.append(f"  python       {safe(install['python'])}  ({safe(install['executable'])})")
     lines.append(f"  platform     {safe(install['platform'])}")
+    # Named separately from the interpreter because an MCP client config needs
+    # this path and would otherwise be given the wrong one.
+    lines.append(f"  evaling      {safe(install['evaling_path'] or 'not on PATH')}")
     lines.append(f"  mcp extra    {'installed' if install['mcp_extra'] else 'not installed'}")
 
     config = sections["config"]

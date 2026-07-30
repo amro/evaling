@@ -236,6 +236,38 @@ class TestItDoesNotTouchTheNetwork:
         assert "spends a little money" in result.output
         assert "provider checks" in result.output
 
+    def test_a_failing_probe_exits_nonzero(self, project, monkeypatch):
+        """Checking credentials is why anyone passes --check-providers.
+
+        Printing "fail" and exiting 0 makes it useless as the setup check the
+        command advertises itself as.
+        """
+
+        async def explode(self, request):
+            raise RuntimeError("no credentials for you")
+
+        monkeypatch.setattr("evaling.providers.mock.MockProvider.complete", explode)
+        result = invoke(project, "doctor", "--check-providers")
+        assert result.exit_code == 1, result.output
+
+    def test_a_broken_config_still_prints_the_report(self, tmp_path):
+        """--check-providers must not throw away the diagnostics.
+
+        `collect()` never raises on purpose, but the probe loaded the config
+        again outside that protection — so on the machine that most needed a
+        report, a bad config produced only the config error.
+        """
+        (tmp_path / "eval.yaml").write_text("models: [", encoding="utf-8")
+        result = CliRunner().invoke(
+            main,
+            ["-c", str(tmp_path / "eval.yaml"), "doctor", "--check-providers"],
+            env=ENV,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 1
+        assert "version" in result.output and "storage" in result.output
+        assert "could not check providers" in result.output
+
     def test_a_failing_probe_is_reported_not_raised(self, project, monkeypatch):
         async def explode(self, request):
             raise RuntimeError("no credentials for you")

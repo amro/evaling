@@ -138,9 +138,11 @@ that a source returning a repeated cursor has to raise rather than loop.
 Include:
 
 ```sh
-evaling doctor --json       # version, settings and where each came from, providers
+evaling --json doctor       # version, settings and where each came from, providers
 evaling --json show latest  # the full run record, if a run is involved
 ```
+
+`--json` is a global flag, so it goes before the command.
 
 `doctor` reports which secrets files it found and which variables they define,
 by name — never their values — so its output is safe to paste.

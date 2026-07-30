@@ -55,7 +55,8 @@ source system, and outlive the run. No-look produces only numbers, which is
 what you wanted to share anyway.
 
 **If you are allowed to read your eval data, don't use this.** It costs you the
-cache (every run pays full price), direct inspection of failures, and resume.
+cache (every run pays full price), direct inspection of failures, resume, and
+`--log-requests`.
 Worthwhile only when the constraint is real.
 
 ---

@@ -1,7 +1,7 @@
 # Using evaling in CI
 
 `evaling run` is CI-native: its exit code is the verdict (`0` pass, `1` gate
-failed, `2` config error), runs never prompt when stdin isn't a TTY, and
+failed or `--fail-fast` stopped the run, `2` config error), runs never prompt when stdin isn't a TTY, and
 `--json`/`export` produce machine-readable artifacts.
 
 ## Gate on absolute quality
@@ -65,6 +65,10 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   `--fail-fast` stops at the first failing cell and exits 1 whether or not
   thresholds are configured. Cells already in flight still finish and are
   recorded, so the partial run is worth reading.
+
+  A sampled run is still gated: `thresholds` are evaluated over the sample, so
+  a small one can fail the build on noise. Use `--sample` for the smoke check
+  and let the unsampled run be the one that decides.
 
 - **Publish a report artifact** — a single self-contained HTML file, viewable
   straight from the Actions artifact download:

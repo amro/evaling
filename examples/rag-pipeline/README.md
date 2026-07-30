@@ -41,10 +41,10 @@ would have told you the prompt was fine.
 
 ```
 Variant   Model         Score   Pass rate
-grounded  retrieve-3    0.917       88.9%
 grounded  retrieve-1    0.833       77.8%
-plain     retrieve-3    0.500        0.0%
+grounded  retrieve-3    0.917       88.9%
 plain     retrieve-1    0.417        0.0%
+plain     retrieve-3    0.500        0.0%
 ```
 
 `plain` scores 0.4–0.5 while passing nothing, which is the useful shape: it

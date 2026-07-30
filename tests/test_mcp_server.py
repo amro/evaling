@@ -1150,3 +1150,34 @@ class TestTheTwoListingsDifferOnPurpose:
             row["run_id"] for row in list_runs_tool(output_dir=str(with_a_run / "runs"))["runs"]
         ]
         assert from_cli == from_mcp
+
+
+class TestSampleSeedNeedsASample:
+    """The CLI refuses this; the MCP tool silently accepted it.
+
+    A seed with no sample pins nothing, and accepting it quietly makes a call
+    look like a repeatable draw when the next one will differ.
+    """
+
+    def test_a_seed_alone_is_refused(self, tmp_path):
+        (tmp_path / "eval.yaml").write_text(CONFIG, encoding="utf-8")
+        with pytest.raises(EvalingError, match="no effect without sample"):
+            asyncio.run(
+                run_eval_tool(
+                    config_path=str(tmp_path / "eval.yaml"),
+                    output_dir=str(tmp_path / "runs"),
+                    sample_seed=7,
+                )
+            )
+
+    def test_a_seed_with_a_sample_is_fine(self, tmp_path):
+        (tmp_path / "eval.yaml").write_text(CONFIG, encoding="utf-8")
+        summary = asyncio.run(
+            run_eval_tool(
+                config_path=str(tmp_path / "eval.yaml"),
+                output_dir=str(tmp_path / "runs"),
+                sample=1,
+                sample_seed=7,
+            )
+        )
+        assert summary["selection"] == {"sample": 1, "seed": 7, "available": 2}

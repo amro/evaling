@@ -246,6 +246,19 @@ async def _run_eval_impl(
         if sample is None
         else {"sample": len(cases), "seed": sample_seed, "available": available}
     )
+    # What this run is actually going to execute. Recorded so a resume can
+    # prove it is finishing the same run rather than a differently-filtered
+    # one — the config fingerprint covers the config, not the flags.
+    matrix = (
+        None
+        if source_ref is not None
+        else {
+            "variants": len(variants_sel),
+            "models": len(models_sel),
+            "cases": len(cases),
+            "available": available,
+        }
+    )
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
@@ -280,6 +293,7 @@ async def _run_eval_impl(
                 "(a resumed run must use the exact config — including referenced prompt, "
                 "case, and attachment files — it started with)"
             )
+        _check_resumable_matrix(resume_run_id, writer.meta.get("matrix"), matrix)
         prior_records = store.load_results(resume_run_id)
         done = {record.key for record in prior_records}
     else:
@@ -289,6 +303,7 @@ async def _run_eval_impl(
             config_sha256=fingerprint,
             redact_cases=privacy.no_look,
             selection=selection,
+            matrix=matrix,
         )
         prior_records = []
         done = set()
@@ -598,6 +613,34 @@ def _resolve_baseline(store: RunStore, config: EvalConfig, override: str | None)
     if ref == "regression":
         ref = "baseline"
     return store.resolve_ref(ref)
+
+
+def _check_resumable_matrix(
+    run_id: str, recorded: dict[str, Any] | None, current: dict[str, Any] | None
+) -> None:
+    """Refuse to finish a run with a different matrix than it started.
+
+    The config fingerprint covers the config and every file it references, but
+    not the flags: `--resume` alongside a different `--case`, `--model`, or
+    `--variant` used to run whatever the new filters selected and then finalize
+    the run as complete. With a sample it was worse — the draw is by position
+    into the filtered list, so a resume over a different population produced a
+    hybrid of two draws, a run whose cells came from two different case sets
+    and whose numbers looked entirely ordinary.
+    """
+    if not recorded or not current or recorded == current:
+        return
+    changed = [
+        f"{name}: {recorded.get(name)} → {current.get(name)}"
+        for name in ("variants", "models", "cases", "available")
+        if recorded.get(name) != current.get(name)
+    ]
+    raise StorageError(
+        f"run {run_id!r} covered a different matrix than this one does "
+        f"({'; '.join(changed)}), so resuming would finish it with cells from two "
+        "different selections. Resume with the same filters the run started with, "
+        "or start a fresh run."
+    )
 
 
 def _resolve_sample(

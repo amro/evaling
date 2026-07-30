@@ -8,9 +8,11 @@ and the response it got back, per call, in a form you can grep and `jq`.
 Off unless asked for. Two rules make it safe to turn on:
 
 * **No headers, ever.** The API key lives in a header, so the simplest way to
-  guarantee a log never contains one is never to write them. Every value from
-  a secrets file is additionally redacted from the bodies, for a gateway that
-  reflects credentials into its own responses.
+  guarantee a log never contains one is never to write them. Bodies are
+  additionally scrubbed of every credential evaling knows about — values from
+  a secrets file *and* each model's resolved API key, which providers register
+  via :meth:`RequestLog.add_secret` — for a gateway that reflects credentials
+  into its own responses.
 * **Refused under no-look.** A verbatim record of prompts and completions is
   the exact artifact that mode exists to prevent, so asking for both is a
   contradiction rather than a preference.
@@ -27,9 +29,13 @@ from evaling.secrets import redact
 class RequestLog:
     """Append-only JSONL. One line per provider call."""
 
+    #: Below this length a "secret" is too short to redact without mangling
+    #: ordinary text.
+    MIN_SECRET = 8
+
     def __init__(self, path: str | Path, secret_values: "list[str] | tuple[str, ...]" = ()):
         self.path = Path(path)
-        self._secrets = tuple(secret_values)
+        self._secrets = [value for value in secret_values if value]
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             # Truncate: a log that accumulates across runs is unreadable, and
@@ -40,6 +46,19 @@ class RequestLog:
             # unset shell variable can produce, raises from io.open rather than
             # from the filesystem.
             raise EvalingError(f"could not open request log {self.path}: {exc}") from exc
+
+    def add_secret(self, value: "str | None") -> None:
+        """Register a credential to scrub from every entry, past this point.
+
+        Providers call this with the key they resolved. A secrets file's
+        values are known up front, but a key from the real environment — the
+        normal case — is only known to the provider that looks it up, and
+        without this a gateway reflecting the header into its error body would
+        put that key on disk. The error-message path already defends against
+        exactly that; this is the same defence for the log.
+        """
+        if value and len(value) >= self.MIN_SECRET and value not in self._secrets:
+            self._secrets.append(value)
 
     def record(self, **fields: Any) -> None:
         """Write one entry. Never raises: logging must not fail a run."""

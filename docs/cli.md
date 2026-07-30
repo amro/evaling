@@ -50,7 +50,8 @@ already excludes `.evaling/` and `.evaling.secrets.yaml`; see
 ### `evaling run [CONFIG]`
 
 Run the matrix and print the summary. Exits `0` on success, `1` when the
-configured thresholds fail, `2` on config errors.
+configured thresholds fail or `--fail-fast` stops the run, `2` on config
+errors.
 
 | Flag | Effect |
 |---|---|
@@ -64,7 +65,7 @@ configured thresholds fail, `2` on config errors.
 | `--log-requests PATH` | Write a JSONL trace of every provider request and response (see below) |
 | `--no-cache` | Bypass the response cache |
 | `--resume RUN` | Finish an interrupted run (same config required; the run keeps its original label — `--label` is ignored) |
-| `--baseline RUN` | Gate against this run's aggregates |
+| `--baseline RUN` | Gate against this run's aggregates (`regression` means the pinned baseline) |
 | `--label NAME` | Name the run for later reference (`latest` and `baseline` are reserved) |
 | `--html PATH` | Also write a self-contained HTML report when the run finishes |
 | `--concurrency N` | Max parallel model calls |
@@ -88,13 +89,17 @@ checkout.
 
 ```sh
 evaling run --sample 3 --log-requests trace.jsonl
-jq -r 'select(.status >= 400) | .response' trace.jsonl
+jq -r 'select(.status >= 400) | .response // .response_text' trace.jsonl
 ```
 
 **Headers are never written.** The API key travels in a header, so the way to
 guarantee the file cannot contain one is to have no code path that writes
 them. Values from your secrets file are additionally redacted from the bodies,
 for a gateway that reflects credentials back in an error.
+
+A cache hit makes no call, so it writes no entry — pair this with
+`--no-cache` or the trace will look like calls that never happened. A retried
+call writes one entry per attempt.
 
 The bodies are still your prompts and the model's completions, so treat the
 file as you would the run itself. It is refused outright under
@@ -108,9 +113,15 @@ one cell rather than the whole matrix. Cells already in flight finish and are
 recorded — the run finalizes normally and everything that ran is readable with
 `evaling show` afterwards.
 
+"Failing" means the cell did not pass — an errored cell counts, including one
+skipped by `--max-cost`.
+
 It exits `1` on its own, gate or no gate: a build that stopped early but
 exited `0` would read as a pass. The run's summary and `--json` output both
 carry `stopped_early`.
+
+A run stopped this way is `complete`, not interrupted, so `--resume` will not
+pick it up. Fix the failure and run again.
 
 Best paired with `--sample` for a smoke check before the real matrix:
 
@@ -127,6 +138,10 @@ prompt is still moving, instead of listing `--case` ids by hand:
 ```sh
 evaling run --sample 20        # 20 random cases instead of all 2,000
 ```
+
+`validate` and `--dry-run` sample too, but their draw is illustrative — no
+seed is reported, since nothing was spent and nothing was stored. Pass
+`--sample-seed` to see a specific one.
 
 Every sampled run reports the seed that produced it, so a draw worth keeping
 can be repeated exactly:
@@ -298,5 +313,5 @@ open. For complete per-cell data at that size use `export --format csv`, or
 | Code | Meaning |
 |---|---|
 | 0 | Success (and gate passed, if configured) |
-| 1 | Run completed but the threshold gate failed |
+| 1 | The threshold gate failed, or `--fail-fast` stopped the run |
 | 2 | Config, usage, or reference errors |

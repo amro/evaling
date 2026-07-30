@@ -106,6 +106,15 @@ class Provider(ABC):
         #: request they sent and the response they got. None by default: this
         #: is a debugging aid, not part of a run.
         self.request_log = request_log
+        if request_log is not None and env is not None:
+            # Register this model's key with the log before anything is
+            # written. Only the provider knows which variable holds it, and a
+            # key from the real environment is not in the secrets-file list —
+            # so without this, a gateway that echoes the header into an error
+            # body would put a live credential on disk.
+            key_env = spec.api_key_env or getattr(type(self), "DEFAULT_API_KEY_ENV", "")
+            if key_env:
+                request_log.add_secret(env.get(key_env))
         #: Environment used for API-key lookups: the real environment plus any
         #: secrets file. None means "use os.environ".
         self.env = env

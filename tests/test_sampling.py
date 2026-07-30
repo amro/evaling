@@ -305,6 +305,21 @@ class TestComparingRunsThatCoverDifferentCases:
         a, b = self.two_runs(project)
         assert "different" not in self.flat(invoke(project, "compare", a, b))
 
+    def test_the_html_comparison_carries_it_too(self, project, tmp_path):
+        """The shared artifact needs the caveat most: it outlives the terminal."""
+        a, b = self.two_runs(project, "--sample", "5", second=())
+        out = tmp_path / "compare.html"
+        assert invoke(project, "compare", a, b, "--html", str(out)).exit_code == 0
+        html = out.read_text(encoding="utf-8")
+        assert "cover different cases" in html
+        # Above the table, where it can still change how the numbers are read.
+        assert html.index("cover different cases") < html.index("<table")
+
+    def test_a_sample_covering_everything_is_not_flagged(self, project):
+        """--sample 100 over 40 cases takes all 40, which is full coverage."""
+        a, b = self.two_runs(project, "--sample", str(CASES * 10), second=())
+        assert "different" not in self.flat(invoke(project, "compare", a, b))
+
     def test_the_warning_reaches_json_and_mcp(self, project):
         a, b = self.two_runs(project, "--sample", "5", second=())
         payload = json.loads(invoke(project, "--json", "compare", a, b).output)
@@ -314,3 +329,82 @@ class TestComparingRunsThatCoverDifferentCases:
 
         over_mcp = compare_runs_tool(a, b, output_dir=str(project / "runs"))
         assert over_mcp["warning"] == payload["warning"]
+
+
+class TestResumeRefusesADifferentMatrix:
+    """A resumed run must finish the run it started, not a differently-filtered one.
+
+    The config fingerprint covers the config and every file it references, but
+    not the flags. `--resume` with a different `--case` used to run whatever
+    the new filters selected and finalize the run as complete. With a sample
+    it was worse: the draw is by position into the filtered list, so resuming
+    over a smaller population produced a hybrid of two draws — a run whose
+    cells came from two different case sets, with entirely ordinary-looking
+    numbers.
+    """
+
+    def settings_for(self, project):
+        from evaling.config import Settings
+
+        return Settings.model_validate(
+            {"output_dir": str(project / "runs"), "cache": False, "concurrency": 4}
+        )
+
+    def interrupted(self, project, **kwargs):
+        settings = self.settings_for(project)
+        config = load_config(project / "eval.yaml")
+        result = run_eval(config, settings, **kwargs)
+        rewind(settings.output_dir / result.run_id, keep=2)
+        return settings, config, result
+
+    def test_a_narrower_case_filter_is_refused(self, project):
+        settings, config, first = self.interrupted(project, sample=5)
+        with pytest.raises(StorageError, match="different matrix"):
+            run_eval(
+                config,
+                settings,
+                resume_run_id=first.run_id,
+                case_filter=[f"c{i}" for i in range(10)],
+            )
+
+    def test_a_narrower_variant_or_model_filter_is_refused(self, project):
+        """Not only sampling: any filter change finishes a different run."""
+        (project / "eval.yaml").write_text(
+            CONFIG.replace(
+                'variants:\n  - name: v1\n    prompt: [{role: user, content: "{{ q }}"}]\n',
+                "variants:\n"
+                '  - name: v1\n    prompt: [{role: user, content: "{{ q }}"}]\n'
+                '  - name: v2\n    prompt: [{role: user, content: "say {{ q }}"}]\n',
+            ),
+            encoding="utf-8",
+        )
+        settings, config, first = self.interrupted(project)
+        with pytest.raises(StorageError, match="different matrix"):
+            run_eval(config, settings, resume_run_id=first.run_id, variant_filter=["v1"])
+
+    def test_the_message_names_what_changed(self, project):
+        settings, config, first = self.interrupted(project, sample=5)
+        with pytest.raises(StorageError) as caught:
+            run_eval(config, settings, resume_run_id=first.run_id, case_filter=["c1", "c2", "c3"])
+        assert "available: 40 → 3" in str(caught.value)
+
+    def test_the_same_filters_still_resume(self, project):
+        settings, config, first = self.interrupted(project, sample=5)
+        resumed = run_eval(config, settings, resume_run_id=first.run_id)
+        assert resumed.run_id == first.run_id
+        assert resumed.counts["total"] == 5
+
+    def test_an_unsampled_run_still_resumes(self, project):
+        settings, config, first = self.interrupted(project)
+        resumed = run_eval(config, settings, resume_run_id=first.run_id)
+        assert resumed.counts["total"] == CASES
+
+    def test_a_run_from_before_this_check_still_resumes(self, project):
+        """Old runs have no recorded matrix; they must not become unresumable."""
+        settings, config, first = self.interrupted(project)
+        meta_path = settings.output_dir / first.run_id / "run.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        del meta["matrix"]
+        meta_path.write_text(json.dumps(meta), encoding="utf-8", newline="\n")
+
+        assert run_eval(config, settings, resume_run_id=first.run_id).counts["total"] == CASES

@@ -198,6 +198,16 @@ requests. Mail it, attach it to a CI build, open it from a thumb drive.
 
 ### Give evaling your API key
 
+Check that evaling can see a key before spending anything:
+
+```sh
+evaling doctor
+```
+
+It reports each model's API-key variable and whether it resolves, along with
+every setting and the layer that supplied it. No network unless you add
+`--check-providers`.
+
 **Never put an API key in `eval.yaml`.** That file belongs in git; keys don't.
 evaling reads keys from the environment, or from a secrets file that
 `evaling init` has already gitignored for you:
@@ -453,6 +463,19 @@ evaling compare before after
 You get per-cell score deltas and the pass-rate change, so you can see not
 just *whether* it improved but *which cases moved* — including the ones your
 change quietly broke while the average went up.
+
+While a prompt is still moving, `--sample N` runs a random subset instead of
+the whole matrix. Both runs need the same draw to be comparable, so pass the
+seed the first one reports:
+
+```sh
+evaling run --sample 20 --label before
+# reported: repeat this draw with --sample 20 --sample-seed 2894127714
+evaling run --sample 20 --sample-seed 2894127714 --label after
+```
+
+`compare` warns if you forget — two different draws differ partly by prompt
+and partly by which cases they happened to draw.
 
 ```sh
 evaling compare before after --html diff.html

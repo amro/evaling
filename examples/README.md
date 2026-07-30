@@ -1,7 +1,7 @@
 # Examples
 
 Seven complete evals, each runnable as-is. They need no API key and no
-network — four use the built-in mock provider, and `support-triage` and
+network — five use the built-in mock provider, and `support-triage` and
 `rag-pipeline` use small deterministic scripts behind the `command` provider.
 
 The test suite runs them all end to end on every commit
