@@ -25,6 +25,15 @@ def _csv_safe(value):
     return value
 
 
+def _md_cell(value: Any) -> str:
+    """A value safe to drop into a markdown table cell.
+
+    Variant, model, and case names come from a config or a dataset, and a `|`
+    in one silently breaks the table it lands in.
+    """
+    return _md_safe(value).replace("|", "\\|")
+
+
 def _md_safe(text: str) -> str:
     """Make untrusted model text inert inside markdown list items."""
     flat = " ".join(str(text).split())  # newlines would escape the bullet
@@ -101,7 +110,7 @@ def export_csv(records: list[ResultRecord]) -> str:
 def export_md(meta: dict[str, Any], records: list[ResultRecord]) -> str:
     lines = [f"# evaling run `{meta['id']}`", ""]
     if meta.get("label"):
-        lines += [f"**Label:** {meta['label']}", ""]
+        lines += [f"**Label:** {_md_safe(meta['label'])}", ""]
 
     overall = (meta.get("aggregates") or {}).get("overall")
     counts = meta.get("counts") or {}
@@ -122,7 +131,7 @@ def export_md(meta: dict[str, Any], records: list[ResultRecord]) -> str:
         lines += [f"**Gate:** {verdict}", ""]
         for check in gate["checks"]:
             mark = "✅" if check["passed"] else "❌"
-            lines.append(f"- {mark} `{check['name']}`: {check['detail']}")
+            lines.append(f"- {mark} `{check['name']}`: {_md_safe(check['detail'])}")
         lines.append("")
 
     matrix = (meta.get("aggregates") or {}).get("matrix") or []
@@ -133,7 +142,8 @@ def export_md(meta: dict[str, Any], records: list[ResultRecord]) -> str:
         ]
         for cell in matrix:
             lines.append(
-                f"| {cell['variant']} | {cell['model']} | {cell['score']:.3f} "
+                f"| {_md_cell(cell['variant'])} | {_md_cell(cell['model'])} "
+                f"| {cell['score']:.3f} "
                 f"| {cell['pass_rate']:.1%} | {cell['cases']} | {cell['errors']} |"
             )
         lines.append("")
@@ -142,7 +152,10 @@ def export_md(meta: dict[str, Any], records: list[ResultRecord]) -> str:
     if failures:
         lines += [f"## Failures ({len(failures)})", ""]
         for record in failures[:20]:
-            key = f"{record.variant} × {record.model} × {record.case_id}"
+            key = (
+                f"{_md_safe(record.variant)} × {_md_safe(record.model)} "
+                f"× {_md_safe(record.case_id)}"
+            )
             if record.error:
                 lines.append(f"- **{key}** — error: {_md_safe(record.error)}")
             else:

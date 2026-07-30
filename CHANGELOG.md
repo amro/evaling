@@ -274,6 +274,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `evaling --json show <run> --failures` ignored `--failures` and returned
+  every record, with nothing to say it had not been narrowed.
+- `totals.cost_usd` counted cached cells, so a re-run served entirely from
+  cache reported the full price of the original — and a resumed run seeded its
+  `--max-cost` budget with money it had never spent. The per-cell record still
+  carries what the call would have cost.
+- A judge answering `true` scored a perfect 1.0 (`bool` passes
+  `isinstance(_, Real)`), and `NaN` survived the clamp because every
+  comparison with it is False. Both turned a broken judge into a passing
+  result; both now fail the criterion.
+- A non-numeric `scale`, `pass_at`, or `tolerance` produced a traceback rather
+  than a message — `ScorerSpec` allows extra keys, so the schema accepts
+  anything there.
+- A UTF-8 byte-order mark, which Excel writes and nobody sees, made a CSV's
+  first column `\ufeffquestion` so `{{ question }}` failed as undefined.
+- Markdown export interpolated labels, variant, model, and case names without
+  escaping, so a `|` in any of them broke the table.
+- `evaling list` crashed on a `run.json` that parsed but was not a run
+  (`null`, a list, a mapping with no id), taking every other run with it.
+- `evaling export --help` did not mention `html`, which it accepts.
+
 - **A dataset could name a file outside its own directory.** evaling reads
   every attachment, hashes it, sends it to a model API, and archives it in the
   run directory — so `file://../../../.ssh/id_rsa` in a CSV from a vendor or a

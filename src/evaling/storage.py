@@ -278,11 +278,16 @@ class RunStore:
             if not meta_path.is_file():
                 continue
             try:
-                runs.append(json.loads(meta_path.read_text(encoding="utf-8")))
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 # A half-written run (killed mid-create) must not poison the
                 # listing of every other run.
                 continue
+            # Valid JSON is not necessarily a run: `null`, a list, or a
+            # mapping with no id all parse, and the sort below would then
+            # raise for the whole listing rather than skip the one directory.
+            if isinstance(meta, dict) and meta.get("id"):
+                runs.append(meta)
         runs.sort(key=lambda meta: (meta.get("created_ns") or 0, meta["id"]))
         return runs
 

@@ -144,3 +144,31 @@ def test_create_scorers_builds_full_scorecard():
     criterion, scorer = scorers[0]
     assert criterion.criterion == "quality"
     assert isinstance(scorer, JudgeScorer)
+
+
+class TestAJudgeCannotInflateItsScore:
+    """A nonsense verdict must fail the criterion, not ace it.
+
+    `bool` passes `isinstance(_, Real)`, so a judge answering `true` scored a
+    perfect 1.0; NaN survived `max(0, min(1, x))` because every comparison
+    with NaN is False. Both turned a broken judge into a passing result.
+    """
+
+    @pytest.mark.parametrize("verdict", ['{"score": true}', '{"score": false}'])
+    def test_a_boolean_score_is_refused(self, verdict):
+        with pytest.raises(ScoringError, match="finite numeric"):
+            run_score(build_judge(judge_config(verdict)))
+
+    @pytest.mark.parametrize("verdict", ['{"score": NaN}', '{"score": Infinity}'])
+    def test_a_non_finite_score_is_refused(self, verdict):
+        with pytest.raises(ScoringError, match="finite numeric"):
+            run_score(build_judge(judge_config(verdict)))
+
+    def test_an_ordinary_score_is_unaffected(self):
+        assert run_score(build_judge(judge_config('{"score": 0.75}'))).score == 0.75
+
+    @pytest.mark.parametrize("value", ["wide", None, [1]])
+    def test_a_non_numeric_scale_is_a_message(self, value):
+        """ScorerSpec allows extra keys, so the schema accepts anything here."""
+        with pytest.raises(ScoringError, match="must be a number"):
+            build_judge(judge_config('{"score": 1}', scorer_params={"scale": value}))

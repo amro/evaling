@@ -26,7 +26,11 @@ def read_text(path: Path, error: type[EvalingError], *, missing: str) -> str:
     file not found" and "case file not found" are worth saying differently.
     """
     try:
-        return path.read_text(encoding="utf-8")
+        # utf-8-sig, not utf-8: a byte-order mark is invisible to whoever saved
+        # the file and turns a CSV's first column into "\ufeffquestion", so
+        # `{{ question }}` fails with "undefined". Files without a BOM decode
+        # identically.
+        return path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         raise error(missing) from None
     except UnicodeDecodeError as exc:

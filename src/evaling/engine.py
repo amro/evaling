@@ -335,7 +335,10 @@ async def _run_eval_impl(
     single_flight = KeyedLocks()
 
     budget = _CostBudget(
-        max_cost_usd, spent=sum(r.cost_usd for r in prior_records if r.cost_usd) or 0.0
+        max_cost_usd,
+        # Cached cells cost nothing, so seeding the budget with them would
+        # make a resumed run believe it had already spent money it hadn't.
+        spent=sum(r.cost_usd for r in prior_records if r.cost_usd and not r.cached) or 0.0,
     )
     limiters = {model.id: limiter_for(model) for model in config.models}
 
@@ -834,7 +837,12 @@ class _RunTally:
         self.cached += bool(record.cached)
         self.input_tokens += record.input_tokens or 0
         self.output_tokens += record.output_tokens or 0
-        self.cost_usd += record.cost_usd or 0.0
+        # A cached cell made no call. Its record keeps the cost it *would*
+        # have had, which is worth knowing, but the run's total is documented
+        # as what the run actually cost — and a re-run served entirely from
+        # cache reported the full price of the original.
+        if not record.cached:
+            self.cost_usd += record.cost_usd or 0.0
         self._aggregator.add(record)
 
     @property

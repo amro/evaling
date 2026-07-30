@@ -22,7 +22,16 @@ class AgreementScorer(Scorer):
         self.mode = params.get("mode", "exact")
         if self.mode not in ("exact", "within"):
             raise ScoringError(f"agreement scorer: unknown mode {self.mode!r} (exact|within)")
-        self.tolerance = float(params.get("tolerance", 0))
+        raw = params.get("tolerance", 0)
+        try:
+            self.tolerance = float(raw)
+        except (TypeError, ValueError):
+            # ScorerSpec allows extra keys, so the schema accepts anything
+            # here; a bare ValueError from float() is not caught by the CLI
+            # and came out as a traceback.
+            raise ScoringError(
+                f"agreement scorer: tolerance must be a number, got {raw!r}"
+            ) from None
         self.field = params.get("field", "score")
 
     async def score(self, output: str, case: Case) -> ScoreResult:

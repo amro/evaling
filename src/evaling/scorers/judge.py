@@ -11,6 +11,7 @@ score needed to pass when the judge omits ``passed``, default 0.5).
 """
 
 import json
+import math
 from numbers import Real
 
 from evaling.config.schema import Case, JudgeSpec, Message, ModelSpec, TextPart
@@ -19,6 +20,22 @@ from evaling.providers.retry import call_with_retries
 from evaling.render import RenderedMessage, RenderedText
 from evaling.scorers.base import Scorer, ScoreResult, ScoringError, parse_json_lenient
 from evaling.templating import render_text
+
+
+def _number(params, name, default, judge_name):
+    """A numeric scorer parameter, or a message rather than a traceback.
+
+    ScorerSpec allows extra keys, so the schema accepts any value here and a
+    bare ValueError from float() is not something the CLI catches.
+    """
+    raw = params.get(name, default)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise ScoringError(f"judge {judge_name!r}: {name} must be a number, got {raw!r}") from None
+    if not math.isfinite(value):
+        raise ScoringError(f"judge {judge_name!r}: {name} must be finite, got {raw!r}")
+    return value
 
 
 class JudgeScorer(Scorer):
@@ -44,10 +61,10 @@ class JudgeScorer(Scorer):
         #: real spend outside --max-cost.
         self.call = call
         self.rubric = rubric
-        self.scale = float(params.get("scale", 1.0))
+        self.scale = _number(params, "scale", 1.0, self.judge_name)
         if self.scale <= 0:
             raise ScoringError(f"judge {judge_name!r}: 'scale' must be positive, got {self.scale}")
-        self.pass_at = float(params.get("pass_at", 0.5))
+        self.pass_at = _number(params, "pass_at", 0.5, self.judge_name)
         if not 0.0 <= self.pass_at <= 1.0:
             raise ScoringError(
                 f"judge {judge_name!r}: 'pass_at' must be in [0, 1], got {self.pass_at}"
@@ -98,12 +115,16 @@ class JudgeScorer(Scorer):
             raise ScoringError(
                 f"judge {self.judge_name!r} did not return JSON: {exc.msg}: {text[:120]!r}"
             ) from exc
-        if not isinstance(data, dict) or not isinstance(data.get("score"), Real):
+        score = data.get("score") if isinstance(data, dict) else None
+        # `bool` passes isinstance(..., Real), so a judge answering `true`
+        # scored 1.0; NaN survived the clamp because every comparison with it
+        # is False. Both inflated a result instead of failing the criterion.
+        if isinstance(score, bool) or not isinstance(score, Real) or not math.isfinite(score):
             raise ScoringError(
-                f"judge {self.judge_name!r} verdict must be JSON with a numeric 'score', "
-                f"got {text[:120]!r}"
+                f"judge {self.judge_name!r} verdict must be JSON with a finite numeric "
+                f"'score', got {text[:120]!r}"
             )
-        normalized = max(0.0, min(1.0, float(data["score"]) / self.scale))
+        normalized = max(0.0, min(1.0, float(score) / self.scale))
         passed = data.get("passed")
         if not isinstance(passed, bool):
             passed = normalized >= self.pass_at

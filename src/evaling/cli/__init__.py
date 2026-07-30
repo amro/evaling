@@ -26,6 +26,7 @@ from evaling.export import export_run
 from evaling.report import render_compare_html, render_run_html
 from evaling.reqlog import check_target as check_log_target
 from evaling.scoring import compare_aggregates, selection_note
+from evaling.scoring import filter_failures as display_failures
 from evaling.storage import RunStore
 
 
@@ -565,10 +566,15 @@ def show(app, ref, failures, case_id):
     records = store.load_results(run_id)
 
     if app.json_output:
-        payload = {"run": meta, "results": [asdict(record) for record in records]}
+        # The same filters the text output applies. --failures used to be
+        # accepted and then ignored here, so a script asking for failures got
+        # every record and no indication it had not been narrowed.
+        selected = records
+        if failures:
+            selected = display_failures(selected)
         if case_id:
-            payload["results"] = [asdict(r) for r in records if r.case_id == case_id]
-        app.echo_json(payload)
+            selected = [record for record in selected if record.case_id == case_id]
+        app.echo_json({"run": meta, "results": [asdict(record) for record in selected]})
         return
 
     if case_id:
@@ -689,7 +695,7 @@ def compare(app, ref_a, ref_b, html_path):
 @pass_app
 @cli_errors
 def export(app, ref, fmt, out):
-    """Render a stored run as json, csv, or markdown."""
+    """Render a stored run as json, csv, markdown, or a self-contained HTML page."""
     store = app.store()
     run_id = store.resolve_ref(ref)
     text = export_run(store.load_meta(run_id), store.load_results(run_id), fmt)
