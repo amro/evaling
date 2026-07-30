@@ -19,8 +19,8 @@ from evaling.cli.scaffold import scaffold_project
 from evaling.config import load_config, resolve_settings
 from evaling.config.loader import load_project_settings
 from evaling.config.schema import CaseSourceRef
-from evaling.engine import CONFIRM_THRESHOLD, run_eval, select_matrix, select_variants_models
 from evaling.engine import dry_run as engine_dry_run
+from evaling.engine import estimate_run_cost, run_eval, select_matrix, select_variants_models
 from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.report import render_compare_html, render_run_html
@@ -172,7 +172,6 @@ def main(ctx, config_path, output_dir, cache_dir, no_color, quiet, verbose, json
     is_flag=True,
     help="Stop at the first failing cell instead of running the whole matrix.",
 )
-@click.option("-y", "--yes", is_flag=True, help="Skip the large-matrix confirmation.")
 @click.option(
     "--no-look",
     is_flag=True,
@@ -218,7 +217,6 @@ def run(
     fail_fast,
     log_requests,
     no_look,
-    yes,
     no_cache,
     resume_ref,
     baseline_ref,
@@ -257,11 +255,15 @@ def run(
     if isinstance(config.cases, CaseSourceRef):
         # A source is walked lazily, so there is no count to show or confirm.
         # An unbounded one with no ceiling is a bill, not a run.
-        if config.cases.limit is None and max_cost is None and not yes:
+        if config.cases.limit is None and max_cost is None and not sys.stdin.isatty():
+            # The one combination nobody can react to: the size is unknown
+            # even to the config's author (it depends on what the source
+            # returns), nothing is watching, and there is no Ctrl-C. With a
+            # terminal attached this just runs and reports as it goes.
             raise click.UsageError(
-                "this config fetches cases from a source with no `limit`, so evaling "
-                "cannot tell how many model calls the run will make. Set `limit` in the "
-                "config, pass --max-cost, or pass --yes to run it anyway."
+                "this config fetches cases from a source with no `limit`, so the number "
+                "of model calls is whatever the source returns — and nothing here can "
+                "interrupt it. Set `limit` in the config, or pass --max-cost."
             )
         variants_sel, models_sel = select_variants_models(
             config, models=model_filter, variants=variant_filter
@@ -277,7 +279,6 @@ def run(
         count = (
             len(variants_sel) * len(models_sel) * config.cases.limit if config.cases.limit else None
         )
-        _confirm_large(count, yes)
     else:
         # The same selection the engine will execute — filters validate here,
         # before any progress display.
@@ -296,7 +297,7 @@ def run(
         if sample is not None:
             app.say(f"  sampling {selected} of {available} cases")
         _say_judge_only(app, config)
-        _confirm_large(count, yes)
+        _say_estimate(app, config, variants_sel, models_sel, cases_sel, selected)
 
     # baseline resolution (including thresholds.baseline: regression) is core
     # logic — the engine handles it; any run reference passes through.
@@ -488,17 +489,37 @@ def _say_judge_only(app, config) -> None:
         app.say(f"  {display.safe(', '.join(judges))}: judge only, not evaluated")
 
 
-def _confirm_large(count, yes) -> None:
-    """Ask before a large run, wherever the cases come from.
-
-    This used to sit only in the inline-cases branch, so a source-backed run
-    with `limit: 150` started unprompted while the MCP server refused the
-    identical run — the two surfaces disagreeing about the same ceiling.
-    """
-    if count is None or count < CONFIRM_THRESHOLD or yes:
+def _say_estimate_for(app, config, model_filter, variant_filter, case_filter, report) -> None:
+    """The estimate for a dry run, whose cells are already selected."""
+    if isinstance(config.cases, CaseSourceRef):
         return
-    if sys.stdin.isatty():
-        click.confirm(f"That is {count} model calls — continue?", abort=True)
+    variants, models, cases = select_matrix(
+        config, models=model_filter, variants=variant_filter, cases=case_filter
+    )
+    if not cases:
+        return
+    _say_estimate(
+        app, config, variants, models, cases, report.requests // max(1, len(variants) * len(models))
+    )
+
+
+def _say_estimate(app, config, variants, models, cases, case_count) -> None:
+    """Say what the run is likely to cost, and then run it.
+
+    This replaced a confirmation prompt above a fixed cell count. The count
+    was a poor proxy — a hundred cells against a local model costs nothing —
+    so the prompt fired on ordinary work, and a guard that fires on ordinary
+    work gets bypassed reflexively rather than read. Ctrl-C is the escape, and
+    an interrupted run resumes.
+    """
+    estimate = estimate_run_cost(config, variants, models, cases, case_count)
+    if estimate is None:
+        return
+    qualifier = "at most" if estimate.bounded else "roughly"
+    note = ""
+    if not estimate.priced:
+        note = f", excluding {display.safe(', '.join(estimate.unpriced))} (no pricing)"
+    app.say(f"  {qualifier} [bold]${estimate.usd:,.2f}[/bold]{note}")
 
 
 def _check_sample(sample, sample_seed) -> None:
@@ -540,6 +561,9 @@ def _do_dry_run(
             app.console.print(
                 f"[bold]{report.requests}[/bold] requests would be made; no model was called."
             )
+        # The estimate belongs here most of all: a dry run is the question
+        # "what would this do", and cost is half the answer.
+        _say_estimate_for(app, config, model_filter, variant_filter, case_filter, report)
         for cell in report.errors:
             app.console.print(
                 f"  [red]✗[/red] {display.safe(cell['variant'])} × "

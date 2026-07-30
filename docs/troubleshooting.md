@@ -88,9 +88,10 @@ it.
 
 ### `this config fetches cases from a source with no limit`
 
-Without a bound, the number of model calls is whatever the source returns, so
-evaling asks for one first. Set `limit` in the `cases:` block, pass
-`--max-cost`, or pass `--yes` to run it as-is.
+Only raised when nothing can interrupt the run — CI, or an agent over MCP.
+The size depends on what the source returns at runtime, so nobody knows it in
+advance. Set `limit` in the `cases:` block, or pass `--max-cost`. At a
+terminal this runs, and Ctrl-C stops it.
 
 ### `--case cannot filter a source-backed run`
 

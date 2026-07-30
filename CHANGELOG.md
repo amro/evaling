@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The large-matrix confirmation is gone; runs report what they will cost
+  instead.** `run` now prints the matrix size and, where the models are
+  priced, the likely spend — `at most $38.40` when every model caps output
+  with `max_tokens`, `roughly` when one doesn't — and then runs. `--dry-run`
+  and `validate` show the same line.
+
+  The prompt fired on a fixed cell count, which is a poor proxy for cost: a
+  hundred cells against a local model is free, and anyone whose ordinary eval
+  is larger than the threshold learned to paste `-y`. A guard bypassed
+  reflexively is not protecting anyone, and this one had grown a second,
+  undocumented meaning — `--yes` also waived the unbounded-source refusal, so
+  everyone who added it to stop prompts had silently authorized unbounded
+  spend.
+
+  **Removed:** `--yes` on `run` (`cache clear` keeps its own), `confirm_large`
+  over MCP, and the threshold itself. Ctrl-C is the escape and an interrupted
+  run resumes; `--max-cost` remains the ceiling for unattended runs, bounding
+  the real risk rather than a proxy for it.
+
+  One refusal survives: an unbounded source with no `--max-cost` **and no
+  terminal attached** — CI or an agent — where nothing can interrupt the run
+  and the size is unknown even to whoever wrote the source. At a terminal it
+  now just runs.
+
 ### Added
 
 - **Copy-pasteable MCP client configuration** per client (Claude Code, Claude

@@ -85,13 +85,15 @@ A cursor that repeats is an error rather than an infinite loop.
 A source with no `limit` and no cost ceiling will not start:
 
 ```
-this config fetches cases from a source with no `limit`, so evaling cannot
-tell how many model calls the run will make. Set `limit` in the config, pass
---max-cost, or pass --yes to run it anyway.
+this config fetches cases from a source with no `limit`, so the number of
+model calls is whatever the source returns — and nothing here can interrupt
+it. Set `limit` in the config, or pass --max-cost.
 ```
 
-Without either, the number of model calls is whatever the source happens to
-return, which may be far more than intended.
+Only when nothing is watching: at a terminal this runs, because you can read
+the progress and interrupt it. Unattended — CI, or an agent over MCP — there
+is no Ctrl-C and the size is unknown even to whoever wrote the source, so it
+is refused instead.
 
 ## Checking a source without a full run
 

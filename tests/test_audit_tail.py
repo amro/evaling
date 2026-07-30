@@ -48,17 +48,17 @@ class TestShowFailuresJson:
     """`--failures` was accepted and then ignored on the JSON path."""
 
     def test_it_narrows_to_failures(self, project):
-        invoke(project, "run", "--yes")
+        invoke(project, "run")
         payload = json.loads(invoke(project, "--json", "show", "latest", "--failures").output)
         assert [r["case_id"] for r in payload["results"]] == ["c2"]
 
     def test_without_it_everything_is_returned(self, project):
-        invoke(project, "run", "--yes")
+        invoke(project, "run")
         payload = json.loads(invoke(project, "--json", "show", "latest").output)
         assert len(payload["results"]) == 2
 
     def test_it_composes_with_case(self, project):
-        invoke(project, "run", "--yes")
+        invoke(project, "run")
         payload = json.loads(
             invoke(project, "--json", "show", "latest", "--failures", "--case", "c1").output
         )
@@ -111,7 +111,7 @@ class TestNonNumericScorerParams:
             ),
             encoding="utf-8",
         )
-        result = invoke(project, "run", "--yes")
+        result = invoke(project, "run")
         assert result.exit_code == 2
         assert "must be a number" in result.output
         assert "Traceback" not in result.output
@@ -130,7 +130,7 @@ class TestABomDoesNotBreakADataset:
             'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
             encoding="utf-8",
         )
-        result = invoke(tmp_path, "run", "--yes")
+        result = invoke(tmp_path, "run")
         assert result.exit_code == 0, result.output
         assert "1/1 succeeded" in result.output
 
@@ -170,7 +170,7 @@ class TestMarkdownCellsSurviveHostileNames:
 
 class TestAMalformedRunJsonDoesNotPoisonTheListing:
     def test_listing_survives(self, project, tmp_path):
-        invoke(project, "run", "--yes")
+        invoke(project, "run")
         broken = project / "runs" / "not-a-run"
         broken.mkdir(parents=True)
         (broken / "run.json").write_text("null", encoding="utf-8")

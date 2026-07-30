@@ -38,6 +38,7 @@ from evaling.errors import EvalingError
 from evaling.limits import limiter_for
 from evaling.privacy import hash_case_id, redact_record, scrub_secrets
 from evaling.providers import Completion, CompletionRequest, create_provider
+from evaling.providers.pricing import CostEstimate, estimate_run
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
 from evaling.reqlog import open_log
@@ -57,12 +58,6 @@ from evaling.storage import (
     serialize_messages,
     snapshot_config,
 )
-
-#: Cell count above which a caller is asked to confirm before anything is
-#: spent. Lives here rather than in the CLI because every surface that can
-#: start a run needs the same number — the CLI had it alone, which left the
-#: one surface with the least human supervision as the one with no ceiling.
-CONFIRM_THRESHOLD = 100
 
 #: Above this many cells a run stops handing every record back in memory.
 #: Counts, totals, and aggregates are unaffected — they are accumulated as the
@@ -1074,6 +1069,41 @@ def select_variants_models(
         wanted = set(models)
         model_specs = [m for m in model_specs if m.id in wanted]
     return variant_specs, model_specs
+
+
+def estimate_run_cost(
+    config: EvalConfig,
+    variants: list[VariantSpec],
+    models: list[ModelSpec],
+    cases: list[Case],
+    case_count: int | None = None,
+) -> "CostEstimate | None":
+    """What this matrix is likely to cost, before any of it runs.
+
+    Renders one case per variant rather than all of them: the point is an
+    order of magnitude to decide on, and rendering a 500,000-cell matrix to
+    produce it would cost more than the decision is worth.
+
+    ``case_count`` overrides the number of cases, for a source whose size is
+    known from `limit` while ``cases`` holds only a sample.
+    """
+    if not cases:
+        return None
+    count = case_count if case_count is not None else len(cases)
+    groups: list[tuple[str, dict[str, Any], int, int]] = []
+    for variant in variants:
+        try:
+            rendered = render_messages(
+                resolve_prompt(variant.prompt, config.base_dir), cases[0], config.base_dir
+            )
+        except Exception:  # noqa: BLE001 - an unrenderable prompt is reported elsewhere
+            return None
+        # The same approximation the mock provider uses; a real tokenizer per
+        # provider would be more precise and no more useful at this altitude.
+        input_tokens = sum(len(message.text) for message in rendered) // 4
+        for model in models:
+            groups.append((model.id, model.params, input_tokens, count))
+    return estimate_run(groups)
 
 
 def sample_cases(cases: list[Case], sample: int | None, seed: int | None) -> list[Case]:

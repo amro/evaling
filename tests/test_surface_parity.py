@@ -20,7 +20,6 @@ import pytest
 from click.testing import CliRunner
 
 from evaling.cli import main
-from evaling.engine import CONFIRM_THRESHOLD
 from evaling.errors import EvalingError
 from evaling.mcp_server import run_eval_tool
 
@@ -109,8 +108,9 @@ def via_mcp(tmp_path, **kwargs):
 #: flags both are empty.
 SCENARIOS = [
     ("a plain run", inline(), {}, {}, True),
+    # Refused on both: nothing can interrupt an MCP run, and the CLI is not
+    # at a tty under CliRunner, so both are the unwatched case.
     ("an unbounded source", sourced(), {}, {}, False),
-    ("an unbounded source, acknowledged", sourced(), {"yes": True}, {"confirm_large": True}, True),
     (
         "an unbounded source with a cost ceiling",
         sourced(),
@@ -126,17 +126,13 @@ SCENARIOS = [
     ("an unknown model", inline(), {"model": "ghost"}, {"models": ["ghost"]}, False),
     ("an unknown variant", inline(), {"variant": "ghost"}, {"variants": ["ghost"]}, False),
     ("an unknown case", inline(), {"case": "ghost"}, {"cases": ["ghost"]}, False),
-    (
-        "a large matrix, acknowledged",
-        inline(CONFIRM_THRESHOLD + 5),
-        {"yes": True},
-        {"confirm_large": True},
-        True,
-    ),
+    # A large matrix is no longer a decision point on either surface: the
+    # size and its likely cost are reported, and the run proceeds.
+    ("a large matrix", inline(150), {}, {}, True),
     (
         "a large matrix with a cost ceiling",
-        inline(CONFIRM_THRESHOLD + 5),
-        {"max_cost": 5.0, "yes": True},
+        inline(150),
+        {"max_cost": 5.0},
         {"max_cost_usd": 5.0},
         True,
     ),
@@ -243,18 +239,18 @@ class TestDeliberateDifferences:
     decision changed and this file should say so.
     """
 
-    def test_the_cli_prompts_where_mcp_refuses(self, tmp_path):
-        """A large matrix at a terminal asks; an agent gets an error instead.
+    def test_an_unbounded_source_is_refused_on_both(self, tmp_path):
+        """The one guard left, and both surfaces keep it.
 
-        A prompt needs someone to answer it. MCP has nobody, so the same
-        ceiling has to be an error there — same threshold, different shape.
+        Neither can be interrupted here — CliRunner has no tty, MCP has no
+        Ctrl-C — and the size is unknown even to whoever wrote the config,
+        since it depends on what the source returns.
         """
-        path = write(tmp_path, inline(CONFIRM_THRESHOLD + 5))
-        # Not a tty under CliRunner, so the CLI proceeds; MCP refuses.
-        assert via_cli(path)[0] is True
-        accepted, message = via_mcp(write(tmp_path / "mcp", inline(CONFIRM_THRESHOLD + 5)))
+        path = write(tmp_path, sourced())
+        assert via_cli(path)[0] is False
+        accepted, message = via_mcp(write(tmp_path / "mcp", sourced()))
         assert accepted is False
-        assert "confirmation threshold" in message
+        assert "whatever the source returns" in message
 
     def test_render_prompt_has_no_cli_equivalent(self, tmp_path):
         """`validate` renders everything; `render_prompt` renders one case.

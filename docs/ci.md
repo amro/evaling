@@ -1,8 +1,9 @@
 # Using evaling in CI
 
 `evaling run` is CI-native: its exit code is the verdict (`0` pass, `1` gate
-failed or `--fail-fast` stopped the run, `2` config error), runs never prompt when stdin isn't a TTY, and
-`--json`/`export` produce machine-readable artifacts.
+failed, `--fail-fast` stopped the run, or `--max-cost` left it incomplete, `2`
+config error), nothing ever prompts, and `--json`/`export` produce
+machine-readable artifacts.
 
 ## Gate on absolute quality
 
@@ -15,7 +16,7 @@ thresholds:
 
 ```yaml
 # .github/workflows/evals.yml
-- run: evaling run --yes
+- run: evaling run
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -51,15 +52,15 @@ pass an explicit run with `evaling run --baseline <run-id>`.
 - **Cost ceiling** so a bad matrix can't burn the budget:
 
   ```yaml
-  - run: evaling run --yes --max-cost 5.00
+  - run: evaling run --max-cost 5.00
   ```
 
 - **Smoke check before the real matrix**, so a broken prompt costs one cell
   instead of all of them:
 
   ```yaml
-  - run: evaling run --yes --sample 10 --fail-fast
-  - run: evaling run --yes --baseline regression
+  - run: evaling run --sample 10 --fail-fast
+  - run: evaling run --baseline regression
   ```
 
   `--fail-fast` stops at the first failing cell and exits 1 whether or not
@@ -74,7 +75,7 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   straight from the Actions artifact download:
 
   ```yaml
-  - run: evaling run --yes --html eval-report.html
+  - run: evaling run --html eval-report.html
   - uses: actions/upload-artifact@v4
     if: always()          # publish the report even when the gate fails
     with: {name: eval-report, path: eval-report.html}

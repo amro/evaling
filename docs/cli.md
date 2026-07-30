@@ -61,7 +61,6 @@ errors.
 | `--dry-run` | Validate config, render every prompt, print the request count — no model calls. Exits 2 if anything fails to render. |
 | `--max-cost USD` | Stop the run once accumulated cost reaches the limit. Remaining cells are skipped rather than failed, the run is marked `incomplete` (resume it with a higher ceiling), and the exit code is 1. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
 | `--fail-fast` | Stop at the first failing cell; exits 1 (see below) |
-| `-y, --yes` | Skip the confirmation shown for 100+ request matrices |
 | `--log-requests PATH` | Write a JSONL trace of every provider request and response (see below) |
 | `--no-cache` | Bypass the response cache |
 | `--resume RUN` | Finish an interrupted run (same config required; the run keeps its original label — `--label` is ignored) |
@@ -109,6 +108,26 @@ The bodies are still your prompts and the model's completions, so treat the
 file as you would the run itself. It is refused outright under
 [no-look](no-look.md), where a verbatim record is the exact artifact the mode
 exists to prevent. Each run truncates the file rather than appending.
+
+#### What a run tells you before it starts
+
+`run` reports the size of the matrix and, where the models are priced, what it
+is likely to cost — then runs:
+
+```
+Running 4200 requests (2 variants × 3 models × 700 cases)
+  at most $38.40
+```
+
+`at most` when every model caps its output with `max_tokens`, so the figure is
+a real ceiling; `roughly` when one doesn't, since output length is then a
+guess. A model with no pricing is named and left out rather than counted as
+free, and if nothing can be priced the line is omitted entirely.
+
+There is no confirmation prompt and no size threshold. Ctrl-C is the escape,
+and an interrupted run resumes with `--resume`. For unattended runs
+`--max-cost` is the ceiling — it bounds the actual risk rather than asking you
+about a proxy for it.
 
 #### Failing fast
 

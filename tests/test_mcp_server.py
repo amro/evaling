@@ -12,7 +12,7 @@ from click.testing import CliRunner
 
 from evaling.cli import main
 from evaling.config import Settings, load_config
-from evaling.engine import CONFIRM_THRESHOLD, run_eval, run_eval_async
+from evaling.engine import run_eval, run_eval_async
 from evaling.errors import EvalingError
 from evaling.mcp_server import (
     PAGE_SIZE,
@@ -1017,89 +1017,6 @@ class TestSamplingOverMcp:
     def test_an_unsampled_run_reports_no_selection(self, tmp_path):
         project = self.project(tmp_path)
         assert "selection" not in self.call(project)
-
-
-class TestLargeMatrixGuard:
-    """The confirmation the CLI shows, on the surface with no human watching.
-
-    `run` asks before 100+ calls, but only when stdin is a terminal — so CI
-    skips it (a prompt would hang the build; `--max-cost` is the guard there)
-    and MCP skipped it entirely. An agent could start a hundred-thousand-cell
-    run with nothing between it and the bill.
-    """
-
-    def project(self, tmp_path, cases):
-        (tmp_path / "eval.yaml").write_text(
-            "models: [{id: mock, provider: mock}]\n"
-            "variants:\n  - name: v1\n"
-            '    prompt: [{role: user, content: "{{ q }}"}]\n'
-            "cases: ["
-            + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(cases))
-            + "]\n"
-            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n",
-            encoding="utf-8",
-        )
-        return tmp_path
-
-    def call(self, project, **kwargs):
-        return asyncio.run(
-            run_eval_tool(
-                config_path=str(project / "eval.yaml"),
-                output_dir=str(project / "runs"),
-                **kwargs,
-            )
-        )
-
-    def test_a_large_matrix_is_refused(self, tmp_path):
-        project = self.project(tmp_path, CONFIRM_THRESHOLD + 5)
-        with pytest.raises(EvalingError) as caught:
-            self.call(project)
-        message = str(caught.value)
-        assert str(CONFIRM_THRESHOLD + 5) in message
-        # Every way out has to be named, or the agent just gives up.
-        for escape in ("max_cost_usd", "sample", "confirm_large"):
-            assert escape in message
-
-    def test_a_small_matrix_is_untouched(self, tmp_path):
-        project = self.project(tmp_path, CONFIRM_THRESHOLD - 1)
-        assert self.call(project)["counts"]["total"] == CONFIRM_THRESHOLD - 1
-
-    def test_a_cost_cap_is_enough(self, tmp_path):
-        project = self.project(tmp_path, CONFIRM_THRESHOLD + 5)
-        assert self.call(project, max_cost_usd=1.0)["counts"]["total"] == CONFIRM_THRESHOLD + 5
-
-    def test_confirming_is_enough(self, tmp_path):
-        project = self.project(tmp_path, CONFIRM_THRESHOLD + 5)
-        assert self.call(project, confirm_large=True)["counts"]["total"] == CONFIRM_THRESHOLD + 5
-
-    def test_a_sample_can_bring_it_under_the_line(self, tmp_path):
-        """Sampling is a real answer to "that's too many", not just a workaround."""
-        project = self.project(tmp_path, CONFIRM_THRESHOLD + 5)
-        assert self.call(project, sample=10)["counts"]["total"] == 10
-
-    def test_a_bounded_source_is_measured_the_same_way(self, tmp_path):
-        (tmp_path / "src.py").write_text(
-            "from evaling import Case, CasePage\n"
-            "class S:\n"
-            "    def fetch(self, cursor, limit):\n"
-            "        start = int(cursor or 0)\n"
-            "        rows = [Case(id=f'c{i}', vars={'q': str(i)}) "
-            "for i in range(start, start + limit)]\n"
-            "        return CasePage(cases=rows, cursor=str(start + limit))\n"
-            "def make():\n"
-            "    return S()\n",
-            encoding="utf-8",
-        )
-        (tmp_path / "eval.yaml").write_text(
-            "models: [{id: mock, provider: mock}]\n"
-            "variants:\n  - name: v1\n"
-            '    prompt: [{role: user, content: "{{ q }}"}]\n'
-            f"cases: {{source: 'src.py:make', page_size: 50, limit: {CONFIRM_THRESHOLD + 50}}}\n"
-            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n",
-            encoding="utf-8",
-        )
-        with pytest.raises(EvalingError, match="confirmation threshold"):
-            self.call(tmp_path)
 
 
 class TestTheTwoListingsDifferOnPurpose:

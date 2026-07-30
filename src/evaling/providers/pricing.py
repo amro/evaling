@@ -82,3 +82,62 @@ def estimate_cost(
         return None
     cost = ((input_tokens or 0) * price.input + (output_tokens or 0) * price.output) / 1_000_000
     return round(cost, 8)
+
+
+#: Output tokens assumed for a model that sets no ``max_tokens``. Only used to
+#: put an estimate in the right order of magnitude; the caller says so.
+ASSUMED_OUTPUT_TOKENS = 500
+
+
+@dataclass(frozen=True)
+class CostEstimate:
+    """What a run is likely to cost, before it runs.
+
+    ``bounded`` is True only when every model capped its output with
+    ``max_tokens``, which makes ``usd`` a real ceiling rather than a guess.
+    ``priced`` is False when some model has no pricing, in which case ``usd``
+    covers only the models that do.
+    """
+
+    usd: float
+    bounded: bool
+    priced: bool
+    unpriced: tuple[str, ...] = ()
+
+
+def estimate_run(groups: list[tuple[str, dict[str, Any], int, int]]) -> CostEstimate | None:
+    """Estimate a run from ``(model_id, params, input_tokens_each, cells)`` groups.
+
+    Both sides scale with the cell count — the output half is what a run
+    actually spends most on, and leaving it per-cell made a 20-case estimate
+    indistinguishable from a 2-case one.
+
+    Returns None when nothing could be priced at all, so a caller can say
+    "unknown" rather than "$0.00", which would read as free.
+    """
+    total = 0.0
+    bounded = True
+    unpriced: list[str] = []
+    priced_any = False
+    for model_id, params, input_tokens_each, cells in groups:
+        max_tokens = (params or {}).get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > 0:
+            output_each = max_tokens
+        else:
+            output_each = ASSUMED_OUTPUT_TOKENS
+            bounded = False
+        cost = estimate_cost(
+            str((params or {}).get("model", model_id)),
+            input_tokens_each * cells,
+            output_each * cells,
+            params,
+        )
+        if cost is None:
+            if model_id not in unpriced:
+                unpriced.append(model_id)
+            continue
+        priced_any = True
+        total += cost
+    if not priced_any:
+        return None
+    return CostEstimate(round(total, 4), bounded, not unpriced, tuple(unpriced))

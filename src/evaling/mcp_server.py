@@ -20,7 +20,6 @@ from evaling.config.errors import ConfigError
 from evaling.config.loader import load_project_settings
 from evaling.config.schema import CaseSourceRef
 from evaling.engine import (
-    CONFIRM_THRESHOLD,
     dry_run,
     run_eval_async,
     select_matrix,
@@ -119,7 +118,6 @@ async def run_eval_tool(
     no_cache: bool = False,
     max_cost_usd: float | None = None,
     fail_fast: bool = False,
-    confirm_large: bool = False,
     output_dir: str | None = None,
     on_progress=None,
 ) -> dict[str, Any]:
@@ -152,11 +150,14 @@ async def run_eval_tool(
                 "there is no population to draw from. Set `limit` in the config to take "
                 "fewer, or sample inside your source."
             )
-        if config.cases.limit is None and max_cost_usd is None and not confirm_large:
+        if config.cases.limit is None and max_cost_usd is None:
+            # Nothing here can interrupt a run, and the size is unknown even
+            # to the config's author, so this is the one case that is refused
+            # rather than reported. The CLI refuses it too when not at a tty.
             raise ConfigError(
                 "this config fetches cases from a source with no `limit`, so the number "
-                "of model calls is whatever the source returns. Set `limit` in the "
-                "config, pass max_cost_usd, or pass confirm_large to run it anyway."
+                "of model calls is whatever the source returns — and nothing here can "
+                "interrupt it. Set `limit` in the config, or pass max_cost_usd."
             )
         variants_sel, models_sel = select_variants_models(config, models=models, variants=variants)
         total = (
@@ -170,8 +171,6 @@ async def run_eval_tool(
         # seed it used. Any draw of the same size gives the same total.
         selected = min(sample, len(cases_sel)) if sample is not None else len(cases_sel)
         total = len(variants_sel) * len(models_sel) * selected
-
-    _refuse_unbounded_matrix(total, max_cost_usd, confirm_large)
 
     done = 0
 
@@ -219,29 +218,6 @@ async def run_eval_tool(
         summary["first_failures"] = [_cell_row(record) for record in failures[:5]]
         summary["hint"] = 'call get_run(detail="failures") for the rest'
     return summary
-
-
-def _refuse_unbounded_matrix(
-    total: int | None, max_cost_usd: float | None, confirm_large: bool
-) -> None:
-    """Ask before a large run, the way the CLI does.
-
-    The CLI's confirmation needs a terminal, so it protects the surface with a
-    human watching and skips the two without: CI, where a prompt would hang the
-    build and `max_cost_usd` is the right guard, and this one, where an agent
-    could start a hundred-thousand-cell run with nothing between it and the
-    bill. Naming both escapes matters — the point is to make the size
-    deliberate, not to make large runs difficult.
-    """
-    if total is None or total < CONFIRM_THRESHOLD:
-        return
-    if max_cost_usd is not None or confirm_large:
-        return
-    raise ConfigError(
-        f"this run is {total} model calls, which is above the {CONFIRM_THRESHOLD}-call "
-        "confirmation threshold. Pass max_cost_usd to cap the spend, sample to run a "
-        "subset, or confirm_large=true to run it as-is."
-    )
 
 
 def get_run_tool(
@@ -432,7 +408,6 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         no_cache: bool = False,
         max_cost_usd: float | None = None,
         fail_fast: bool = False,
-        confirm_large: bool = False,
     ) -> dict[str, Any]:
         import asyncio
         import contextlib
@@ -453,7 +428,6 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
             no_cache=no_cache,
             max_cost_usd=max_cost_usd,
             fail_fast=fail_fast,
-            confirm_large=confirm_large,
             output_dir=output_dir,
             on_progress=on_progress,
         )
