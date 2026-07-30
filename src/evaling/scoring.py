@@ -140,6 +140,35 @@ def compare_aggregates(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def selection_note(meta_a: dict[str, Any], meta_b: dict[str, Any]) -> str | None:
+    """Warn when two runs did not evaluate the same cases.
+
+    Every delta a comparison shows is attributed to whatever changed between
+    the runs — the prompt, the model, the config. That reading is only correct
+    if both runs covered the same cases. A sampled run compared against a full
+    one, or two samples drawn with different seeds, breaks it silently: the
+    numbers stay plausible and part of every delta is just which cases each
+    run happened to draw.
+    """
+    a, b = meta_a.get("selection"), meta_b.get("selection")
+    if not a and not b:
+        return None
+    if not a or not b:
+        sampled, whole = (meta_b, meta_a) if not a else (meta_a, meta_b)
+        return (
+            f"run {sampled['id']} evaluated a sample of {sampled['selection']['sample']} cases "
+            f"and run {whole['id']} evaluated all of them, so these runs cover different "
+            "cases. Part of every delta below is that difference, not the change you made."
+        )
+    if (a.get("sample"), a.get("seed")) != (b.get("sample"), b.get("seed")):
+        return (
+            f"the two runs drew different samples ({a['sample']} cases with seed {a['seed']} "
+            f"against {b['sample']} with seed {b['seed']}), so they cover different cases. "
+            "Re-run with the same --sample and --sample-seed to compare like with like."
+        )
+    return None
+
+
 @dataclass
 class GateResult:
     passed: bool

@@ -28,7 +28,7 @@ from evaling.engine import (
 )
 from evaling.errors import EvalingError
 from evaling.render import render_messages
-from evaling.scoring import cell_summary, compare_aggregates, filter_failures
+from evaling.scoring import cell_summary, compare_aggregates, filter_failures, selection_note
 from evaling.storage import ResultRecord, RunStore, serialize_messages
 
 #: Cap on inlined model output. Full text is one get_case_result away.
@@ -312,7 +312,11 @@ def compare_runs_tool(
             raise EvalingError(f"run {meta['id']} has no aggregates (did it finish?)")
         metas.append(meta)
     diff = compare_aggregates(metas[0]["aggregates"], metas[1]["aggregates"])
-    return {"a": metas[0]["id"], "b": metas[1]["id"], **diff}
+    payload = {"a": metas[0]["id"], "b": metas[1]["id"], **diff}
+    caveat = selection_note(metas[0], metas[1])
+    if caveat:
+        payload["warning"] = caveat
+    return payload
 
 
 def list_runs_tool(

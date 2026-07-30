@@ -24,7 +24,7 @@ from evaling.engine import dry_run as engine_dry_run
 from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.report import render_compare_html, render_run_html
-from evaling.scoring import compare_aggregates
+from evaling.scoring import compare_aggregates, selection_note
 from evaling.storage import RunStore
 
 
@@ -613,6 +613,7 @@ def compare(app, ref_a, ref_b, html_path):
         metas.append(meta)
     meta_a, meta_b = metas
     diff = compare_aggregates(meta_a["aggregates"], meta_b["aggregates"])
+    caveat = selection_note(meta_a, meta_b)
     if html_path is not None:
         _require_path(html_path, "--html")
         Path(html_path).write_text(
@@ -620,8 +621,16 @@ def compare(app, ref_a, ref_b, html_path):
         )
 
     if app.json_output:
-        app.echo_json({"a": meta_a["id"], "b": meta_b["id"], **diff})
+        payload = {"a": meta_a["id"], "b": meta_b["id"], **diff}
+        if caveat:
+            payload["warning"] = caveat
+        app.echo_json(payload)
         return
+
+    if caveat:
+        # Before the table, not after: the numbers are what someone reads, and
+        # a caveat underneath them arrives too late to change how they read it.
+        app.err.print(f"[yellow]warning:[/yellow] {markup_escape(caveat)}")
 
     app.console.print(f"[bold]{meta_a['id']}[/bold] → [bold]{meta_b['id']}[/bold]")
     table, notes = display.compare_table(diff)

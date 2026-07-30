@@ -247,3 +247,70 @@ class TestSourceBackedRunsRefuseIt:
         result = invoke(sourced, "validate", "--sample", "3")
         assert result.exit_code == 2
         assert "source-backed run" in result.output
+
+
+class TestComparingRunsThatCoverDifferentCases:
+    """A comparison attributes every delta to whatever you changed.
+
+    That reading is only correct if both runs saw the same cases. Comparing a
+    sampled run with a full one breaks it silently: the numbers stay entirely
+    plausible and part of each delta is just which cases were drawn. Found by
+    driving the CLI, where nothing said a word about it.
+    """
+
+    def flat(self, result):
+        """Console output with wrapping undone, so assertions aren't width-bound."""
+        return " ".join(result.output.split())
+
+    def two_runs(self, project, *first, second=()):
+        invoke(project, "run", *first)
+        invoke(project, "run", *second)
+        store = RunStore(project / "runs")
+        runs = store.list_runs()
+        return runs[-2]["id"], runs[-1]["id"]
+
+    def test_a_sampled_run_against_a_full_one_is_flagged(self, project):
+        a, b = self.two_runs(project, "--sample", "5", second=())
+        result = invoke(project, "compare", a, b)
+        assert result.exit_code == 0, result.output
+        assert "cover different cases" in self.flat(result)
+        assert "not the change you made" in self.flat(result)
+
+    def test_two_different_draws_are_flagged(self, project):
+        a, b = self.two_runs(
+            project,
+            "--sample",
+            "5",
+            "--sample-seed",
+            "1",
+            second=("--sample", "5", "--sample-seed", "2"),
+        )
+        result = invoke(project, "compare", a, b)
+        assert "different samples" in self.flat(result)
+        assert "same --sample and --sample-seed" in self.flat(result)
+
+    def test_the_same_draw_twice_is_not_flagged(self, project):
+        a, b = self.two_runs(
+            project,
+            "--sample",
+            "5",
+            "--sample-seed",
+            "7",
+            second=("--sample", "5", "--sample-seed", "7"),
+        )
+        result = invoke(project, "compare", a, b)
+        assert "different" not in self.flat(result)
+
+    def test_two_full_runs_are_not_flagged(self, project):
+        a, b = self.two_runs(project)
+        assert "different" not in self.flat(invoke(project, "compare", a, b))
+
+    def test_the_warning_reaches_json_and_mcp(self, project):
+        a, b = self.two_runs(project, "--sample", "5", second=())
+        payload = json.loads(invoke(project, "--json", "compare", a, b).output)
+        assert "cover different cases" in payload["warning"]
+
+        from evaling.mcp_server import compare_runs_tool
+
+        over_mcp = compare_runs_tool(a, b, output_dir=str(project / "runs"))
+        assert over_mcp["warning"] == payload["warning"]

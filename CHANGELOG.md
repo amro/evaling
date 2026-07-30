@@ -102,6 +102,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose halves cover different cases. Not available for source-backed runs,
   which have no population to draw from — use `limit`.
 
+  `evaling compare` and the MCP `compare_runs` tool now warn when the two runs
+  did not cover the same cases — a sampled run against a full one, or two
+  different draws. A comparison attributes every delta to whatever you
+  changed, and that reading is wrong when the case sets differ, in a way that
+  leaves the numbers looking entirely plausible.
+
 
 - **Performance guards in CI** (`tests/test_performance.py`, marker `perf`,
   its own workflow job with coverage off). Memory flatness and throughput had
