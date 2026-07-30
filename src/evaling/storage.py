@@ -172,13 +172,28 @@ def record_from_dict(data: dict[str, Any]) -> ResultRecord:
     return ResultRecord(**{k: v for k, v in data.items() if k in known})
 
 
+#: Labels `resolve_ref` interprets as something other than a label. A run
+#: carrying one would be shadowed by the meaning and unreachable by name.
+RESERVED_LABELS = frozenset({"latest", "baseline"})
+
+
+def check_label(label: str | None) -> None:
+    """Refuse a label that could never be used to refer to the run.
+
+    Called by `create_run`, and separately by the CLI before a run starts:
+    the store is not created until the engine is already underway, so relying
+    on `create_run` alone meant the refusal arrived after the run appeared to
+    begin. Nothing was spent — but it looked like something had been.
+    """
+    if label in RESERVED_LABELS:
+        raise StorageError(f"label {label!r} is reserved as a run reference; choose another label")
+
+
 class RunStore:
     """Creates, lists, and loads runs under one output directory."""
 
     def __init__(self, output_dir: str | Path):
         self.output_dir = Path(output_dir)
-
-    RESERVED_LABELS = frozenset({"latest", "baseline"})
 
     def create_run(
         self,
@@ -200,10 +215,7 @@ class RunStore:
         that lists its cases inline contains the data itself, which no-look
         mode must not leave on disk.
         """
-        if label in self.RESERVED_LABELS:
-            raise StorageError(
-                f"label {label!r} is reserved as a run reference; choose another label"
-            )
+        check_label(label)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         for _ in range(20):
             now = datetime.now(timezone.utc)

@@ -237,3 +237,36 @@ class TestRunsLiveWithTheirConfig:
         # Only output_dir was overridden, so the cache still anchors to the
         # project -- but no runs may appear there.
         assert not (project / ".evaling" / "runs").exists()
+
+
+class TestAReservedLabelIsRefusedBeforeTheRunStarts:
+    """`latest` and `baseline` mean something to `resolve_ref`.
+
+    A run carrying one would be shadowed by that meaning and unreachable by
+    its own name, so the store refuses it. But the store is not created until
+    the engine is already underway, so the refusal used to arrive after the
+    CLI had printed "Running N requests" and painted a progress bar — nothing
+    was spent, but it read as a crash rather than a refusal.
+    """
+
+    def test_the_label_is_refused(self, tmp_path):
+        result = invoke(tmp_path, *run_args(tmp_path, "--label", "baseline"))
+        assert result.exit_code == 2
+        assert "reserved as a run reference" in result.output
+
+    def test_latest_too(self, tmp_path):
+        result = invoke(tmp_path, *run_args(tmp_path, "--label", "latest"))
+        assert result.exit_code == 2
+
+    def test_the_run_never_appears_to_start(self, tmp_path):
+        result = invoke(tmp_path, *run_args(tmp_path, "--label", "baseline"))
+        assert "requests" not in result.output, "the run announced itself before refusing"
+
+    def test_nothing_is_left_behind(self, tmp_path):
+        invoke(tmp_path, *run_args(tmp_path, "--label", "baseline"))
+        runs = tmp_path / "runs"
+        assert not runs.exists() or not list(runs.glob("*/run.json"))
+
+    def test_an_ordinary_label_still_runs(self, tmp_path):
+        result = invoke(tmp_path, *run_args(tmp_path, "--label", "nightly"))
+        assert result.exit_code == 0, result.output
