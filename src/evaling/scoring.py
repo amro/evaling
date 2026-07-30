@@ -152,7 +152,7 @@ def selection_note(meta_a: dict[str, Any], meta_b: dict[str, Any]) -> str | None
     """
     a, b = _coverage(meta_a), _coverage(meta_b)
     if not a and not b:
-        return None
+        return _different_cases(meta_a, meta_b)
     if not a or not b:
         sampled, whole = (meta_b, meta_a) if not a else (meta_a, meta_b)
         return (
@@ -174,7 +174,24 @@ def selection_note(meta_a: dict[str, Any], meta_b: dict[str, Any]) -> str | None
             f"({a['available']} against {b['available']}), so the draws do not line up. "
             "A seed selects by position, not by case id."
         )
-    return None
+    return _different_cases(meta_a, meta_b)
+
+
+def _different_cases(meta_a: dict[str, Any], meta_b: dict[str, Any]) -> str | None:
+    """The general form: the two runs evaluated different case sets.
+
+    Sampling is the common way to end up here, but it is not the only one —
+    two runs narrowed with different `--case` filters compare just as
+    misleadingly, and the sizes can match exactly. Each run records a digest
+    of the cases it covered, so this is a comparison rather than an inference.
+    """
+    a, b = meta_a.get("matrix") or {}, meta_b.get("matrix") or {}
+    if not a.get("cases") or not b.get("cases") or a["cases"] == b["cases"]:
+        return None
+    return (
+        "the two runs evaluated different sets of cases, so part of every delta below "
+        "is that difference rather than the change you made."
+    )
 
 
 def _coverage(meta: dict[str, Any]) -> dict[str, Any] | None:

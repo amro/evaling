@@ -49,8 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Headers are never written — the API key travels in one, so the way to
   guarantee the file cannot contain it is to have no code path that writes
-  them — and secrets-file values are redacted from the bodies as well, for a
-  gateway that reflects credentials into an error. Refused under no-look,
+  them — and every credential evaling knows about, from a secrets file or
+  resolved by a model from the environment, is scrubbed from the bodies too,
+  for a gateway that reflects credentials into an error. Refused under no-look,
   where a verbatim record of prompts and completions is the exact artifact
   that mode exists to prevent.
 
@@ -99,10 +100,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which have no population to draw from — use `limit`.
 
   `evaling compare` and the MCP `compare_runs` tool now warn when the two runs
-  did not cover the same cases — a sampled run against a full one, or two
-  different draws. A comparison attributes every delta to whatever you
-  changed, and that reading is wrong when the case sets differ, in a way that
-  leaves the numbers looking entirely plausible.
+  did not cover the same cases — a sampled run against a full one, two
+  different draws, or two runs narrowed with different `--case` filters. The
+  warning reaches the CLI, `--json`, the MCP response, and the HTML report,
+  which is the copy people share. A comparison attributes every delta to
+  whatever you changed, and that reading is wrong when the case sets differ —
+  in a way that leaves the numbers looking entirely plausible.
 
 - **Performance guards in CI** (`tests/test_performance.py`, marker `perf`,
   its own workflow job with coverage off). Memory flatness and throughput had
@@ -247,8 +250,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marked the run complete. With `--sample` it was worse: the draw is by
   position into the filtered list, so resuming over a smaller population
   produced a run whose cells came from two different case sets, with entirely
-  ordinary numbers. The matrix a run set out to execute is now recorded and
-  compared on resume.
+  ordinary numbers. The matrix a run set out to execute — variant and model
+  names, and digests of the cases and the population they were drawn from — is
+  now recorded and compared on resume. Identities rather than counts: swapping
+  two cases for two others leaves every count unchanged, and the first version
+  of this guard let exactly that through.
 
 - `evaling calibrate` on a run with several models paired each rating with an
   arbitrary model's output. Three models produce three answers and the rating

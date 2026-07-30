@@ -169,6 +169,14 @@ class TestPairingOutputsWithRatings:
         chosen = build_cases(records, {"a1": 5}, model="m2")
         assert chosen[0]["answer"] == "different"
 
+    @pytest.mark.parametrize("kind", ["variant", "model"])
+    def test_a_filter_that_matches_nothing_names_the_typo(self, rated, kind):
+        """Not "no case matches a labelled id", which blames the ratings."""
+        path, result = rated
+        records = RunStore(path / "runs").load_results(result.run_id)
+        with pytest.raises(CalibrationError, match=f"no {kind} 'nope'"):
+            build_cases(records, {"a1": 5}, **{kind: "nope"})
+
     def test_labels_that_match_nothing_say_so(self, rated):
         path, result = rated
         records = RunStore(path / "runs").load_results(result.run_id)

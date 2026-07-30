@@ -16,6 +16,11 @@ Off unless asked for. Two rules make it safe to turn on:
 * **Refused under no-look.** A verbatim record of prompts and completions is
   the exact artifact that mode exists to prevent, so asking for both is a
   contradiction rather than a preference.
+
+What it cannot promise: a ``command`` provider's script gets the environment,
+and a script that prints some *other* credential to stderr will have that
+logged. evaling knows the keys its own models declare, not the ones your
+script reads.
 """
 
 import json

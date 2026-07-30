@@ -151,9 +151,10 @@ sampled 20 of 2000 cases — repeat this draw with --sample 20 --sample-seed 289
 ```
 
 The seed is stored with the run, so `--resume` continues the original draw
-rather than making a new one — and `evaling compare` warns when two runs did
-not cover the same cases, since otherwise part of every delta is just which
-cases each run drew.
+rather than making a new one, and `--resume` refuses outright if the filters
+changed. `evaling compare` warns when two runs did not cover the same cases —
+sampled or not — since otherwise part of every delta is just which cases each
+run covered.
 
 Sampling narrows a fixed case list, so it does not apply to
 [source-backed runs](large-datasets.md), which have no population to draw

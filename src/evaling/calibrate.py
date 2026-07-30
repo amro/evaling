@@ -102,6 +102,17 @@ def build_cases(
     numbers about the wrong thing — so it is an error to be ambiguous here.
     """
     usable = [r for r in records if r.error is None and r.output]
+    for kind, chosen, present in (
+        ("variant", variant, {r.variant for r in usable}),
+        ("model", model, {r.model for r in usable}),
+    ):
+        # Checked before filtering: a name that matches nothing otherwise ends
+        # up reported as "no case matches a labelled id", which sends the
+        # reader to look at their ratings instead of their typo.
+        if chosen is not None and chosen not in present:
+            raise CalibrationError(
+                f"the run has no {kind} {chosen!r} (it has: {', '.join(sorted(present))})"
+            )
     if variant is not None:
         usable = [r for r in usable if r.variant == variant]
     if model is not None:

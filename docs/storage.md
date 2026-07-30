@@ -33,7 +33,8 @@ created in the same millisecond still order correctly.
   "config_sha256": "…",
   "counts": {"total": 8, "succeeded": 7, "failed": 1, "cached": 4},
   "totals": {"input_tokens": 5120, "output_tokens": 890, "cost_usd": 0.023},
-  "matrix": {"variants": 2, "models": 2, "cases": 2, "available": 40},
+  "matrix": {"variants": ["concise", "verbose"], "models": ["claude-sonnet-5"],
+             "cases": "…", "population": "…", "count": 2},
   "selection": {"sample": 2, "seed": 2894127714, "available": 40},
   "stopped_early": false
 }
@@ -44,9 +45,14 @@ keeps that status, which is how unfinished runs are recognized.
 `stopped_early` distinguishes a run that `--fail-fast` ended deliberately from
 one that never finished at all.
 
-`matrix` is what the run set out to execute. `--resume` compares it, so a run
-cannot be finished with different `--case`/`--model`/`--variant` filters than
-it started with — the config fingerprint covers the config, not the flags.
+`matrix` is what the run set out to execute — variant and model names, and
+digests of the case ids it selected and of the population it selected them
+from. `--resume` compares it, so a run cannot be finished with different
+`--case`/`--model`/`--variant` filters than it started with; the config
+fingerprint covers the config, not the flags. Identities rather than counts,
+because swapping two cases for two others leaves every count unchanged.
+Digests rather than the ids, so a run over 500,000 cases doesn't write every
+one of them here.
 
 `selection` is present only for a sampled run, and carries the seed that
 produced the draw. `--resume` reuses it, and `evaling compare` reads it to

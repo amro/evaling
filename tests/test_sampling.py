@@ -320,6 +320,25 @@ class TestComparingRunsThatCoverDifferentCases:
         a, b = self.two_runs(project, "--sample", str(CASES * 10), second=())
         assert "different" not in self.flat(invoke(project, "compare", a, b))
 
+    def test_two_full_runs_over_different_cases_are_flagged(self, project):
+        """Sampling is the common way here, not the only one.
+
+        Two runs narrowed with different `--case` filters compare exactly as
+        misleadingly, and their sizes can match precisely.
+        """
+        invoke(project, "run", "--case", "c1", "--case", "c2")
+        invoke(project, "run", "--case", "c8", "--case", "c9")
+        runs = RunStore(project / "runs").list_runs()
+        result = invoke(project, "compare", runs[-2]["id"], runs[-1]["id"])
+        assert "different sets of cases" in self.flat(result)
+
+    def test_two_full_runs_over_the_same_cases_are_not(self, project):
+        invoke(project, "run", "--case", "c1", "--case", "c2")
+        invoke(project, "run", "--case", "c1", "--case", "c2")
+        runs = RunStore(project / "runs").list_runs()
+        result = invoke(project, "compare", runs[-2]["id"], runs[-1]["id"])
+        assert "different" not in self.flat(result)
+
     def test_the_warning_reaches_json_and_mcp(self, project):
         a, b = self.two_runs(project, "--sample", "5", second=())
         payload = json.loads(invoke(project, "--json", "compare", a, b).output)
@@ -386,7 +405,52 @@ class TestResumeRefusesADifferentMatrix:
         settings, config, first = self.interrupted(project, sample=5)
         with pytest.raises(StorageError) as caught:
             run_eval(config, settings, resume_run_id=first.run_id, case_filter=["c1", "c2", "c3"])
-        assert "available: 40 → 3" in str(caught.value)
+        assert "a different set of cases to draw from" in str(caught.value)
+
+    def test_swapping_cases_for_the_same_number_of_others_is_refused(self, project):
+        """The half the first version of this guard missed.
+
+        It compared counts, so `--case c0 --case c1` resumed with
+        `--case c4 --case c5` was accepted and finalized a run whose cells came
+        from two different case sets. Every count was identical.
+        """
+        settings = self.settings_for(project)
+        config = load_config(project / "eval.yaml")
+        first = run_eval(config, settings, case_filter=["c0", "c1"])
+        rewind(settings.output_dir / first.run_id, keep=1)
+
+        with pytest.raises(StorageError, match="different set of cases"):
+            run_eval(config, settings, resume_run_id=first.run_id, case_filter=["c4", "c5"])
+
+    def test_swapping_one_variant_for_another_is_refused(self, project):
+        (project / "eval.yaml").write_text(
+            CONFIG.replace(
+                'variants:\n  - name: v1\n    prompt: [{role: user, content: "{{ q }}"}]\n',
+                "variants:\n"
+                '  - name: v1\n    prompt: [{role: user, content: "{{ q }}"}]\n'
+                '  - name: v2\n    prompt: [{role: user, content: "say {{ q }}"}]\n',
+            ),
+            encoding="utf-8",
+        )
+        settings = self.settings_for(project)
+        config = load_config(project / "eval.yaml")
+        first = run_eval(config, settings, variant_filter=["v1"], sample=3)
+        rewind(settings.output_dir / first.run_id, keep=1)
+
+        with pytest.raises(StorageError, match="variants"):
+            run_eval(config, settings, resume_run_id=first.run_id, variant_filter=["v2"])
+
+    def test_a_same_sized_population_with_different_cases_is_refused(self, project):
+        """A positional draw over a different population picks different cases."""
+        settings = self.settings_for(project)
+        config = load_config(project / "eval.yaml")
+        first_ten = [f"c{i}" for i in range(10)]
+        other_ten = [f"c{i}" for i in range(10, 20)]
+        first = run_eval(config, settings, case_filter=first_ten, sample=4)
+        rewind(settings.output_dir / first.run_id, keep=1)
+
+        with pytest.raises(StorageError, match="different set of cases"):
+            run_eval(config, settings, resume_run_id=first.run_id, case_filter=other_ten, sample=4)
 
     def test_the_same_filters_still_resume(self, project):
         settings, config, first = self.interrupted(project, sample=5)

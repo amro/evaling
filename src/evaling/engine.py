@@ -239,6 +239,7 @@ async def _run_eval_impl(
         variants_sel, models_sel, cases = select_matrix(
             config, models=model_filter, variants=variant_filter, cases=case_filter
         )
+        population = [case.id or "" for case in cases]
         available = len(cases)
         cases = sample_cases(cases, sample, sample_seed)
     selection = (
@@ -253,10 +254,15 @@ async def _run_eval_impl(
         None
         if source_ref is not None
         else {
-            "variants": len(variants_sel),
-            "models": len(models_sel),
-            "cases": len(cases),
-            "available": available,
+            "variants": sorted(variant.name for variant in variants_sel),
+            "models": sorted(model.id for model in models_sel),
+            # Digests rather than the ids themselves: a run over 500,000 cases
+            # would otherwise write every one of them into run.json. Identities
+            # rather than counts, because swapping two cases for two others
+            # leaves every count unchanged.
+            "cases": _ids_digest(case.id or "" for case in cases),
+            "population": _ids_digest(population),
+            "count": len(cases),
         }
     )
     prompts = {
@@ -615,6 +621,15 @@ def _resolve_baseline(store: RunStore, config: EvalConfig, override: str | None)
     return store.resolve_ref(ref)
 
 
+def _ids_digest(ids: "Iterator[str] | list[str]") -> str:
+    """A stable fingerprint of a selection of case ids."""
+    digest = hashlib.sha256()
+    for case_id in ids:
+        digest.update(case_id.encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
 def _check_resumable_matrix(
     run_id: str, recorded: dict[str, Any] | None, current: dict[str, Any] | None
 ) -> None:
@@ -627,19 +642,30 @@ def _check_resumable_matrix(
     into the filtered list, so a resume over a different population produced a
     hybrid of two draws, a run whose cells came from two different case sets
     and whose numbers looked entirely ordinary.
+
+    Identities, not counts. Comparing sizes alone closed only half of this:
+    swapping two cases for two others, or one variant for another, leaves
+    every count where it was.
     """
     if not recorded or not current or recorded == current:
         return
-    changed = [
-        f"{name}: {recorded.get(name)} → {current.get(name)}"
-        for name in ("variants", "models", "cases", "available")
-        if recorded.get(name) != current.get(name)
-    ]
+    changed = []
+    for name in ("variants", "models"):
+        was, now = set(recorded.get(name) or []), set(current[name])
+        if was != now:
+            changed.append(f"{name} {sorted(was)} → {sorted(now)}")
+    if recorded.get("population") != current["population"]:
+        changed.append(
+            f"a different set of cases to draw from ({recorded.get('count')} cells → "
+            f"{current['count']})"
+        )
+    elif recorded.get("cases") != current["cases"]:
+        changed.append(f"a different selection of cases ({current['count']} of the same set)")
     raise StorageError(
         f"run {run_id!r} covered a different matrix than this one does "
-        f"({'; '.join(changed)}), so resuming would finish it with cells from two "
-        "different selections. Resume with the same filters the run started with, "
-        "or start a fresh run."
+        f"({'; '.join(changed) or 'the selection changed'}), so resuming would finish it "
+        "with cells from two different selections. Resume with the same filters the run "
+        "started with, or start a fresh run."
     )
 
 
