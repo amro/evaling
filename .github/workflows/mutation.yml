@@ -19,17 +19,67 @@ jobs:
           python-version: "3.12"
       - run: uv sync --group dev
       - name: Run mutation testing
-        run: uv run --with mutmut python -m mutmut run --max-children 4
+        # Survivors are a triage queue, not a failure — but the step below
+        # decides whether the run is worth reading at all.
+        run: uv run --with mutmut python -m mutmut run --max-children 4 2>&1 | tee mutmut.log
         continue-on-error: true
-      - name: Summarize survivors
+      - name: Collect results
+        run: uv run --with mutmut python -m mutmut results > survivors.txt 2>/dev/null || true
+      - name: Check the run actually ran
+        # mutmut exits 0 and reports nothing when its own setup fails, so an
+        # aborted run looks exactly like a perfect score. `mutmut results`
+        # lists only survivors, so an empty file cannot tell the two apart —
+        # the signal has to come from the run itself, which prints a rate on
+        # completion and says so when the clean-test baseline fails.
         run: |
-          uv run --with mutmut python -m mutmut results > survivors.txt 2>/dev/null || true
-          echo "### Surviving mutants by module" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          grep survived survivors.txt \
-            | sed 's/evaling\.\([a-z_]*\)\..*/\1/' \
-            | sort | uniq -c | sort -rn >> "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "Failed to run clean test" mutmut.log; then
+            echo "::error::mutmut could not run the unmutated suite, so no mutant was tested." \
+                 "Any survivor count is meaningless. See the log artifact."
+            exit 1
+          fi
+          if ! grep -q "mutations/second" mutmut.log; then
+            echo "::error::the mutation run did not finish. Treat this as a failed run," \
+                 "not a clean sheet."
+            exit 1
+          fi
+      - name: Summarize
+        if: always()
+        run: |
+          survived=$(grep -c ': survived' survivors.txt || true)
+          segfault=$(grep -c ': segfault' survivors.txt || true)
+          timeout=$(grep -c ': timeout' survivors.txt || true)
+          {
+            echo "### Mutation testing"
+            echo ""
+            echo "| Outcome | Count |"
+            echo "|---|---|"
+            echo "| Survived | ${survived} |"
+            echo "| Segfault | ${segfault} |"
+            echo "| Timeout | ${timeout} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          # A segfault is an inconclusive mutant, not a killed one. They came
+          # in a batch once — the suite was consulting the macOS proxy
+          # resolver inside mutmut's fork — and were silently counted as
+          # neither killed nor survived.
+          if [ "${segfault}" -gt 0 ]; then
+            echo "::warning::${segfault} mutants segfaulted and were not evaluated."
+          fi
+          {
+            echo "#### Surviving mutants by module"
+            echo '```'
+            grep ': survived' survivors.txt \
+              | sed 's/evaling\.\([a-z_]*\)\..*/\1/' \
+              | sort | uniq -c | sort -rn || true
+            echo '```'
+            echo ""
+            echo "Triage before acting: CONTRIBUTING.md lists the survivor"
+            echo "classes already established as equivalent."
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: mutation-survivors, path: survivors.txt}
+        with:
+          name: mutation-survivors
+          path: |
+            survivors.txt
+            mutmut.log
