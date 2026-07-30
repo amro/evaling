@@ -407,6 +407,11 @@ def run(
         if gate:
             for line in display.gate_lines(gate):
                 app.show(line)
+        elif config.thresholds.model_dump(exclude_none=True):
+            # Thresholds were configured but nothing ran, so there is no
+            # verdict. Said out loud, because a gate line that simply vanishes
+            # reads as "it passed".
+            app.say("gate not evaluated — no cell ran")
         if log_requests:
             app.say(f"request log written to [bold]{log_requests}[/bold]")
         if result.selection:

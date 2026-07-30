@@ -222,9 +222,21 @@ def evaluate_gate(
 ) -> GateResult | None:
     """Evaluate configured thresholds against a run's overall aggregates.
 
-    Returns None when no thresholds apply. Baseline checks fail when the run
-    is worse than the baseline on score or pass rate.
+    Returns None when there is no verdict to give: no thresholds apply, or
+    no cell ran. Baseline checks fail when the run is worse than the baseline
+    on score or pass rate.
+
+    A run with zero cells is the second case. Its aggregates report a pass
+    rate of 0.0, which is the "no data" fallback rather than a measurement —
+    but a threshold reads it as "0% of cases passed" and fails the run. A
+    `--max-cost` ceiling reached before the first call therefore announced a
+    quality regression it had not measured. Declining to judge is the honest
+    answer; the run is still reported as incomplete, and still exits non-zero
+    for that reason.
     """
+    if overall.get("cases") == 0:
+        return None
+
     checks: list[dict[str, Any]] = []
 
     if thresholds.min_pass_rate is not None:

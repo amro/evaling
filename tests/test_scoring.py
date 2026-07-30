@@ -284,3 +284,32 @@ class TestWhatAFailedCheckReports:
         assert (
             check["detail"] == "score 0.400 vs baseline 0.800; pass rate 40.00% vs baseline 80.00%"
         )
+
+
+class TestARunThatEvaluatedNothing:
+    """Zero cells is no verdict, not a failing one.
+
+    A run's aggregates report `pass_rate: 0.0` when no cell ran, which is a
+    "no data" fallback rather than a measurement — but a threshold read it as
+    "0% of cases passed" and failed the run. A `--max-cost` ceiling reached
+    before the first call therefore announced a quality regression it had
+    never measured.
+    """
+
+    EMPTY = {"cases": 0, "score": 0.0, "pass_rate": 0.0, "errors": 0}
+
+    def test_no_cells_means_no_gate(self):
+        assert evaluate_gate(Thresholds(min_pass_rate=0.5), self.EMPTY) is None
+
+    def test_not_even_against_a_score_threshold(self):
+        assert evaluate_gate(Thresholds(min_score=0.8), self.EMPTY) is None
+
+    def test_not_even_against_a_baseline(self):
+        baseline = {"cases": 4, "score": 0.9, "pass_rate": 0.9, "errors": 0}
+        assert evaluate_gate(Thresholds(baseline="regression"), self.EMPTY, baseline) is None
+
+    def test_one_cell_is_still_judged(self):
+        """The boundary: a run that did something is a run with a verdict."""
+        ran = {"cases": 1, "score": 0.0, "pass_rate": 0.0, "errors": 0}
+        gate = evaluate_gate(Thresholds(min_pass_rate=0.5), ran)
+        assert gate is not None and not gate.passed
