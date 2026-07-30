@@ -109,8 +109,9 @@ pass an explicit run with `evaling run --baseline <run-id>`.
   `gate` is `null` when there was no verdict to give — no thresholds
   configured, or no cell ran (see `--max-cost` below). `jq -e` fails on
   `null`. A run that evaluated nothing also exits `1` on its own, so an empty
-  source or an exhausted budget cannot take a build green; a run with no
-  thresholds configured exits `0`, which is the same as it ever did.
+  source or an exhausted budget cannot take a build green. A run that
+  evaluated something with no thresholds configured exits `0`, as it always
+  has.
 
 ## Gating on production data
 

@@ -472,10 +472,20 @@ class TestASourceThatReturnsNothing:
         assert self.invoke(self.project(tmp_path)).exit_code == 1
 
     def test_it_says_why_rather_than_claiming_a_regression(self, tmp_path):
-        output = self.invoke(self.project(tmp_path, "thresholds: {min_pass_rate: 0.9}\n")).output
-        assert "no cell ran" in output
-        assert "gate FAILED" not in output
-        assert "0.00%" not in output, "a pass rate nobody measured was reported"
+        result = self.invoke(self.project(tmp_path, "thresholds: {min_pass_rate: 0.9}\n"))
+        assert result.exit_code == 1
+        assert "no cell ran" in result.output
+        assert "gate FAILED" not in result.output
+        assert "0.00%" not in result.output, "a pass rate nobody measured was reported"
+
+    def test_it_says_so_even_with_no_thresholds_configured(self, tmp_path):
+        """The line is not keyed off whether a gate was configured.
+
+        It was, which meant `--baseline` users and threshold-less runs saw the
+        gate line simply vanish — which reads as "it passed", the thing the
+        line exists to prevent.
+        """
+        assert "no cell ran" in self.invoke(self.project(tmp_path)).output
 
     def test_the_json_gate_is_null(self, tmp_path):
         import json
@@ -490,3 +500,4 @@ class TestASourceThatReturnsNothing:
         payload = json.loads(result.output)
         assert payload["gate"] is None
         assert payload["aggregates"]["overall"]["cases"] == 0
+        assert result.exit_code == 1, "a null gate must not read as a pass"

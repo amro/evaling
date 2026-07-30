@@ -21,6 +21,7 @@ without an injected transport gets one that refuses to send.
 """
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -89,8 +90,13 @@ def _credential_canary():
     for it to strip.
     """
     os.environ[CANARY_VAR] = "sk-ant-canary-not-a-real-credential"
-    yield
+    # A private directory for the neutralized user-secrets path. A fixed name
+    # in the shared temp directory would be writable by any other user on the
+    # machine, who could then plant a file the whole suite would read.
+    private = tempfile.mkdtemp(prefix="evaling-suite-")
+    yield Path(private) / "no-such-user-secrets.yaml"
     os.environ.pop(CANARY_VAR, None)
+    shutil.rmtree(private, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
@@ -106,10 +112,7 @@ def _no_credentials(monkeypatch, _credential_canary):
     for name in list(os.environ):
         if name in CREDENTIAL_VARS or name.endswith(CREDENTIAL_SUFFIXES):
             monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(
-        "evaling.secrets.user_secrets_path",
-        lambda: Path(tempfile.gettempdir()) / "evaling-no-such-user-secrets.yaml",
-    )
+    monkeypatch.setattr("evaling.secrets.user_secrets_path", lambda: _credential_canary)
 
 
 @pytest.fixture(autouse=True)

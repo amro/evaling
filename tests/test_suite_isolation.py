@@ -47,6 +47,45 @@ class TestNoTestReachesTheNetwork:
         ):
             client.get("https://example.invalid/v1")
 
+    def test_the_refusal_is_not_an_ordinary_exception(self):
+        """It has to escape `except Exception`, which the engine uses per cell.
+
+        Asserted on the raised object rather than by importing the class:
+        mutmut runs the suite from a copied tree where `conftest` is a second
+        module object. Loosening the raises() above to BaseException was not
+        enough on its own — RuntimeError satisfies that too.
+        """
+        with (
+            pytest.raises(BaseException) as caught,  # noqa: B017, PT011
+            httpx.Client() as client,
+        ):
+            client.get("https://unreachable.invalid/v1")
+        assert not isinstance(caught.value, Exception), (
+            "a refusal that is an Exception gets swallowed by the engine's "
+            "per-cell handler and the run goes green"
+        )
+
+    def test_a_run_surfaces_a_refusal_instead_of_recording_it(self, tmp_path):
+        """The scenario the BaseException exists for, end to end.
+
+        `run_eval` catches Exception per cell so one provider failure cannot
+        lose a whole run. A test that accidentally reaches the network through
+        a provider would therefore have produced a cell error and a green
+        run — prevented, but silent.
+        """
+        from evaling.engine import run_eval
+        from helpers import make_config, make_settings
+
+        config = make_config(
+            tmp_path,
+            models=[
+                {"id": "m1", "provider": "openai-compatible", "base_url": "http://x.invalid/v1"}
+            ],
+        )
+        with pytest.raises(BaseException) as caught:  # noqa: B017, PT011
+            run_eval(config, make_settings(tmp_path))
+        assert not isinstance(caught.value, Exception)
+
     def test_an_injected_transport_still_works(self):
         """The guard must not break the way every provider test stages a call."""
         transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))

@@ -236,10 +236,12 @@ class TestTheEstimateArithmetic:
     def test_ten_times_the_cells_costs_ten_times_as_much(self):
         one = estimate_run([(MODEL, {}, 1000, 1)]).usd
         ten = estimate_run([(MODEL, {}, 1000, 10)]).usd
-        # Loose enough to survive the 4-decimal rounding of each figure,
-        # tight enough that dividing by the cell count instead of multiplying
-        # is nowhere near it.
-        assert ten == pytest.approx(one * 10, rel=1e-3)
+        # Each figure is rounded to 4 decimals, so at these magnitudes the
+        # rounding alone can move the ratio by ~0.5%. The tolerance covers
+        # that; the mutations this is here to catch — dropping the input half,
+        # or dividing by the cell count instead of multiplying — are off by
+        # factors, not percentages.
+        assert ten == pytest.approx(one * 10, rel=1e-2)
 
 
 class TestMaxTokensCapsTheOutputHalf:
