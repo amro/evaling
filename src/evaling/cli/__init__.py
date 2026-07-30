@@ -375,6 +375,9 @@ def run(
         )
 
     gate = asdict(result.gate) if result.gate else None
+    # A run can finish having evaluated nothing: a cost ceiling hit before the
+    # first call, or a case source that returned no rows.
+    no_cells = not result.aggregates["overall"]["cases"]
     if html_path is not None:
         _require_path(html_path, "--html")
         # Read the run back from storage so the report is rendered from the
@@ -409,10 +412,10 @@ def run(
         if gate:
             for line in display.gate_lines(gate):
                 app.show(line)
-        elif config.thresholds.model_dump(exclude_none=True):
-            # Thresholds were configured but nothing ran, so there is no
-            # verdict. Said out loud, because a gate line that simply vanishes
-            # reads as "it passed".
+        elif no_cells:
+            # Said unconditionally: a gate line that simply vanishes reads as
+            # "it passed", and whether thresholds happened to be configured is
+            # not the interesting part when nothing was evaluated.
             app.say("gate not evaluated — no cell ran")
         if log_requests:
             app.say(f"request log written to [bold]{log_requests}[/bold]")
@@ -431,12 +434,21 @@ def run(
     gate_failed = bool(gate and not gate["passed"])
     # An incomplete run is not a pass either: it did not evaluate what it was
     # asked to, and its scores cover only the cells that ran.
-    if gate_failed or result.stopped_early or result.incomplete:
+    #
+    # Nor is a run that evaluated nothing. There is no verdict to give on zero
+    # cells — claiming a 0% pass rate would be a measurement nobody made — but
+    # "no verdict" is not "passed", and a source that returned no rows must not
+    # take a build green.
+    if gate_failed or result.stopped_early or result.incomplete or no_cells:
         if app.quiet and not app.json_output:
             reason = (
                 "gate FAILED"
                 if gate_failed
-                else ("incomplete: cost ceiling" if result.incomplete else "stopped early")
+                else "incomplete: cost ceiling"
+                if result.incomplete
+                else "stopped early"
+                if result.stopped_early
+                else "no cell ran"
             )
             app.err.print(f"[red]{reason}[/red]")
         raise SystemExit(1)

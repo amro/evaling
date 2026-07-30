@@ -3,7 +3,9 @@
 import asyncio
 
 import pytest
+from click.testing import CliRunner
 
+from evaling.cli import main
 from evaling.config import EvalConfig
 from evaling.engine import dry_run, run_eval, select_matrix
 from evaling.sources import (
@@ -417,3 +419,74 @@ class TestAnUnboundedSourceIsTheOnlyRefusal:
         result = self.invoke(self.project(tmp_path, limit=8))
         assert result.exit_code == 0, result.output
         assert "up to 8 cases" in result.output
+
+
+class TestASourceThatReturnsNothing:
+    """An empty result set must not take a build green.
+
+    The gate declines to judge a run with zero cells — a 0% pass rate over 0
+    cases is missing data, not a measured regression — but "no verdict" is not
+    "passed". A source is the way to get here without a cost ceiling: a query
+    window with no matching traffic returns no rows, the run completes, and
+    `docs/ci.md` recommends exactly that shape for gating on production data.
+    """
+
+    def project(self, tmp_path, thresholds=""):
+        (tmp_path / "src.py").write_text(
+            "from evaling import Case, CasePage\n"
+            "class S:\n"
+            "    def fetch(self, cursor, limit):\n"
+            "        return CasePage(cases=[], cursor=None)\n"
+            "def make():\n"
+            "    return S()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: {source: 'src.py:make', limit: 10}\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n' + thresholds,
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def invoke(self, path, *args):
+        from click.testing import CliRunner
+
+        from evaling.cli import main
+
+        return CliRunner().invoke(
+            main,
+            ["-c", str(path / "eval.yaml"), "-o", str(path / "runs"), "run", *args],
+            env={"EVALING_USER_CONFIG": "/nonexistent"},
+            catch_exceptions=False,
+        )
+
+    def test_the_run_does_not_pass(self, tmp_path):
+        result = self.invoke(self.project(tmp_path, "thresholds: {min_pass_rate: 0.9}\n"))
+        assert result.exit_code == 1, result.output
+
+    def test_it_does_not_pass_without_thresholds_either(self, tmp_path):
+        """Nothing was evaluated; there is no configuration under which that passes."""
+        assert self.invoke(self.project(tmp_path)).exit_code == 1
+
+    def test_it_says_why_rather_than_claiming_a_regression(self, tmp_path):
+        output = self.invoke(self.project(tmp_path, "thresholds: {min_pass_rate: 0.9}\n")).output
+        assert "no cell ran" in output
+        assert "gate FAILED" not in output
+        assert "0.00%" not in output, "a pass rate nobody measured was reported"
+
+    def test_the_json_gate_is_null(self, tmp_path):
+        import json
+
+        path = self.project(tmp_path, "thresholds: {min_pass_rate: 0.9}\n")
+        result = CliRunner().invoke(
+            main,
+            ["-c", str(path / "eval.yaml"), "-o", str(path / "runs"), "--json", "run"],
+            env={"EVALING_USER_CONFIG": "/nonexistent"},
+            catch_exceptions=False,
+        )
+        payload = json.loads(result.output)
+        assert payload["gate"] is None
+        assert payload["aggregates"]["overall"]["cases"] == 0

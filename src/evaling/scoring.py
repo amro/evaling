@@ -230,9 +230,12 @@ def evaluate_gate(
     rate of 0.0, which is the "no data" fallback rather than a measurement —
     but a threshold reads it as "0% of cases passed" and fails the run. A
     `--max-cost` ceiling reached before the first call therefore announced a
-    quality regression it had not measured. Declining to judge is the honest
-    answer; the run is still reported as incomplete, and still exits non-zero
-    for that reason.
+    quality regression it had not measured.
+
+    Declining to judge is the honest answer, and it is not the same as
+    passing: the CLI exits non-zero on a run that evaluated nothing, whether
+    or not a threshold was configured. Returning None here settles what was
+    *measured*; whether a build goes green is settled there.
     """
     if overall.get("cases") == 0:
         return None
