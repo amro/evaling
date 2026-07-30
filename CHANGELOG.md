@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`evaling calibrate --from-run RUN --labels FILE`** — scaffolds an eval
+  that measures how well a judge agrees with you, from a run you already made
+  plus your ratings of its outputs. `docs/evaluating-judges.md` described the
+  config shape; this writes it. It generates only — no model is called and
+  nothing is spent — producing your rated answers as cases, two deliberately
+  different rubric phrasings as variants, and the `agreement` scorer grading
+  each verdict against your rating. Cases with no rating are left out and
+  counted out loud; ratings matching no case in the run are an error rather
+  than an empty file.
+
 - **`--log-requests PATH`** — a JSONL trace of every provider call: the
   request body sent, the response received, the status, and the elapsed time.
   For the `command` provider it records exit code, stdout, and stderr, which

@@ -192,6 +192,36 @@ The cache key covers only what changes a response — provider, model, base
 URL, request parameters, and the rendered messages — so run labels and output
 directories never invalidate it. Use `--json` for machine-readable output.
 
+### `evaling calibrate --from-run RUN --labels FILE`
+
+Scaffold an eval that measures how well a judge agrees with you — the recipe
+in [evaluating-judges.md](evaluating-judges.md), generated instead of
+hand-assembled.
+
+| Flag | Effect |
+|---|---|
+| `--from-run RUN` | The run whose outputs you rated (required) |
+| `--labels FILE` | CSV or JSONL of `case_id` and your rating (required) |
+| `--out DIR` | Directory to create (default: `calibration`) |
+| `--variant NAME` | Which variant's output to rate, if the run has several |
+| `--judge-model ID` | Model the judge will run on |
+
+```sh
+evaling run --label to-rate                  # produce answers
+# ...rate them in a spreadsheet: case_id,human_label
+evaling calibrate --from-run to-rate --labels ratings.csv
+cd calibration && evaling validate && evaling run
+```
+
+It generates and does not run: no model is called and nothing is spent. The
+result is your rated answers as cases, two deliberately different rubric
+phrasings as variants, and the `agreement` scorer grading each verdict against
+your rating. Read the `close-agreement` row — a judge one point off a human is
+useful, a judge three points off is not.
+
+Cases in the run with no rating are left out, and it says how many. Ratings
+that match no case in the run are an error rather than an empty file.
+
 ### `evaling doctor [--check-providers]`
 
 Report the state of an installation: version, Python, platform, the config it

@@ -773,6 +773,66 @@ def cache_clear(app, older_than, yes):
 
 
 @main.command()
+@click.option("--from-run", "ref", required=True, help="Run whose outputs you rated.")
+@click.option(
+    "--labels",
+    required=True,
+    type=click.Path(),
+    help="CSV or JSONL of case_id and your rating.",
+)
+@click.option(
+    "--out",
+    "out_dir",
+    type=click.Path(),
+    default="calibration",
+    help="Directory to create (default: calibration).",
+)
+@click.option(
+    "--variant", default=None, help="Which variant's output to rate, if the run has several."
+)
+@click.option("--judge-model", default="claude-sonnet-5", help="Model the judge will run on.")
+@pass_app
+@cli_errors
+def calibrate(app, ref, labels, out_dir, variant, judge_model):
+    """Scaffold an eval that measures how well a judge agrees with you.
+
+    Takes a finished run plus your ratings of its outputs and writes a
+    calibration project: your rated answers as cases, two rubric phrasings as
+    variants, and the agreement scorer grading each verdict against you.
+
+    Generates only — it calls no model and costs nothing. Read it, edit the
+    rubrics, then `evaling run` inside it.
+    """
+    from evaling import calibrate as calibration
+
+    _require_path(labels, "--labels")
+    _require_path(out_dir, "--out")
+    store = app.store()
+    run_id = store.resolve_ref(ref)
+    records = store.load_results(run_id)
+    ratings = calibration.load_labels(Path(labels))
+    cases = calibration.build_cases(records, ratings, variant=variant)
+    unlabelled = len({r.case_id for r in records if r.error is None}) - len(cases)
+
+    created = calibration.scaffold(
+        Path(out_dir), cases, judge_model=judge_model, unlabelled=max(0, unlabelled)
+    )
+    if app.json_output:
+        app.echo_json({"run_id": run_id, "cases": len(cases), "created": [str(p) for p in created]})
+        return
+    for path in created:
+        app.console.print(f"created [bold]{path}[/bold]")
+    app.say(f"\n{len(cases)} rated answers from run {run_id}")
+    if unlabelled > 0:
+        # Silence here would read as "every case was rated".
+        app.err.print(
+            f"[yellow]warning:[/yellow] {unlabelled} case(s) in the run had no rating "
+            "and were left out"
+        )
+    app.say(f"try it:  [bold]cd {out_dir} && evaling validate[/bold]")
+
+
+@main.command()
 @click.option(
     "--check-providers",
     is_flag=True,

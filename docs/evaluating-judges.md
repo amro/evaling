@@ -4,6 +4,26 @@ An LLM judge is just a prompt plus a model — which means evaling can evaluate
 judges with the same machinery it uses for everything else. This recipe answers
 the question: *which rubric phrasing makes my judge agree with human judgment?*
 
+## Generating it
+
+`evaling calibrate` writes the whole thing from a run you have already made
+plus a file of your ratings:
+
+```sh
+evaling run --label to-rate                  # produce answers to rate
+# ...rate them: a CSV of case_id,human_label
+evaling calibrate --from-run to-rate --labels ratings.csv
+cd calibration && evaling validate && evaling run
+```
+
+That gives you the config below, filled in — your rated answers as cases and
+two rubric phrasings to compare. It calls nothing and spends nothing; edit the
+rubrics before running it, since the generated pair is a starting point rather
+than candidates chosen for your task.
+
+The rest of this page is what it generates and why, for when you want to build
+it yourself or change its shape.
+
 ## Ingredients
 
 1. A **calibration set**: real model outputs paired with human ratings. Store
