@@ -39,9 +39,16 @@ UNICODE = (
 HOSTILE_OUTPUT = f"{MARKUP} {HTML} {MARKDOWN} {UNICODE} {SECRET}"
 
 
-@pytest.fixture(scope="module")
-def hostile(tmp_path_factory):
-    """A finished run in which every text field is hostile."""
+@pytest.fixture(scope="module", params=[False, True], ids=["cache-off", "cache-on"])
+def hostile(request, tmp_path_factory):
+    """A finished run in which every text field is hostile.
+
+    Run once with the response cache off and once with it on, because the
+    cache is on by *default* and every other test in the suite disables it for
+    speed. That blind spot is not hypothetical: a credential-scrubbing fix
+    passed this whole file while leaving the key in `.evaling/cache/`, because
+    the cache stores the completion before the record is built.
+    """
     path = tmp_path_factory.mktemp("hostile")
     secrets = path / ".evaling.secrets.yaml"
     secrets.write_text(f"MY_KEY: {SECRET}\n", encoding="utf-8")
@@ -60,8 +67,20 @@ def hostile(tmp_path_factory):
         'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
         encoding="utf-8",
     )
-    settings = Settings.model_validate({"output_dir": str(path / "runs"), "cache": False})
-    result = run_eval(load_config(path / "eval.yaml"), settings, label=f"lbl{MARKUP}")
+    settings = Settings.model_validate(
+        {
+            "output_dir": str(path / "runs"),
+            "cache_dir": str(path / "cache"),
+            "cache": request.param,
+        }
+    )
+    config = load_config(path / "eval.yaml")
+    result = run_eval(config, settings, label=f"lbl{MARKUP}")
+    if request.param:
+        # A second pass so a cache *hit* is exercised too — serving from the
+        # cache is a different path to the same output.
+        result = run_eval(config, settings, label=f"cached{MARKUP}")
+        assert result.counts["cached"] == 2, "the cache was not exercised"
     assert result.counts["total"] == 2
     return path, result
 
@@ -162,6 +181,28 @@ class TestNoSecretSurvives:
         path, _ = hostile
         _, args = case
         assert SECRET not in cli(path, *args).output, f"{case[0]} printed the credential"
+
+    def test_nothing_evaling_wrote_carries_it(self, hostile):
+        """Runs, cache, artifacts — everything evaling produced.
+
+        Only what evaling *derived*. The fixture's config asks the model to
+        return the credential, so `eval.yaml` and the snapshot evaling takes
+        of it necessarily contain the value — that is the test's own input,
+        and evaling has never claimed to scrub a secret someone typed into a
+        config. What must be clean is everything downstream of the model
+        call: results, cache, artifacts, metadata.
+        """
+        path, _ = hostile
+        written = [
+            file
+            for directory in (path / "runs", path / "cache")
+            for file in directory.rglob("*")
+            if file.is_file() and file.name != "config.snapshot.yaml"
+        ]
+        assert written, "the run produced no files to check"
+        for file in written:
+            text = file.read_text(encoding="utf-8", errors="ignore")
+            assert SECRET not in text, f"{file.relative_to(path)} carries the credential"
 
     @pytest.mark.parametrize("fmt", ["json", "csv", "md", "html"])
     def test_no_export_carries_it(self, hostile, fmt):
