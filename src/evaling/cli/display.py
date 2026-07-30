@@ -65,10 +65,29 @@ def matrix_table(aggregates: dict[str, Any]) -> Table:
     return table
 
 
+def _short_time(stamp: str | None) -> str:
+    """`2026-07-30T01:15:32Z` -> `07-30 01:15`.
+
+    A listing is scanned, not parsed; the full stamp is in run.json and in
+    `show`. Reclaiming those columns is what keeps the run id whole at 80.
+    """
+    if not stamp or len(stamp) < 16 or stamp[4] != "-":
+        return safe(stamp or "")
+    return f"{stamp[5:10]} {stamp[11:16]}"
+
+
 def runs_table(runs: list[dict[str, Any]]) -> Table:
     table = Table(header_style="bold")
-    for column in ("Run", "Label", "Status", "Started", "Score", "Pass rate", "Cost"):
-        table.add_column(column)
+    # The run id is what every other command takes as an argument, so it must
+    # stay copyable; rich elides it at 80 columns otherwise. Started can shrink
+    # instead — nobody retypes a timestamp.
+    # The run id and the cost must not be elided: one is what every other
+    # command takes as an argument, and a truncated "$0.00…" reads as roughly
+    # nothing when it may be $0.0045. A label can ellipsize; so can a date.
+    table.add_column("Run", no_wrap=True, overflow="ignore")
+    for column in ("Label", "Status", "Started", "Score", "Pass rate"):
+        table.add_column(column, overflow="ellipsis")
+    table.add_column("Cost", no_wrap=True, overflow="ignore")
     for meta in runs:
         overall = (meta.get("aggregates") or {}).get("overall") or {}
         totals = meta.get("totals") or {}
@@ -77,7 +96,7 @@ def runs_table(runs: list[dict[str, Any]]) -> Table:
             safe(meta["id"]),
             safe(meta.get("label") or ""),
             safe(meta["status"]),
-            safe(meta.get("started_at") or ""),
+            _short_time(meta.get("started_at")),
             score3(overall["score"]) if overall else "",
             pct(overall["pass_rate"]) if overall else "",
             f"${cost:.4f}" if cost is not None else "",

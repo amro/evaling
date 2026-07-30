@@ -185,3 +185,67 @@ class TestJudgeOnlyModelsAreVisible:
         # rich wraps the message, so compare with whitespace collapsed.
         message = " ".join(result.output.split())
         assert "role 'judge'" in message and "so it is not evaluated" in message
+
+
+class TestResumeArgumentHandling:
+    """`--resume ""` used to start a fresh run instead of failing.
+
+    An unset shell variable in a CI script (`--resume "$RUN_ID"`) therefore
+    bought a second full run rather than an error — a silent double bill.
+    """
+
+    def test_an_empty_resume_reference_is_an_error(self, tmp_path):
+        config = tmp_path / "eval.yaml"
+        config.write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: hi}}]\n"
+            "scorecard: [{criterion: a, scorer: {type: contains, value: ''}}]\n"
+        )
+        out_dir = tmp_path / "runs"
+        base = ["-o", str(out_dir), "--cache-dir", str(tmp_path / "c")]
+        runner = CliRunner()
+        runner.invoke(main, base + ["run", str(config)], env=ENV, catch_exceptions=False)
+        before = len(list(out_dir.iterdir()))
+
+        result = runner.invoke(
+            main, base + ["run", "--resume", "", str(config)], env=ENV, catch_exceptions=False
+        )
+        assert result.exit_code == 2, "an empty --resume started a new run"
+        assert len(list(out_dir.iterdir())) == before, "a new run directory was created"
+
+
+class TestRunListingStaysUsable:
+    """A run id is the argument every other command takes; it must survive."""
+
+    def render(self, width, **meta):
+        from io import StringIO
+
+        from rich.console import Console
+
+        from evaling.cli import display
+
+        run = {
+            "id": "20260730T011532113-6245",
+            "label": None,
+            "status": "complete",
+            "started_at": "2026-07-30T01:15:32Z",
+            "aggregates": {"overall": {"score": 0.691, "pass_rate": 0.528}},
+            "totals": {"cost_usd": 12.3456},
+            **meta,
+        }
+        buffer = StringIO()
+        Console(file=buffer, width=width, no_color=True).print(display.runs_table([run]))
+        return buffer.getvalue()
+
+    def test_the_id_is_copyable_at_eighty_columns(self):
+        assert "20260730T011532113-6245" in self.render(80)
+
+    def test_the_cost_is_not_truncated(self):
+        """A clipped "$12.3…" reads as far less than $12.35."""
+        assert "$12.3456" in self.render(80)
+
+    def test_wide_terminals_are_unaffected(self):
+        out = self.render(160)
+        assert "20260730T011532113-6245" in out and "$12.3456" in out

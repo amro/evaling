@@ -250,7 +250,10 @@ def run(
 
     # baseline resolution (including thresholds.baseline: regression) is core
     # logic — the engine handles it; any run reference passes through.
-    resume_run_id = store.resolve_ref(resume_ref) if resume_ref else None
+    # `is not None`, not truthiness: `--resume ""` — an unset shell variable in
+    # a script — used to fall through to a fresh run, which in CI is a silent
+    # second bill rather than an error.
+    resume_run_id = store.resolve_ref(resume_ref) if resume_ref is not None else None
 
     show_progress = not (app.quiet or app.json_output)
     if show_progress:

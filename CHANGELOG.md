@@ -110,6 +110,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `evaling run --resume ""` started a fresh run instead of failing. An unset
+  shell variable in a CI script (`--resume "$RUN_ID"`) therefore bought a
+  second full run rather than an error.
+- `evaling list` elided run ids at 80 columns (`20260730T01…`), so the id every
+  other command takes as an argument could not be copied from the listing that
+  shows it. Run id and cost are now never truncated — a clipped `$0.00…` reads
+  as roughly nothing when it may be `$0.0045` — and timestamps shorten instead.
+
 - **Source-backed configs could not be run over MCP at all.** `run_eval` called
   `select_matrix` only to compute a progress total, which raises for a case
   source — so an agent got "cases come from a source ... use run_eval" while
