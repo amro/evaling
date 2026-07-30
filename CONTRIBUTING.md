@@ -58,6 +58,29 @@ being wrong.
 Seeds are fixed, so a failure reproduces from its parameter id alone. If you
 add a loader for a user-authored file, add it to `TestTheOtherLoaders`.
 
+### Mutation testing
+
+The recurring failure in this project is a test that passes with the code it
+guards deleted. Mutation testing finds those automatically: it changes the
+source and checks whether anything notices.
+
+```sh
+uv run --with mutmut python -m mutmut run     # ~1 min
+uv run --with mutmut python -m mutmut results # what survived
+uv run --with mutmut python -m mutmut show evaling.privacy.x_scrub_secrets__mutmut_14
+```
+
+Scoped, in two ways, both in `[tool.mutmut]` in `pyproject.toml`. Only the
+modules that encode invariants are mutated — that is where an untested
+guarantee does real damage. And only the tests that could kill those mutants
+are run, because mutmut resolves its own relative paths inside each test, so
+any test that changes directory breaks the run.
+
+**A surviving mutant is a question, not a bug.** Some are equivalent mutants
+that cannot change behaviour; some survive only because the narrowed test
+selection excluded their killer. Triage the list rather than trusting it. CI
+runs this weekly and reports; it is not a gate.
+
 ### Performance guards
 
 `tests/test_performance.py` (marker: `perf`) asserts that memory stays flat as

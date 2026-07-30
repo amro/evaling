@@ -1,0 +1,35 @@
+name: Mutation
+
+# Change the source, see whether a test notices. Weekly rather than per-PR:
+# it takes minutes rather than seconds, and its output is a triage queue
+# rather than a pass/fail — a surviving mutant is often an equivalent one.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  mutmut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      - name: Run mutation testing
+        run: uv run --with mutmut python -m mutmut run --max-children 4
+        continue-on-error: true
+      - name: Summarize survivors
+        run: |
+          uv run --with mutmut python -m mutmut results > survivors.txt 2>/dev/null || true
+          echo "### Surviving mutants by module" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep survived survivors.txt \
+            | sed 's/evaling\.\([a-z_]*\)\..*/\1/' \
+            | sort | uniq -c | sort -rn >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: mutation-survivors, path: survivors.txt}

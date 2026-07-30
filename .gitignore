@@ -23,6 +23,11 @@ htmlcov/
 .vscode/
 .DS_Store
 
+# Mutation testing: mutmut builds a full copy of the project here
+mutants/
+.mutmut-cache
+mutants.lock
+
 # evaling local data (run outputs, caches)
 .evaling/
 

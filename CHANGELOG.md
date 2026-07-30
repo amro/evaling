@@ -236,6 +236,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Mutation testing** (`[tool.mutmut]` in `pyproject.toml`, weekly CI job).
+  It changes the source and checks whether a test notices — which is the
+  automated form of the review finding that keeps recurring here: a test that
+  passes with the code it guards deleted.
+
+  Scoped to the five modules that encode invariants, and to the tests that
+  could kill mutants in them; mutmut resolves its own relative paths inside
+  each test, so any test that changes directory breaks the run. 714 mutants,
+  82% killed, about a minute. Report-only, not a gate: a surviving mutant is a
+  question, since some are equivalent and some survive only because the
+  narrowed selection excluded their killer.
+
+  Its first real run found that `scrub_secrets` was untested — three separate
+  mutations of the score-detail loop survived the whole suite. A judge's call
+  bypasses the cell path, so its rationale is never scrubbed on the way to the
+  cache, making that function the only thing between a credential in a judge
+  rationale and disk. Now covered.
+
 - **Two harnesses that cover a class instead of an instance**, after five
   rounds of finding the same shapes one at a time.
 

@@ -84,3 +84,37 @@ select = [
     "SIM",     # simplify
     "PLW1514", # text I/O must name its encoding (cp1252 defaults break Windows)
 ]
+
+# Mutation testing: change the source, see whether a test notices. Scoped to
+# the modules that encode invariants, because that is where a test which
+# passes with its subject deleted does real damage. `uv run mutmut run`, then
+# `uv run mutmut results`. See CONTRIBUTING.md.
+[tool.mutmut]
+source_paths = ["src/evaling/"]
+only_mutate = [
+    "*/evaling/privacy.py",
+    "*/evaling/secrets.py",
+    "*/evaling/reqlog.py",
+    "*/evaling/scoring.py",
+    "*/evaling/textfile.py",
+]
+# Only the tests that can kill mutants in those modules. Narrower than the
+# suite on purpose: mutmut resolves its own relative paths inside each test,
+# so any test that changes directory breaks the run — and a smaller selection
+# is much faster. The cost is that a mutant another test would have killed
+# reports as survived, so triage the list rather than trusting it.
+pytest_add_cli_args_test_selection = [
+    "tests/test_no_look.py",
+    "tests/test_hostile_content.py",
+    "tests/test_credential_leaks.py",
+    "tests/test_secrets.py",
+    "tests/test_reqlog.py",
+    "tests/test_scoring.py",
+    "tests/test_scale.py",
+    "tests/test_sampling.py",
+    "tests/test_config_fuzz.py",
+    "tests/test_loader.py",
+    "tests/test_cases.py",
+    "tests/test_doctor.py",
+]
+pytest_add_cli_args = ["-p", "no:cacheprovider"]

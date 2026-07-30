@@ -265,3 +265,62 @@ class TestTheResponseCacheIsScrubbedToo:
         assert second.counts["cached"] == 1, "the second run did not hit the cache"
         assert_no_secret(second.records[0].output or "")
         assert_no_secret(self.everything_written(path))
+
+
+class TestAJudgeRationaleIsScrubbed:
+    """The one path the pre-cache scrub does not reach.
+
+    A judge's call goes through the governed-call path, not the cell's, so its
+    text is never scrubbed on the way to the cache — `scrub_secrets` on the
+    record is the only thing standing between a rationale and disk. Nothing
+    tested that until mutation testing pointed at it: three separate mutations
+    of the score-detail loop survived the whole suite.
+    """
+
+    def project(self, tmp_path):
+        secrets = tmp_path / ".evaling.secrets.yaml"
+        secrets.write_text(f"MY_KEY: {KEY}\n", encoding="utf-8")
+        secrets.chmod(0o600)
+        # A rubric gets `output`, `expected`, and `vars` — not the case's
+        # variables directly, which is what the first draft of this got wrong.
+        (tmp_path / "rubric.yaml").write_text(
+            "- {role: user, content: 'grade {{ output }}'}\n", encoding="utf-8"
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models:\n"
+            "  - {id: candidate, provider: mock}\n"
+            "  - id: judge-m\n"
+            "    provider: mock\n"
+            "    role: judge\n"
+            "    api_key_env: MY_KEY\n"
+            # The judge quotes the credential back in its rationale.
+            f'    params: {{response: \'{{"score": 1.0, "rationale": "seen {KEY}"}}\'}}\n'
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: alpha}}]\n"
+            "scorecard: [{criterion: graded, scorer: {type: llm-judge, judge: j}}]\n"
+            "judges:\n  j: {model: judge-m, rubric: rubric.yaml}\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_the_rationale_does_not_reach_the_record(self, tmp_path):
+        path = self.project(tmp_path)
+        result = run_eval(load_config(path / "eval.yaml"), settings_for(path))
+        [record] = result.records
+        detail = record.scores["graded"].get("detail") or ""
+        assert "seen" in detail, "the rationale was not recorded at all"
+        assert_no_secret(detail)
+
+    def test_it_does_not_reach_disk(self, tmp_path):
+        path = self.project(tmp_path)
+        result = run_eval(load_config(path / "eval.yaml"), settings_for(path))
+        # Excluding the config snapshot: this fixture puts the credential in
+        # the judge's canned response, so a copy of that config contains it by
+        # construction. What must be clean is what the run derived.
+        stored = "".join(
+            file.read_text(encoding="utf-8", errors="ignore")
+            for file in (path / "runs" / result.run_id).rglob("*")
+            if file.is_file() and file.name != "config.snapshot.yaml"
+        )
+        assert_no_secret(stored)
