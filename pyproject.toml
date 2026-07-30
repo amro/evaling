@@ -60,6 +60,7 @@ testpaths = ["tests"]
 addopts = "-q"
 markers = [
     "slow: end-to-end or scale tests (deselect with -m 'not slow')",
+    "perf: timing and memory guards (CI runs these alone, without coverage)",
 ]
 
 [tool.coverage.run]

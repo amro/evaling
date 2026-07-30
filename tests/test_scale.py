@@ -3,11 +3,12 @@
 Each of these encodes a bug that a 500-cell test could not have caught: work
 that is O(total cells) instead of O(concurrency) looks fine at small sizes and
 falls over at a hundred thousand.
+
+These assert behaviour, not resource use. The measurements — memory flatness
+and throughput — live in test_performance.py, which CI runs on its own.
 """
 
 import asyncio
-import gc
-import tracemalloc
 from functools import partial
 
 import pytest
@@ -249,32 +250,6 @@ class TestKeyedLocks:
 
         asyncio.run(go())
         assert state["peak"] == 5
-
-
-@pytest.mark.slow
-class TestMemoryDoesNotGrowWithCells:
-    def test_live_memory_is_flat_across_a_long_run(self, tmp_path):
-        """The engine must not accumulate anything per cell.
-
-        Measured on live (not peak) allocations: transient churn is fine and
-        expected, retention is not.
-        """
-        config = make_config(
-            tmp_path, cases=[{"id": f"c{i}", "vars": {"q": "x" * 200}} for i in range(4000)]
-        )
-        settings = make_settings(tmp_path, concurrency=8)
-        gc.collect()
-        tracemalloc.start()
-        before = tracemalloc.take_snapshot()
-        result = run_eval(config, settings)
-        gc.collect()
-        after = tracemalloc.take_snapshot()
-        tracemalloc.stop()
-
-        assert result.counts["total"] == 4000
-        growth = sum(stat.size_diff for stat in after.compare_to(before, "filename"))
-        # Generous: the point is that this is not ~4000 x per-record size.
-        assert growth < 8_000_000, f"run retained {growth / 1e6:.1f} MB"
 
 
 class TestReportDegradesGracefully:

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Performance guards in CI** (`tests/test_performance.py`, marker `perf`,
+  its own workflow job with coverage off). Memory flatness and throughput had
+  been measured by hand once and then watched by nothing, so a 10x regression
+  would have looked exactly like a passing suite. They assert shape rather
+  than absolute speed — four times the cells must cost about four times the
+  time, and nothing may be retained per cell — which holds on a shared runner
+  where cells-per-second does not.
+
+  Writing them showed the previous hand-written memory check was vacuous: it
+  ran 4,000 cells against a retention cap of 10,000, so every record was held
+  by design and the number it produced said nothing about the streaming path
+  it was meant to protect. Retention is now measured by counting live
+  `ResultRecord` objects, which is exact, and by comparing two run sizes,
+  which cancels fixed overhead out.
+
 - **`role` on a model: `candidate` (default), `judge`, or `both`.** A model a
   judge references must now declare its role, and the config is rejected with
   a message naming both ways out if it doesn't. Previously every model in

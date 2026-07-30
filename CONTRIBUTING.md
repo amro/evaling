@@ -47,6 +47,17 @@ uv run pytest tests/test_engine.py   # one file
 uv run pytest -k cache               # by name
 ```
 
+### Performance guards
+
+`tests/test_performance.py` (marker: `perf`) asserts that memory stays flat as
+cells increase and that model calls actually overlap. CI gives it its own job
+with coverage off, since instrumentation overhead swamps a timing measurement.
+
+They assert *shape*, not absolute speed: a shared runner has no reliable
+cells-per-second, but "four times the cells costs about four times the time"
+holds anywhere. Bounds are loose on purpose — they catch a 10x regression, and
+a guard that fails on a busy laptop gets deleted rather than fixed.
+
 ## Expectations for a change
 
 **Tests come with the change.** New behavior gets a test that fails without

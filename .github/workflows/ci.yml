@@ -43,4 +43,20 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev
-      - run: uv run pytest --cov=evaling --cov-report=term-missing
+      # Perf guards run in their own job: coverage instrumentation dominates
+      # the timings, and a shared runner under a full matrix is the worst
+      # place to measure anything.
+      - run: uv run pytest -m "not perf" --cov=evaling --cov-report=term-missing
+
+  perf:
+    # Memory and throughput regression guards. One job, one OS, no coverage —
+    # a number measured under instrumentation is a number about the
+    # instrumentation.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      - run: uv run pytest -m perf
