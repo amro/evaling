@@ -303,7 +303,12 @@ class TestTheUserConfigLocation:
         assert user_secrets_path().is_absolute(), "~ must be expanded"
 
     def test_it_is_the_last_candidate_consulted(self):
-        assert candidate_paths(Path("/project"))[-1] == user_secrets_path()
+        # Through the module, not the name imported here: conftest points the
+        # user path at a nonexistent file for the whole suite, and this claim
+        # is about ordering rather than about which path it is.
+        import evaling.secrets
+
+        assert candidate_paths(Path("/project"))[-1] == evaling.secrets.user_secrets_path()
 
 
 class TestDescribeSecretsUsesTheEnvironmentItIsGiven:

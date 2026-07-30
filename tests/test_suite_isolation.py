@@ -11,11 +11,12 @@ enforcement honest — delete either fixture and they fail.
 """
 
 import os
+from pathlib import Path
 
 import httpx
 import pytest
 
-from conftest import CREDENTIAL_SUFFIXES
+from conftest import CANARY_VAR, CREDENTIAL_SUFFIXES
 from evaling.config.schema import ModelSpec
 from evaling.providers.anthropic import AnthropicProvider
 from evaling.providers.http import ProviderError
@@ -32,17 +33,17 @@ class TestNoTestReachesTheNetwork:
             async with httpx.AsyncClient() as client:
                 await self.request(client)
 
-        with pytest.raises(RuntimeError, match="never touch the network"):
+        with pytest.raises(BaseException, match="never touch the network"):
             asyncio.run(go())
 
     def test_the_sync_client_refuses_too(self):
-        with httpx.Client() as client, pytest.raises(RuntimeError, match="never touch"):
+        with httpx.Client() as client, pytest.raises(BaseException, match="never touch"):
             client.get("https://unreachable.invalid/v1/messages")
 
     def test_the_refusal_names_the_host_a_test_tried_to_reach(self):
         with (
             httpx.Client() as client,
-            pytest.raises(RuntimeError, match="example.invalid"),
+            pytest.raises(BaseException, match="example.invalid"),
         ):
             client.get("https://example.invalid/v1")
 
@@ -57,6 +58,29 @@ class TestNoTestSeesARealKey:
     def test_the_environment_carries_no_credential(self):
         leaked = [name for name in os.environ if name.endswith(CREDENTIAL_SUFFIXES)]
         assert leaked == [], f"a real credential reached the suite: {leaked}"
+
+    def test_the_canary_is_stripped(self):
+        """Proof the stripping runs, on a machine with nothing exported.
+
+        The assertion above is vacuously true on every CI runner. A canary
+        injected for the whole session gives it something to be about: delete
+        the fixture and this fails everywhere, not just on a developer's
+        machine with a key in their shell.
+        """
+        assert CANARY_VAR not in os.environ
+
+    def test_the_user_secrets_file_is_not_consulted(self):
+        """`~/.config/evaling/secrets.yaml` is a credential source too.
+
+        Asserted as "not the real path" rather than "the file is absent":
+        the latter passes on any machine that simply has no such file, which
+        proves nothing about whether the suite would have read it.
+        """
+        import evaling.secrets
+
+        real = Path("~/.config/evaling/secrets.yaml").expanduser()
+        assert evaling.secrets.user_secrets_path() != real
+        assert not evaling.secrets.user_secrets_path().exists()
 
     def test_a_provider_given_the_real_environment_finds_no_key(self):
         """The claim that matters, stated the way a provider would see it.

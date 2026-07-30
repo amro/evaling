@@ -21,6 +21,8 @@ without an injected transport gets one that refuses to send.
 """
 
 import os
+import tempfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -34,14 +36,22 @@ COLOR_VARS = ("FORCE_COLOR", "COLORTERM", "NO_COLOR", "TERM")
 CREDENTIAL_VARS = ("EVALING_SECRETS",)
 CREDENTIAL_SUFFIXES = ("_API_KEY", "_API_TOKEN")
 
+#: Injected for the whole session so the stripping has something to strip.
+CANARY_VAR = "EVALING_SUITE_CANARY_API_KEY"
 
-class RefusedRequest(RuntimeError):
+
+class RefusedRequest(BaseException):
     """A test tried to make a real network request.
 
-    Deliberately a plain ``RuntimeError`` subclass, and deliberately not
-    imported by name in the tests that assert on it: mutmut runs the suite
-    from a copied tree, where ``conftest`` is a second module object whose
-    classes are not identical to these.
+    ``BaseException`` on purpose. The engine catches ``Exception`` per cell so
+    that one provider failure cannot lose a whole run, which would have turned
+    this into a recorded cell error and a green run — the accident would be
+    prevented but silent, which is the wrong half of the job. Nothing in
+    evaling catches ``BaseException``, so it comes out.
+
+    Deliberately not imported by name in the tests that assert on it: mutmut
+    runs the suite from a copied tree, where ``conftest`` is a second module
+    object whose classes are not identical to these.
     """
 
 
@@ -69,12 +79,37 @@ def _plain_output(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _credential_canary():
+    """A key-shaped variable that must not survive into any test.
+
+    Without it `test_the_environment_carries_no_credential` passes on any
+    machine with nothing exported — which is every CI runner — and so proves
+    nothing about the fixture below. This guarantees there is always something
+    for it to strip.
+    """
+    os.environ[CANARY_VAR] = "sk-ant-canary-not-a-real-credential"
+    yield
+    os.environ.pop(CANARY_VAR, None)
+
+
 @pytest.fixture(autouse=True)
-def _no_credentials(monkeypatch):
-    """No test may see a real key, whatever the developer has exported."""
+def _no_credentials(monkeypatch, _credential_canary):
+    """No test may see a real key, whatever the developer has exported.
+
+    The secrets *file* is neutralized too. `build_env` reads
+    `~/.config/evaling/secrets.yaml` when a project has no secrets file of its
+    own, so a contributor with a real key there would have it loaded by every
+    engine-driven test — and a malformed or world-readable one would change
+    what unrelated tests see.
+    """
     for name in list(os.environ):
         if name in CREDENTIAL_VARS or name.endswith(CREDENTIAL_SUFFIXES):
             monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        "evaling.secrets.user_secrets_path",
+        lambda: Path(tempfile.gettempdir()) / "evaling-no-such-user-secrets.yaml",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -91,7 +126,11 @@ def _no_network(monkeypatch):
         original = client.__init__
 
         def guarded(self, *args, _original=original, _refuse=refuse, **kwargs):
-            if kwargs.get("transport") is None and not kwargs.get("mounts"):
+            # `transport` alone, not `mounts`: a client with mounts but no
+            # transport still reaches the network for every unmounted host,
+            # and still consults the OS proxy resolver. `transport` composes
+            # with `mounts` — it is the fallback for what they do not match.
+            if kwargs.get("transport") is None:
                 kwargs["transport"] = _refuse()
             return _original(self, *args, **kwargs)
 
