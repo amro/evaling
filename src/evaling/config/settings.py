@@ -14,12 +14,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pydantic import ValidationError
 
 from evaling.config.errors import ConfigError
 from evaling.config.loader import _format_validation_error
 from evaling.config.schema import Settings
+from evaling.textfile import read_yaml
 
 ENV_VARS = {
     "EVALING_OUTPUT_DIR": "output_dir",
@@ -85,10 +85,7 @@ def resolve_settings(
 def _load_user_config(path: Path) -> Settings | None:
     if not path.exists():
         return None
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+    data = read_yaml(path, ConfigError, missing=f"user config not found: {path}")
     if data is None:
         return None
     if not isinstance(data, dict):

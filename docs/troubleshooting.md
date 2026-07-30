@@ -44,6 +44,27 @@ array isn't accepted; convert it:
 python -c "import json,sys;[print(json.dumps(r)) for r in json.load(open('cases.json'))]" > cases.jsonl
 ```
 
+### `not valid UTF-8 — byte 0xe9 at offset 15`
+
+evaling reads every text file it owns — configs, prompts, datasets, secrets —
+as UTF-8. This means the file is in another encoding, usually UTF-16 (some
+editors' default on Windows) or a legacy single-byte one that a non-ASCII
+character was typed into. Re-save it as UTF-8:
+
+```sh
+iconv -f latin1 -t utf-8 eval.yaml > eval.utf8.yaml && mv eval.utf8.yaml eval.yaml
+```
+
+Check which encoding you have with `file eval.yaml` first — `iconv` will
+happily convert from the wrong source and leave you with different mojibake.
+
+### `YAML is nested too deeply to parse`
+
+Almost always a runaway bracket or dash rather than a structure anyone meant —
+a `[` that never closes, or a block sequence whose indentation keeps growing.
+YAML parsing recurses, so a file nested thousands deep exhausts the stack
+before it reaches the schema.
+
 ### `case file not found` for an attachment that exists
 
 Attachment paths in a dataset resolve relative to **the dataset file**, not to

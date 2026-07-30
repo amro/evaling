@@ -27,9 +27,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from evaling.errors import EvalingError
+from evaling.textfile import read_yaml
 
 PROJECT_SECRETS_NAME = ".evaling.secrets.yaml"
 ENV_VAR = "EVALING_SECRETS"
@@ -59,14 +58,7 @@ def candidate_paths(
 
 
 def _load_file(path: Path) -> dict[str, str]:
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        raise SecretsError(f"could not read secrets file {path}: {exc}") from exc
-    try:
-        data = yaml.safe_load(raw)
-    except yaml.YAMLError as exc:
-        raise SecretsError(f"{path}: invalid YAML: {exc}") from exc
+    data = read_yaml(path, SecretsError, missing=f"secrets file not found: {path}")
     if data is None:
         return {}
     if not isinstance(data, dict):

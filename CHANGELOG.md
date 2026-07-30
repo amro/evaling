@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A malformed config produced a traceback instead of a message** in two
+  cases, both found by the new fuzzing in `tests/test_config_fuzz.py`. A file
+  that isn't valid UTF-8 — saved as UTF-16, or as latin-1 with an accent in it
+  — died inside the codec, because `UnicodeDecodeError` is a `ValueError` and
+  every read was guarded by `except OSError`. A file nested thousands of
+  levels deep died inside PyYAML with `RecursionError`, which is not a
+  `YAMLError`. Both now name the file and say what to do.
+
+  Every user-authored file evaling reads — config, prompt, dataset, secrets,
+  user config — now goes through one reader (`evaling.textfile`) rather than
+  five hand-rolled ones that each caught a different subset. Malformed CSV
+  (`csv.Error`: a NUL byte, an over-long field) is reported the same way
+  instead of escaping.
+
 ### Added
 
 - **Performance guards in CI** (`tests/test_performance.py`, marker `perf`,

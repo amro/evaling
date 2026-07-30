@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-import yaml
 from pydantic import ValidationError
 
 from evaling.config.errors import ConfigError
 from evaling.config.schema import EvalConfig, Message, Settings
+from evaling.textfile import read_yaml
 
 
 def load_config(path: str | Path) -> EvalConfig:
@@ -16,17 +16,7 @@ def load_config(path: str | Path) -> EvalConfig:
     resolving relative paths (prompt files, case files, attachments).
     """
     path = Path(path)
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        raise ConfigError(f"config file not found: {path}") from None
-    except OSError as exc:
-        raise ConfigError(f"could not read {path}: {exc}") from exc
-
-    try:
-        data = yaml.safe_load(raw)
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+    data = read_yaml(path, ConfigError, missing=f"config file not found: {path}")
 
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: top level must be a mapping, got {type(data).__name__}")
@@ -52,10 +42,7 @@ def load_project_settings(path: str | Path) -> "Settings | None":
     path = Path(path)
     if not path.is_file():
         return None
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+    data = read_yaml(path, ConfigError, missing=f"config file not found: {path}")
     if not isinstance(data, dict) or "settings" not in data:
         return None
     try:
@@ -67,17 +54,7 @@ def load_project_settings(path: str | Path) -> "Settings | None":
 def load_prompt(path: str | Path) -> list[Message]:
     """Load an external prompt file: a YAML list of messages."""
     path = Path(path)
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        raise ConfigError(f"prompt file not found: {path}") from None
-    except OSError as exc:
-        raise ConfigError(f"could not read {path}: {exc}") from exc
-
-    try:
-        data = yaml.safe_load(raw)
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
+    data = read_yaml(path, ConfigError, missing=f"prompt file not found: {path}")
 
     if not isinstance(data, list):
         raise ConfigError(

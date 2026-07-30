@@ -10,6 +10,7 @@ dataset file for dataset rows, the config directory for inline cases.
 """
 
 import csv
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from pydantic import ValidationError
 
 from evaling.config.errors import ConfigError
 from evaling.config.schema import Case, EvalConfig
+from evaling.textfile import read_text
 
 RESERVED_FIELDS = frozenset({"id", "expected", "human_label", "files"})
 
@@ -51,10 +53,7 @@ def _load_dataset(path: Path) -> list[Case]:
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        raise ConfigError(f"case file not found: {path}") from None
+    lines = read_text(path, ConfigError, missing=f"case file not found: {path}").splitlines()
     rows = []
     for number, line in enumerate(lines, start=1):
         if not line.strip():
@@ -70,14 +69,19 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _read_csv(path: Path) -> list[dict[str, Any]]:
+    raw = read_text(path, ConfigError, missing=f"case file not found: {path}")
+    # StringIO with newline="" rather than the file handle, so decoding
+    # failures are reported by read_text alongside every other file's. The
+    # empty newline still keeps quoted fields with embedded newlines intact.
     try:
-        with path.open(newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle)
-            if reader.fieldnames is None:
-                return []
-            rows = list(reader)
-    except FileNotFoundError:
-        raise ConfigError(f"case file not found: {path}") from None
+        reader = csv.DictReader(io.StringIO(raw, newline=""))
+        if reader.fieldnames is None:
+            return []
+        rows = list(reader)
+    except csv.Error as exc:
+        # A NUL byte, or a field past the module's size limit. Neither is a
+        # crash worth showing anyone the C stack for.
+        raise ConfigError(f"{path}: could not parse as CSV: {exc}") from exc
     # CSV cells are always strings; empty reserved fields mean "not provided".
     for row in rows:
         for field in ("id", "expected", "human_label"):

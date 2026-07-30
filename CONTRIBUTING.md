@@ -47,6 +47,17 @@ uv run pytest tests/test_engine.py   # one file
 uv run pytest -k cache               # by name
 ```
 
+### Fuzzing
+
+`tests/test_config_fuzz.py` mutates a valid config — structurally, and at the
+byte level — and asserts that loading it either works or raises `ConfigError`
+with a message. Anything else is a bug: a user cannot act on a Pydantic dump
+or a codec traceback, and it reads as evaling breaking rather than their file
+being wrong.
+
+Seeds are fixed, so a failure reproduces from its parameter id alone. If you
+add a loader for a user-authored file, add it to `TestTheOtherLoaders`.
+
 ### Performance guards
 
 `tests/test_performance.py` (marker: `perf`) asserts that memory stays flat as
