@@ -281,10 +281,12 @@ class TestItNeverBreaksARun:
         """
         from pathlib import Path
 
+        where = Path("/tmp/somewhere")
         log = RequestLog(project / "trace.jsonl")
-        log.record(model="m", where=Path("/tmp/somewhere"), count=3)
+        log.record(model="m", where=where, count=3)
         [written] = entries(project / "trace.jsonl")
-        assert written["where"] == "/tmp/somewhere"
+        # str(Path(...)), not the literal: separators differ on Windows.
+        assert written["where"] == str(where)
         assert written["count"] == 3
         assert "error" not in written, "the entry fell back instead of serializing"
 

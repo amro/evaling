@@ -96,7 +96,9 @@ class RequestLog:
         """Write one entry. Never raises: logging must not fail a run."""
         try:
             line = json.dumps(fields, default=str, sort_keys=True)
-        except (TypeError, ValueError):  # pragma: no cover - default=str covers ~everything
+        except (TypeError, ValueError):
+            # `default=str` handles almost everything, but not a circular
+            # structure: json.dumps raises before `default` is consulted.
             line = json.dumps({"error": "entry was not serializable"})
         line = redact(line, self._secrets)
         try:

@@ -236,7 +236,10 @@ class TestTheEstimateArithmetic:
     def test_ten_times_the_cells_costs_ten_times_as_much(self):
         one = estimate_run([(MODEL, {}, 1000, 1)]).usd
         ten = estimate_run([(MODEL, {}, 1000, 10)]).usd
-        assert ten == pytest.approx(one * 10, rel=1e-6)
+        # Loose enough to survive the 4-decimal rounding of each figure,
+        # tight enough that dividing by the cell count instead of multiplying
+        # is nowhere near it.
+        assert ten == pytest.approx(one * 10, rel=1e-3)
 
 
 class TestMaxTokensCapsTheOutputHalf:

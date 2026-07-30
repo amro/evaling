@@ -21,10 +21,10 @@ jobs:
       - name: Run mutation testing
         # Survivors are a triage queue, not a failure — but the step below
         # decides whether the run is worth reading at all.
-        run: uv run --with mutmut python -m mutmut run --max-children 4 2>&1 | tee mutmut.log
+        run: uv run --with mutmut==3.6.0 python -m mutmut run --max-children 4 2>&1 | tee mutmut.log
         continue-on-error: true
       - name: Collect results
-        run: uv run --with mutmut python -m mutmut results > survivors.txt 2>/dev/null || true
+        run: uv run --with mutmut==3.6.0 python -m mutmut results > survivors.txt 2>/dev/null || true
       - name: Check the run actually ran
         # mutmut exits 0 and reports nothing when its own setup fails, so an
         # aborted run looks exactly like a perfect score. `mutmut results`
