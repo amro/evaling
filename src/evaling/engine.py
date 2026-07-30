@@ -38,7 +38,7 @@ from evaling.errors import EvalingError
 from evaling.limits import limiter_for
 from evaling.privacy import hash_case_id, redact_record, scrub_secrets
 from evaling.providers import Completion, CompletionRequest, create_provider
-from evaling.providers.pricing import CostEstimate, estimate_run
+from evaling.providers.pricing import ASSUMED_OUTPUT_TOKENS, CostEstimate, estimate_run
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
 from evaling.reqlog import open_log
@@ -1103,7 +1103,55 @@ def estimate_run_cost(
         input_tokens = sum(len(message.text) for message in rendered) // 4
         for model in models:
             groups.append((model.id, model.params, input_tokens, count))
+    groups.extend(_judge_groups(config, len(variants) * len(models) * count))
     return estimate_run(groups)
+
+
+def _judge_groups(config: EvalConfig, cells: int) -> list[tuple[str, dict[str, Any], int, int]]:
+    """One group per llm-judge criterion: a judge is a billable call per cell.
+
+    Leaving these out understated a judged run by roughly half, in the
+    direction that matters — a scorecard with two judged criteria makes three
+    calls per cell, not one.
+
+    The judge's input is its rubric plus the output it is grading, which does
+    not exist yet; the graded text is counted at the same assumed length the
+    candidate's own output uses.
+    """
+    by_name = {model.id: model for model in config.models}
+    groups: list[tuple[str, dict[str, Any], int, int]] = []
+    for criterion in config.scorecard:
+        if criterion.scorer.type != "llm-judge":
+            continue
+        judge = config.judges.get(criterion.scorer.params.get("judge", ""))
+        model = by_name.get(judge.model) if judge else None
+        if model is None:
+            continue
+        try:
+            rubric = resolve_prompt(judge.rubric, config.base_dir)
+        except EvalingError:
+            continue
+        # Rendered with an empty output: the fixed part of the rubric is what
+        # we can count, and the graded text is added as an assumption.
+        text = "".join(
+            message.content
+            if isinstance(message.content, str)
+            else "".join(getattr(part, "text", "") for part in message.content)
+            for message in rubric
+        )
+        graded_tokens = _assumed_output_tokens(config.models)
+        groups.append((model.id, model.params, len(text) // 4 + graded_tokens, cells))
+    return groups
+
+
+def _assumed_output_tokens(models: list[ModelSpec]) -> int:
+    """How long a candidate answer is assumed to be, for sizing a judge's input."""
+    caps = [
+        model.params["max_tokens"]
+        for model in models
+        if isinstance(model.params.get("max_tokens"), int) and model.params["max_tokens"] > 0
+    ]
+    return max(caps) if caps else ASSUMED_OUTPUT_TOKENS
 
 
 def sample_cases(cases: list[Case], sample: int | None, seed: int | None) -> list[Case]:

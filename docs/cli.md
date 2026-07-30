@@ -122,9 +122,11 @@ Running 4200 requests (2 variants × 3 models × 700 cases)
 **An estimate, not a bound.** Input tokens are approximated from character
 counts rather than a real tokenizer; output length is only capped where a
 model sets `max_tokens`; the built-in price table is a convenience rather
-than an invoice; retried calls bill again; and LLM judges are not counted at
-all. Treat it as an order of magnitude for deciding, and `--max-cost` as the
-thing that actually holds.
+than an invoice; and retried calls bill again. Treat it as an order of
+magnitude for deciding, and `--max-cost` as the thing that actually holds.
+
+LLM judges *are* counted — a judge is a billable call per cell, so a scorecard
+with two judged criteria makes three calls per cell.
 
 A model with no pricing is named and left out rather than counted as free, and
 if nothing can be priced the line is omitted entirely — `$0.00` would read as

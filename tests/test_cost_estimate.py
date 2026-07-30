@@ -123,3 +123,78 @@ class TestWhatTheRunSays:
         result = self.invoke(path, "run")
         assert result.exit_code == 0, result.output
         assert "continue?" not in result.output.lower()
+
+
+class TestJudgesAreCounted:
+    """A judged run makes more than one call per cell.
+
+    Leaving judges out understated a judged run by roughly half, in the
+    direction that matters: two judged criteria means three calls per cell,
+    not one.
+    """
+
+    def config(self, tmp_path, criteria):
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "rubric.yaml").write_text(
+            "- {role: user, content: 'Grade this answer against the rubric: {{ output }}'}\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models:\n"
+            "  - {id: claude-sonnet-5, provider: anthropic, params: {max_tokens: 256}}\n"
+            "  - id: claude-opus-5\n"
+            "    provider: anthropic\n"
+            "    role: judge\n"
+            "    params: {max_tokens: 256}\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "answer {{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: a}}, {id: c2, vars: {q: b}}]\n"
+            f"scorecard:\n{criteria}"
+            "judges:\n  j: {model: claude-opus-5, rubric: rubric.yaml}\n",
+            encoding="utf-8",
+        )
+        return estimate_for(tmp_path)
+
+    PLAIN = '  - {criterion: acc, scorer: {type: contains, value: ""}}\n'
+    JUDGED = "  - {criterion: g1, scorer: {type: llm-judge, judge: j}}\n"
+
+    def test_a_judged_criterion_costs_more_than_none(self, tmp_path):
+        plain = self.config(tmp_path / "plain", self.PLAIN)
+        judged = self.config(tmp_path / "judged", self.PLAIN + self.JUDGED)
+        assert judged.usd > plain.usd, "the judge's calls were not counted"
+
+    def test_two_judged_criteria_cost_more_than_one(self, tmp_path):
+        one = self.config(tmp_path / "one", self.JUDGED)
+        two = self.config(
+            tmp_path / "two",
+            self.JUDGED + "  - {criterion: g2, scorer: {type: llm-judge, judge: j}}\n",
+        )
+        assert two.usd > one.usd * 1.5, "a second judged criterion added nothing"
+
+    def test_the_judge_model_is_the_one_priced(self, tmp_path):
+        """The judge's own model and params, not the candidate's."""
+        judged = self.config(tmp_path / "j", self.JUDGED)
+        assert judged.priced is True
+        assert judged.unpriced == ()
+
+    def test_an_unpriced_judge_is_named(self, tmp_path):
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "rubric.yaml").write_text(
+            "- {role: user, content: 'grade {{ output }}'}\n", encoding="utf-8"
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models:\n"
+            "  - {id: claude-sonnet-5, provider: anthropic, params: {max_tokens: 256}}\n"
+            "  - id: local-judge\n"
+            "    provider: openai-compatible\n"
+            "    base_url: 'http://x/v1'\n"
+            "    role: judge\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "answer {{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: a}}]\n"
+            "scorecard:\n  - {criterion: g, scorer: {type: llm-judge, judge: j}}\n"
+            "judges:\n  j: {model: local-judge, rubric: rubric.yaml}\n",
+            encoding="utf-8",
+        )
+        estimate = estimate_for(tmp_path)
+        assert estimate.unpriced == ("local-judge",)

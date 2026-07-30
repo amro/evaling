@@ -96,9 +96,9 @@ class CostEstimate:
     An estimate and not a bound. Input tokens are approximated from character
     counts rather than a real tokenizer, output length is capped by
     ``max_tokens`` only where a model sets one, the price table is a
-    convenience rather than an invoice, retried calls bill again, and LLM
-    judges are not counted at all. Every one of those pushes the real figure
-    around, so callers should present it as an estimate.
+    convenience rather than an invoice, and retried calls bill again. Every
+    one of those moves the real figure, so callers should present it as an
+    estimate.
 
     ``priced`` is False when some model has no pricing, in which case ``usd``
     covers only the models that do and ``unpriced`` names the rest.

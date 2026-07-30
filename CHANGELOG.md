@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   approximated, the price table is a convenience rather than an invoice,
   retries bill again, and LLM judges are not counted, so a confident-looking
   figure would be the wrong kind of help. `--max-cost` is what actually
-  holds.
+  holds. LLM judges are counted: a judge is a billable call per cell, so a
+  scorecard with two judged criteria makes three calls per cell and leaving
+  them out understated a judged run by roughly half.
 
   The prompt fired on a fixed cell count, which is a poor proxy for cost: a
   hundred cells against a local model is free, and anyone whose ordinary eval
