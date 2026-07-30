@@ -327,3 +327,97 @@ class TestThroughTheCli:
         )
         assert result.exit_code == 2
         assert "empty path" in result.output
+
+
+class TestTheThingsThatMustNotBreakARun:
+    """A debugging flag gets to fail at nothing.
+
+    Mutation testing found these unguarded: the serialization fallback, the
+    non-UTF-8 file check, the one-byte file, and the nested parent directory.
+    """
+
+    def test_a_circular_entry_falls_back_rather_than_raising(self, project):
+        """`default=str` handles almost everything — not a cycle.
+
+        The fallback line was marked unreachable and was not: json.dumps
+        raises ValueError on a circular reference whatever `default` says.
+        """
+        circular = {}
+        circular["self"] = circular
+        log = RequestLog(project / "trace.jsonl")
+        log.record(model="m", payload=circular)
+        [written] = entries(project / "trace.jsonl")
+        assert written == {"error": "entry was not serializable"}
+
+    def test_a_nested_parent_directory_is_created(self, project):
+        log = RequestLog(project / "deep" / "nested" / "trace.jsonl")
+        log.record(model="m")
+        assert len(entries(project / "deep" / "nested" / "trace.jsonl")) == 1
+
+
+class TestRefusingSomebodyElsesFile:
+    def test_a_file_that_is_not_utf8_is_refused_not_raised(self, project):
+        """The first line is read with errors="replace" for exactly this.
+
+        A user pointing --log-requests at a binary file should be told no,
+        not shown a UnicodeDecodeError from inside evaling.
+        """
+        target = project / "photo.jpg"
+        target.write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" * 4)
+        with pytest.raises(EvalingError, match="refusing to overwrite"):
+            RequestLog(target)
+        assert target.read_bytes().startswith(b"\xff\xd8"), "the file was touched"
+
+    def test_a_one_byte_file_is_still_somebody_elses(self, project):
+        """The size check is for *empty*, and one byte is not empty."""
+        target = project / "notes.txt"
+        target.write_text("x", encoding="utf-8")
+        with pytest.raises(EvalingError, match="refusing to overwrite"):
+            RequestLog(target)
+        assert target.read_text(encoding="utf-8") == "x"
+
+    def test_an_empty_file_is_fair_game(self, project):
+        target = project / "empty.jsonl"
+        target.write_text("", encoding="utf-8")
+        RequestLog(target).record(model="m")
+        assert len(entries(target)) == 1
+
+
+class TestWhatCountsAsASecretWorthScrubbing:
+    """Too short a value would mangle ordinary text everywhere it appeared."""
+
+    def test_a_short_value_is_not_registered(self, project):
+        log = RequestLog(project / "trace.jsonl")
+        log.add_secret("abc")
+        log.record(model="m", note="abc appears in ordinary words like abcdef")
+        [written] = entries(project / "trace.jsonl")
+        assert "abc appears" in written["note"], "a 3-character 'secret' was redacted"
+
+    def test_a_value_at_the_minimum_length_is_registered(self, project):
+        value = "x" * RequestLog.MIN_SECRET
+        log = RequestLog(project / "trace.jsonl")
+        log.add_secret(value)
+        log.record(model="m", note=f"key is {value}")
+        [written] = entries(project / "trace.jsonl")
+        assert value not in written["note"]
+        assert "<redacted>" in written["note"]
+
+    def test_one_below_the_minimum_is_not(self):
+        log = RequestLog.__new__(RequestLog)
+        log._secrets = []
+        log.add_secret("y" * (RequestLog.MIN_SECRET - 1))
+        assert log._secrets == []
+
+    def test_the_same_secret_is_not_registered_twice(self):
+        log = RequestLog.__new__(RequestLog)
+        log._secrets = []
+        for _ in range(3):
+            log.add_secret("sk-ant-duplicate-value")
+        assert log._secrets == ["sk-ant-duplicate-value"]
+
+    def test_nothing_is_registered_for_an_empty_value(self):
+        log = RequestLog.__new__(RequestLog)
+        log._secrets = []
+        log.add_secret(None)
+        log.add_secret("")
+        assert log._secrets == []
