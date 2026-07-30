@@ -55,6 +55,8 @@ configured thresholds fail, `2` on config errors.
 | Flag | Effect |
 |---|---|
 | `--model NAME` / `--variant NAME` / `--case ID` | Run a sub-matrix (each repeatable) |
+| `--sample N` | Evaluate a random N of the selected cases (see below) |
+| `--sample-seed N` | Repeat an earlier draw; requires `--sample` |
 | `--dry-run` | Validate config, render every prompt, print the request count — no model calls. Exits 2 if anything fails to render. |
 | `--max-cost USD` | Stop issuing model calls once accumulated cost reaches the limit; remaining cells record a skip error. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
 | `-y, --yes` | Skip the confirmation shown for 100+ request matrices |
@@ -74,6 +76,33 @@ used automatically (pin one first with `evaling baseline set`).
 cases come from a source refuses to start without `limit` or `--max-cost`, and
 cannot be resumed; see [no-look.md](no-look.md) for why.
 
+#### Sampling
+
+`--sample N` runs a random N of the cases you selected — the fast loop while a
+prompt is still moving, instead of listing `--case` ids by hand:
+
+```sh
+evaling run --sample 20        # 20 random cases instead of all 2,000
+```
+
+Every sampled run reports the seed that produced it, so a draw worth keeping
+can be repeated exactly:
+
+```
+sampled 20 of 2000 cases — repeat this draw with --sample 20 --sample-seed 2894127714
+```
+
+The seed is stored with the run, so `--resume` continues the original draw
+rather than making a new one. It also means comparing two sampled runs is only
+meaningful when they share a seed — otherwise you are comparing different
+cases, not different prompts.
+
+Sampling narrows a fixed case list, so it does not apply to
+[source-backed runs](large-datasets.md), which have no population to draw
+from — use `limit` there. And a sample is a sample: see
+[how many cases you need](large-datasets.md#how-many-cases-do-you-need) before
+reading much into a small one.
+
 ### `evaling validate [CONFIG]`
 
 Check the config and render every prompt without calling any model — the same
@@ -83,6 +112,7 @@ to load or render.
 | Flag | Effect |
 |---|---|
 | `--model NAME` / `--variant NAME` / `--case ID` | Validate a sub-matrix (each repeatable) |
+| `--sample N` / `--sample-seed N` | Check a random subset, as `run` does |
 
 ### `evaling show RUN [--failures] [--case ID]`
 

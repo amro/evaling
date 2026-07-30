@@ -112,6 +112,8 @@ async def run_eval_tool(
     models: list[str] | None = None,
     variants: list[str] | None = None,
     cases: list[str] | None = None,
+    sample: int | None = None,
+    sample_seed: int | None = None,
     label: str | None = None,
     no_cache: bool = False,
     max_cost_usd: float | None = None,
@@ -137,6 +139,12 @@ async def run_eval_tool(
                 "evaling does not know the ids in advance. Filter inside your source, "
                 "or set `limit` in the config to take fewer."
             )
+        if sample is not None:
+            raise ConfigError(
+                "sample cannot narrow a source-backed run: cases are fetched lazily, so "
+                "there is no population to draw from. Set `limit` in the config to take "
+                "fewer, or sample inside your source."
+            )
         if config.cases.limit is None and max_cost_usd is None:
             raise ConfigError(
                 "this config fetches cases from a source with no `limit`, so the number "
@@ -151,7 +159,10 @@ async def run_eval_tool(
         variants_sel, models_sel, cases_sel = select_matrix(
             config, models=models, variants=variants, cases=cases
         )
-        total = len(variants_sel) * len(models_sel) * len(cases_sel)
+        # Size only: the draw itself happens in the engine, which records the
+        # seed it used. Any draw of the same size gives the same total.
+        selected = min(sample, len(cases_sel)) if sample is not None else len(cases_sel)
+        total = len(variants_sel) * len(models_sel) * selected
 
     done = 0
 
@@ -168,6 +179,8 @@ async def run_eval_tool(
         model_filter=models,
         variant_filter=variants,
         case_filter=cases,
+        sample=sample,
+        sample_seed=sample_seed,
         max_cost_usd=max_cost_usd,
         on_result=on_result,
     )
@@ -179,6 +192,9 @@ async def run_eval_tool(
         "gate": asdict(result.gate) if result.gate else None,
         "warnings": result.warnings,
     }
+    if result.selection:
+        # The seed is what lets the agent repeat the draw on the next call.
+        summary["selection"] = result.selection
     # result.records is empty above the retention cap, so stream from disk —
     # without materializing the run, which can be far larger than the failures.
     failures = filter_failures(result.iter_records())
@@ -355,6 +371,8 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         models: list[str] | None = None,
         variants: list[str] | None = None,
         cases: list[str] | None = None,
+        sample: int | None = None,
+        sample_seed: int | None = None,
         label: str | None = None,
         no_cache: bool = False,
         max_cost_usd: float | None = None,
@@ -372,6 +390,8 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
             models=models,
             variants=variants,
             cases=cases,
+            sample=sample,
+            sample_seed=sample_seed,
             label=label,
             no_cache=no_cache,
             max_cost_usd=max_cost_usd,

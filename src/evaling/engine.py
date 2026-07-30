@@ -8,6 +8,8 @@ interrupted run can be resumed — cells with a record are skipped.
 import asyncio
 import contextlib
 import hashlib
+import random
+import secrets
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
@@ -78,6 +80,10 @@ class RunResult:
     warnings: list[str] = field(default_factory=list)
     #: True when the run was too large to keep in memory; use iter_records().
     records_truncated: bool = False
+    #: How the cases were narrowed, when they were: ``{sample, seed, available}``.
+    #: The seed is what makes a sampled run repeatable, so it is reported back
+    #: as well as stored — a draw nobody can reproduce is not much of a draw.
+    selection: dict[str, Any] | None = None
 
     def iter_records(self) -> Iterator[ResultRecord]:
         """Stream every record from disk, regardless of run size."""
@@ -94,6 +100,8 @@ def run_eval(
     model_filter: list[str] | None = None,
     variant_filter: list[str] | None = None,
     case_filter: list[str] | None = None,
+    sample: int | None = None,
+    sample_seed: int | None = None,
     max_cost_usd: float | None = None,
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
@@ -107,6 +115,8 @@ def run_eval(
             model_filter=model_filter,
             variant_filter=variant_filter,
             case_filter=case_filter,
+            sample=sample,
+            sample_seed=sample_seed,
             max_cost_usd=max_cost_usd,
             on_result=on_result,
         )
@@ -123,6 +133,8 @@ async def run_eval_async(
     model_filter: list[str] | None = None,
     variant_filter: list[str] | None = None,
     case_filter: list[str] | None = None,
+    sample: int | None = None,
+    sample_seed: int | None = None,
     max_cost_usd: float | None = None,
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
@@ -144,6 +156,8 @@ async def run_eval_async(
             model_filter=model_filter,
             variant_filter=variant_filter,
             case_filter=case_filter,
+            sample=sample,
+            sample_seed=sample_seed,
             max_cost_usd=max_cost_usd,
             on_result=on_result,
             extra_warnings=secret_warnings,
@@ -165,6 +179,8 @@ async def _run_eval_impl(
     model_filter: list[str] | None,
     variant_filter: list[str] | None,
     case_filter: list[str] | None,
+    sample: int | None,
+    sample_seed: int | None,
     max_cost_usd: float | None,
     on_result: Callable[[ResultRecord], None] | None,
     extra_warnings: list[str] | None = None,
@@ -174,6 +190,12 @@ async def _run_eval_impl(
 
     privacy = config.privacy
     source_ref = config.cases if isinstance(config.cases, CaseSourceRef) else None
+    store = RunStore(settings.output_dir)
+
+    # Resolved before the cases are chosen, because a resumed run has to draw
+    # the same sample the original did — otherwise its two halves cover
+    # different cases while looking like one run.
+    sample, sample_seed = _resolve_sample(store, resume_run_id, sample, sample_seed)
 
     if source_ref is not None:
         variants_sel, models_sel = select_variants_models(
@@ -186,10 +208,24 @@ async def _run_eval_impl(
                 "so evaling does not know the ids in advance. Filter inside your "
                 "source, or use `limit` to take fewer."
             )
+        if sample is not None:
+            raise ConfigError(
+                "sampling cannot narrow a source-backed run: cases are fetched lazily, "
+                "so there is no population to draw from. Use `limit` in the config to "
+                "take fewer, or sample inside your source."
+            )
+        available = 0
     else:
         variants_sel, models_sel, cases = select_matrix(
             config, models=model_filter, variants=variant_filter, cases=case_filter
         )
+        available = len(cases)
+        cases = sample_cases(cases, sample, sample_seed)
+    selection = (
+        None
+        if sample is None
+        else {"sample": len(cases), "seed": sample_seed, "available": available}
+    )
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel
     }
@@ -199,7 +235,6 @@ async def _run_eval_impl(
     # exactly what no-look exists to prevent.
     cache = ResponseCache(settings.cache_dir) if settings.cache and not privacy.no_look else None
 
-    store = RunStore(settings.output_dir)
     # Resolve the baseline up front: a missing pinned baseline must fail
     # before any model call, not after the run completes.
     # Fail on a bad scorecard before a run directory exists. Scorers are built
@@ -229,7 +264,11 @@ async def _run_eval_impl(
         done = {record.key for record in prior_records}
     else:
         writer = store.create_run(
-            config, label=label, config_sha256=fingerprint, redact_cases=privacy.no_look
+            config,
+            label=label,
+            config_sha256=fingerprint,
+            redact_cases=privacy.no_look,
+            selection=selection,
         )
         prior_records = []
         done = set()
@@ -453,6 +492,7 @@ async def _run_eval_impl(
         aggregates=aggregates,
         gate=gate,
         warnings=warnings,
+        selection=selection,
     )
 
 
@@ -507,6 +547,43 @@ def _resolve_baseline(store: RunStore, config: EvalConfig, override: str | None)
     if ref == "regression":
         ref = "baseline"
     return store.resolve_ref(ref)
+
+
+def _resolve_sample(
+    store: RunStore,
+    resume_run_id: str | None,
+    sample: int | None,
+    sample_seed: int | None,
+) -> tuple[int | None, int | None]:
+    """Settle the draw before any case is chosen.
+
+    A fresh sampled run gets a seed whether or not one was asked for, because
+    a draw nobody can reproduce is not much of a draw — it goes into the run's
+    metadata and comes back on the result.
+
+    A resumed run reuses the draw recorded on the run it is resuming. Taking
+    the caller's word instead would let the two halves of one run cover
+    different cases, which produces no error and entirely plausible numbers.
+    """
+    if resume_run_id is None:
+        if sample is not None and sample_seed is None:
+            sample_seed = secrets.randbits(32)
+        return sample, sample_seed
+
+    recorded = store.load_meta(resume_run_id).get("selection") or {}
+    prior_sample, prior_seed = recorded.get("sample"), recorded.get("seed")
+    if sample is not None and sample != prior_sample:
+        described = "did not sample" if prior_sample is None else f"sampled {prior_sample} cases"
+        raise StorageError(
+            f"run {resume_run_id!r} {described}, so it cannot be resumed with a sample "
+            f"of {sample}. Resume takes the original run's draw; omit the sample to use it."
+        )
+    if sample_seed is not None and sample_seed != prior_seed:
+        raise StorageError(
+            f"run {resume_run_id!r} was drawn with seed {prior_seed}, not {sample_seed}. "
+            "Resume takes the original run's draw; omit the seed to use it."
+        )
+    return prior_sample, prior_seed
 
 
 def _load_baseline_overall(store: RunStore, run_id: str | None) -> dict[str, Any] | None:
@@ -765,12 +842,32 @@ def select_variants_models(
     return variant_specs, model_specs
 
 
+def sample_cases(cases: list[Case], sample: int | None, seed: int | None) -> list[Case]:
+    """A random subset of ``sample`` cases, in their original order.
+
+    Order is preserved so that two runs of the same draw line up when read
+    side by side; the randomness is in *which* cases, not where they land.
+    Asking for more than exist takes them all rather than erroring — the point
+    is "no more than this many", and a dataset that shrank shouldn't fail.
+    """
+    if sample is None:
+        return cases
+    if sample < 1:
+        raise ConfigError(f"sample must be at least 1, got {sample}")
+    if sample >= len(cases):
+        return cases
+    chosen = sorted(random.Random(seed).sample(range(len(cases)), sample))
+    return [cases[index] for index in chosen]
+
+
 def select_matrix(
     config: EvalConfig,
     *,
     models: list[str] | None = None,
     variants: list[str] | None = None,
     cases: list[str] | None = None,
+    sample: int | None = None,
+    sample_seed: int | None = None,
 ) -> tuple[list[VariantSpec], list[ModelSpec], list[Case]]:
     """Validate filters and return exactly what the matrix will execute.
 
@@ -797,7 +894,7 @@ def select_matrix(
         wanted = set(cases)
         case_list = [case for case in case_list if case.id in wanted]
 
-    return variant_specs, model_specs, case_list
+    return variant_specs, model_specs, sample_cases(case_list, sample, sample_seed)
 
 
 def _dry_run_source(
@@ -889,6 +986,8 @@ def dry_run(
     model_filter: list[str] | None = None,
     variant_filter: list[str] | None = None,
     case_filter: list[str] | None = None,
+    sample: int | None = None,
+    sample_seed: int | None = None,
 ) -> DryRunReport:
     """Validate everything a run needs — prompts, cases, scorers, rendering —
     without calling any model.
@@ -899,9 +998,20 @@ def dry_run(
     without walking a production dataset to do it.
     """
     if isinstance(config.cases, CaseSourceRef):
+        if sample is not None:
+            raise ConfigError(
+                "sampling cannot narrow a source-backed run: cases are fetched lazily, "
+                "so there is no population to draw from. Use `limit` in the config to "
+                "take fewer, or sample inside your source."
+            )
         return _dry_run_source(config, model_filter=model_filter, variant_filter=variant_filter)
     variants_sel, models_sel, cases = select_matrix(
-        config, models=model_filter, variants=variant_filter, cases=case_filter
+        config,
+        models=model_filter,
+        variants=variant_filter,
+        cases=case_filter,
+        sample=sample,
+        sample_seed=sample_seed,
     )
     prompts = {
         variant.name: resolve_prompt(variant.prompt, config.base_dir) for variant in variants_sel

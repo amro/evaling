@@ -143,6 +143,19 @@ def main(ctx, config_path, output_dir, cache_dir, no_color, quiet, verbose, json
 @click.option("--variant", "variants", multiple=True, help="Only these variants (repeatable).")
 @click.option("--case", "case_ids", multiple=True, help="Only these case ids (repeatable).")
 @click.option(
+    "--sample",
+    type=int,
+    default=None,
+    metavar="N",
+    help="Evaluate a random N of the selected cases.",
+)
+@click.option(
+    "--sample-seed",
+    type=int,
+    default=None,
+    help="Seed for --sample, to repeat an earlier draw.",
+)
+@click.option(
     "--dry-run",
     "dry",
     is_flag=True,
@@ -185,6 +198,8 @@ def run(
     models,
     variants,
     case_ids,
+    sample,
+    sample_seed,
     dry,
     max_cost,
     no_look,
@@ -202,8 +217,10 @@ def run(
     variant_filter = list(variants) or None
     case_filter = list(case_ids) or None
 
+    _check_sample(sample, sample_seed)
+
     if dry:
-        _do_dry_run(app, config, model_filter, variant_filter, case_filter)
+        _do_dry_run(app, config, model_filter, variant_filter, case_filter, sample, sample_seed)
         return
 
     if no_look:
@@ -244,11 +261,17 @@ def run(
         variants_sel, models_sel, cases_sel = select_matrix(
             config, models=model_filter, variants=variant_filter, cases=case_filter
         )
-        count = len(variants_sel) * len(models_sel) * len(cases_sel)
+        # The draw itself happens in the engine, which records its seed; here
+        # only the size matters, and that is the same for any draw.
+        available = len(cases_sel)
+        selected = min(sample, available) if sample is not None else available
+        count = len(variants_sel) * len(models_sel) * selected
         app.say(
             f"Running [bold]{count}[/bold] requests "
-            f"({len(variants_sel)} variants × {len(models_sel)} models × {len(cases_sel)} cases)"
+            f"({len(variants_sel)} variants × {len(models_sel)} models × {selected} cases)"
         )
+        if sample is not None:
+            app.say(f"  sampling {selected} of {available} cases")
         _say_judge_only(app, config)
         if count >= CONFIRM_THRESHOLD and not yes and sys.stdin.isatty():
             click.confirm(f"That is {count} model calls — continue?", abort=True)
@@ -304,6 +327,8 @@ def run(
         "model_filter": model_filter,
         "variant_filter": variant_filter,
         "case_filter": case_filter,
+        "sample": sample,
+        "sample_seed": sample_seed,
     }
     if progress is not None:
         with progress:
@@ -342,6 +367,7 @@ def run(
                 "aggregates": result.aggregates,
                 "gate": gate,
                 "warnings": result.warnings,
+                "selection": result.selection,
                 **({"html": str(html_path)} if html_path else {}),
             }
         )
@@ -354,6 +380,13 @@ def run(
         if gate:
             for line in display.gate_lines(gate):
                 app.show(line)
+        if result.selection:
+            app.say(
+                f"sampled {result.selection['sample']} of "
+                f"{result.selection['available']} cases — repeat this draw with "
+                f"[bold]--sample {result.selection['sample']} "
+                f"--sample-seed {result.selection['seed']}[/bold]"
+            )
         app.say(f"run [bold]{result.run_id}[/bold] stored in {result.path}")
         if html_path:
             app.say(f"report written to [bold]{html_path}[/bold]")
@@ -417,12 +450,24 @@ def _say_judge_only(app, config) -> None:
         app.say(f"  {display.safe(', '.join(judges))}: judge only, not evaluated")
 
 
-def _do_dry_run(app, config, model_filter, variant_filter, case_filter):
+def _check_sample(sample, sample_seed) -> None:
+    if sample is not None and sample < 1:
+        raise click.UsageError("--sample must be at least 1")
+    if sample_seed is not None and sample is None:
+        # Silently doing nothing here would look like a draw was pinned.
+        raise click.UsageError("--sample-seed has no effect without --sample")
+
+
+def _do_dry_run(
+    app, config, model_filter, variant_filter, case_filter, sample=None, sample_seed=None
+):
     report = engine_dry_run(
         config,
         model_filter=model_filter,
         variant_filter=variant_filter,
         case_filter=case_filter,
+        sample=sample,
+        sample_seed=sample_seed,
     )
     if app.json_output:
         app.echo_json(
@@ -624,15 +669,37 @@ def baseline_show(app):
 @click.option("--model", "models", multiple=True, help="Only these models (repeatable).")
 @click.option("--variant", "variants", multiple=True, help="Only these variants (repeatable).")
 @click.option("--case", "case_ids", multiple=True, help="Only these case ids (repeatable).")
+@click.option(
+    "--sample",
+    type=int,
+    default=None,
+    metavar="N",
+    help="Check a random N of the selected cases.",
+)
+@click.option(
+    "--sample-seed",
+    type=int,
+    default=None,
+    help="Seed for --sample, to repeat an earlier draw.",
+)
 @pass_app
 @cli_errors
-def validate(app, config_arg, models, variants, case_ids):
+def validate(app, config_arg, models, variants, case_ids, sample, sample_seed):
     """Check the config and render every prompt without calling any model.
 
     The same work as `run --dry-run`, named so it's findable.
     """
+    _check_sample(sample, sample_seed)
     config = load_config(_config_target(config_arg, app))
-    _do_dry_run(app, config, list(models) or None, list(variants) or None, list(case_ids) or None)
+    _do_dry_run(
+        app,
+        config,
+        list(models) or None,
+        list(variants) or None,
+        list(case_ids) or None,
+        sample,
+        sample_seed,
+    )
 
 
 @main.group()

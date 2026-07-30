@@ -7,40 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **A relative `output_dir`/`cache_dir` now resolves against the eval config's
-  directory**, not the working directory. Previously
-  `evaling -c projects/foo/eval.yaml run` wrote to `./.evaling/runs`, so
-  `cd projects/foo && evaling list` found nothing — the runs were somewhere
-  else entirely, and nothing said so. Every other relative path in a config
-  (prompts, datasets, attachments) already resolved against the config's
-  directory; this was the exception. Defaults are included, so a config with
-  no `settings:` block keeps its runs beside itself too.
-
-  `--output-dir`, `--cache-dir`, and the `EVALING_*` variables are unchanged
-  and still resolve against the working directory: you type those where you
-  are standing. Absolute paths are never rewritten. **This moves where runs
-  land for anyone who passes `-c` with a path outside their working
-  directory**; pass `--output-dir` to keep the old location.
-
-### Fixed
-
-- **A malformed config produced a traceback instead of a message** in two
-  cases, both found by the new fuzzing in `tests/test_config_fuzz.py`. A file
-  that isn't valid UTF-8 — saved as UTF-16, or as latin-1 with an accent in it
-  — died inside the codec, because `UnicodeDecodeError` is a `ValueError` and
-  every read was guarded by `except OSError`. A file nested thousands of
-  levels deep died inside PyYAML with `RecursionError`, which is not a
-  `YAMLError`. Both now name the file and say what to do.
-
-  Every user-authored file evaling reads — config, prompt, dataset, secrets,
-  user config — now goes through one reader (`evaling.textfile`) rather than
-  five hand-rolled ones that each caught a different subset. Malformed CSV
-  (`csv.Error`: a NUL byte, an over-long field) is reported the same way
-  instead of escaping.
-
 ### Added
+
+- **`--sample N`** on `run` and `validate` (and `sample` over MCP): evaluate a
+  random N of the selected cases. The fast loop while a prompt is still
+  moving, instead of hand-listing `--case` ids.
+
+  Every sampled run reports and stores the seed that produced its draw, so a
+  draw can be repeated exactly — `--sample 20 --sample-seed 2894127714`. That
+  matters for comparison: two sampled runs with different seeds differ partly
+  by prompt and partly by which cases they happened to draw. `--resume`
+  continues the original draw rather than making a new one, and refuses a
+  conflicting `--sample`/`--sample-seed` rather than quietly producing a run
+  whose halves cover different cases. Not available for source-backed runs,
+  which have no population to draw from — use `limit`.
+
 
 - **Performance guards in CI** (`tests/test_performance.py`, marker `perf`,
   its own workflow job with coverage off). Memory flatness and throughput had
@@ -123,7 +104,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   links must resolve.
 - CI runs macOS and Windows in addition to Linux 3.10–3.13.
 
+
+- AAC audio (`.aac`). `.m4a` already covered AAC in an MP4 container; this adds
+  raw ADTS streams.
+- `evaling.concurrency.KeyedLocks`, a refcounted lock-per-key that drops locks
+  when their last waiter leaves — the cache single-flight map previously kept
+  one lock per distinct cell for the life of a run.
+- `evaling.scoring.Aggregator` for incremental aggregation. `aggregate()` is
+  now implemented on top of it, so there is one implementation of the
+  arithmetic rather than two that can drift.
+
 ### Changed
+
+- **A relative `output_dir`/`cache_dir` now resolves against the eval config's
+  directory**, not the working directory. Previously
+  `evaling -c projects/foo/eval.yaml run` wrote to `./.evaling/runs`, so
+  `cd projects/foo && evaling list` found nothing — the runs were somewhere
+  else entirely, and nothing said so. Every other relative path in a config
+  (prompts, datasets, attachments) already resolved against the config's
+  directory; this was the exception. Defaults are included, so a config with
+  no `settings:` block keeps its runs beside itself too.
+
+  `--output-dir`, `--cache-dir`, and the `EVALING_*` variables are unchanged
+  and still resolve against the working directory: you type those where you
+  are standing. Absolute paths are never rewritten. **This moves where runs
+  land for anyone who passes `-c` with a path outside their working
+  directory**; pass `--output-dir` to keep the old location.
+
 
 - The engine no longer materializes the matrix. Cells stream through a fixed
   worker pool, so in-flight tasks are bounded by `concurrency` rather than by
@@ -145,18 +152,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compiling the same template 30,000 times and keeping every result alive.
   Throughput improved ~21% (1,030 → 1,250 cells/sec against the mock provider).
 
-### Added
-
-- AAC audio (`.aac`). `.m4a` already covered AAC in an MP4 container; this adds
-  raw ADTS streams.
-- `evaling.concurrency.KeyedLocks`, a refcounted lock-per-key that drops locks
-  when their last waiter leaves — the cache single-flight map previously kept
-  one lock per distinct cell for the life of a run.
-- `evaling.scoring.Aggregator` for incremental aggregation. `aggregate()` is
-  now implemented on top of it, so there is one implementation of the
-  arithmetic rather than two that can drift.
-
 ### Fixed
+
+- **A malformed config produced a traceback instead of a message** in two
+  cases, both found by the new fuzzing in `tests/test_config_fuzz.py`. A file
+  that isn't valid UTF-8 — saved as UTF-16, or as latin-1 with an accent in it
+  — died inside the codec, because `UnicodeDecodeError` is a `ValueError` and
+  every read was guarded by `except OSError`. A file nested thousands of
+  levels deep died inside PyYAML with `RecursionError`, which is not a
+  `YAMLError`. Both now name the file and say what to do.
+
+  Every user-authored file evaling reads — config, prompt, dataset, secrets,
+  user config — now goes through one reader (`evaling.textfile`) rather than
+  five hand-rolled ones that each caught a different subset. Malformed CSV
+  (`csv.Error`: a NUL byte, an over-long field) is reported the same way
+  instead of escaping.
+
 
 - Empty option values are no longer read as "use the default". `--baseline ""`
   quietly disabled the regression gate CI exists to enforce, `evaling run ""`

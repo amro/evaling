@@ -956,3 +956,64 @@ class TestServerStartedFromAnotherDirectory:
         is_error, text = self.drive(launch, [], body)
         assert is_error is True
         assert "not found" in text and "eval.yaml" in text
+
+
+class TestSamplingOverMcp:
+    """The agent's fast loop: run a subset, then repeat the exact draw."""
+
+    def project(self, tmp_path, cases=30):
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: ["
+            + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(cases))
+            + "]\n"
+            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def call(self, project, **kwargs):
+        return asyncio.run(
+            run_eval_tool(
+                config_path=str(project / "eval.yaml"),
+                output_dir=str(project / "runs"),
+                **kwargs,
+            )
+        )
+
+    def test_a_sample_narrows_the_run_and_reports_its_seed(self, tmp_path):
+        project = self.project(tmp_path)
+        summary = self.call(project, sample=5)
+        assert summary["counts"]["total"] == 5
+        assert summary["selection"]["available"] == 30
+        assert isinstance(summary["selection"]["seed"], int)
+
+    def test_the_seed_repeats_the_draw(self, tmp_path):
+        project = self.project(tmp_path)
+        first = self.call(project, sample=5)
+        again = self.call(project, sample=5, sample_seed=first["selection"]["seed"])
+
+        store = RunStore(project / "runs")
+        assert sorted(r.case_id for r in store.load_results(first["run_id"])) == sorted(
+            r.case_id for r in store.load_results(again["run_id"])
+        )
+
+    def test_progress_totals_reflect_the_sample(self, tmp_path):
+        """Otherwise the agent watches a bar that never fills."""
+        project = self.project(tmp_path)
+        seen = []
+        asyncio.run(
+            run_eval_tool(
+                config_path=str(project / "eval.yaml"),
+                output_dir=str(project / "runs"),
+                sample=4,
+                on_progress=lambda done, total: seen.append((done, total)),
+            )
+        )
+        assert seen == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+    def test_an_unsampled_run_reports_no_selection(self, tmp_path):
+        project = self.project(tmp_path)
+        assert "selection" not in self.call(project)

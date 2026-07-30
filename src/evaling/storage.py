@@ -187,6 +187,7 @@ class RunStore:
         label: str | None = None,
         config_sha256: str | None = None,
         redact_cases: bool = False,
+        selection: dict[str, Any] | None = None,
     ) -> "RunWriter":
         """Create a run directory.
 
@@ -233,6 +234,10 @@ class RunStore:
             "created_ns": time.time_ns(),
             "finished_at": None,
             "config_sha256": config_sha256,
+            # How the cases were narrowed, when they were. Resume reads this
+            # back so the second half of a run draws the same sample as the
+            # first.
+            "selection": selection,
             "counts": None,
             "totals": None,
         }

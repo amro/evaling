@@ -67,6 +67,21 @@ notifications as cells complete. Optional `models`, `variants`, `cases` narrow
 the matrix; `label` names the run; `no_cache` bypasses the cache;
 `max_cost_usd` caps spend.
 
+`sample` runs a random N of the selected cases — the cheap way to check
+whether a prompt edit helped before paying for the whole matrix. The response
+carries a `selection` object with the seed that produced the draw; pass it
+back as `sample_seed` to compare two prompts over exactly the same cases:
+
+```json
+{"config_path": "eval.yaml", "sample": 20}
+→ {"selection": {"sample": 20, "seed": 2894127714, "available": 2000}, ...}
+
+{"config_path": "eval.yaml", "sample": 20, "sample_seed": 2894127714}
+```
+
+Without the seed the second run draws different cases, so any difference in
+score is partly the cases and partly the prompt.
+
 It returns the run id, counts, totals, the aggregate matrix, the gate verdict,
 and up to five failing cells — not the full records. Ask for the rest with
 `get_run`.
