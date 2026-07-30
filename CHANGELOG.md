@@ -11,9 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The large-matrix confirmation is gone; runs report what they will cost
   instead.** `run` now prints the matrix size and, where the models are
-  priced, the likely spend — `at most $38.40` when every model caps output
-  with `max_tokens`, `roughly` when one doesn't — and then runs. `--dry-run`
-  and `validate` show the same line.
+  priced, the likely spend — `estimated ~$38.40` — and then runs. `--dry-run`
+  and `validate` show the same line. Deliberately hedged: token counts are
+  approximated, the price table is a convenience rather than an invoice,
+  retries bill again, and LLM judges are not counted, so a confident-looking
+  figure would be the wrong kind of help. `--max-cost` is what actually
+  holds.
 
   The prompt fired on a fixed cell count, which is a poor proxy for cost: a
   hundred cells against a local model is free, and anyone whose ordinary eval

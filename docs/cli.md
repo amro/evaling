@@ -116,13 +116,19 @@ is likely to cost — then runs:
 
 ```
 Running 4200 requests (2 variants × 3 models × 700 cases)
-  at most $38.40
+  estimated ~$38.40
 ```
 
-`at most` when every model caps its output with `max_tokens`, so the figure is
-a real ceiling; `roughly` when one doesn't, since output length is then a
-guess. A model with no pricing is named and left out rather than counted as
-free, and if nothing can be priced the line is omitted entirely.
+**An estimate, not a bound.** Input tokens are approximated from character
+counts rather than a real tokenizer; output length is only capped where a
+model sets `max_tokens`; the built-in price table is a convenience rather
+than an invoice; retried calls bill again; and LLM judges are not counted at
+all. Treat it as an order of magnitude for deciding, and `--max-cost` as the
+thing that actually holds.
+
+A model with no pricing is named and left out rather than counted as free, and
+if nothing can be priced the line is omitted entirely — `$0.00` would read as
+"free" instead of "unknown".
 
 There is no confirmation prompt and no size threshold. Ctrl-C is the escape,
 and an interrupted run resumes with `--resume`. For unattended runs

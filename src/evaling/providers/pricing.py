@@ -91,16 +91,20 @@ ASSUMED_OUTPUT_TOKENS = 500
 
 @dataclass(frozen=True)
 class CostEstimate:
-    """What a run is likely to cost, before it runs.
+    """Roughly what a run will cost, before it runs.
 
-    ``bounded`` is True only when every model capped its output with
-    ``max_tokens``, which makes ``usd`` a real ceiling rather than a guess.
+    An estimate and not a bound. Input tokens are approximated from character
+    counts rather than a real tokenizer, output length is capped by
+    ``max_tokens`` only where a model sets one, the price table is a
+    convenience rather than an invoice, retried calls bill again, and LLM
+    judges are not counted at all. Every one of those pushes the real figure
+    around, so callers should present it as an estimate.
+
     ``priced`` is False when some model has no pricing, in which case ``usd``
-    covers only the models that do.
+    covers only the models that do and ``unpriced`` names the rest.
     """
 
     usd: float
-    bounded: bool
     priced: bool
     unpriced: tuple[str, ...] = ()
 
@@ -116,7 +120,6 @@ def estimate_run(groups: list[tuple[str, dict[str, Any], int, int]]) -> CostEsti
     "unknown" rather than "$0.00", which would read as free.
     """
     total = 0.0
-    bounded = True
     unpriced: list[str] = []
     priced_any = False
     for model_id, params, input_tokens_each, cells in groups:
@@ -125,7 +128,6 @@ def estimate_run(groups: list[tuple[str, dict[str, Any], int, int]]) -> CostEsti
             output_each = max_tokens
         else:
             output_each = ASSUMED_OUTPUT_TOKENS
-            bounded = False
         cost = estimate_cost(
             str((params or {}).get("model", model_id)),
             input_tokens_each * cells,
@@ -140,4 +142,4 @@ def estimate_run(groups: list[tuple[str, dict[str, Any], int, int]]) -> CostEsti
         total += cost
     if not priced_any:
         return None
-    return CostEstimate(round(total, 4), bounded, not unpriced, tuple(unpriced))
+    return CostEstimate(round(total, 4), not unpriced, tuple(unpriced))

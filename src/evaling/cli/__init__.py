@@ -515,11 +515,15 @@ def _say_estimate(app, config, variants, models, cases, case_count) -> None:
     estimate = estimate_run_cost(config, variants, models, cases, case_count)
     if estimate is None:
         return
-    qualifier = "at most" if estimate.bounded else "roughly"
+    # Hedged deliberately. Token counts are approximated, the price table is a
+    # convenience rather than an invoice, retries bill again, and judges are
+    # not counted — so a confident-looking figure would be the wrong kind of
+    # help.
+    amount = "under $0.01" if estimate.usd < 0.01 else f"~${estimate.usd:,.2f}"
     note = ""
     if not estimate.priced:
         note = f", excluding {display.safe(', '.join(estimate.unpriced))} (no pricing)"
-    app.say(f"  {qualifier} [bold]${estimate.usd:,.2f}[/bold]{note}")
+    app.say(f"  estimated [bold]{amount}[/bold]{note}")
 
 
 def _check_sample(sample, sample_seed) -> None:

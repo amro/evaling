@@ -44,16 +44,15 @@ UNPRICED = "  - {id: local, provider: openai-compatible, base_url: 'http://x/v1'
 
 
 class TestTheEstimate:
-    def test_a_capped_model_gives_a_real_ceiling(self, tmp_path):
+    def test_a_priced_model_is_estimated(self, tmp_path):
         estimate = estimate_for(project(tmp_path, PRICED_CAPPED))
-        assert estimate.bounded is True
         assert estimate.priced is True
         assert estimate.usd > 0
 
-    def test_an_uncapped_model_is_only_approximate(self, tmp_path):
-        """Without max_tokens there is no ceiling, so it must not claim one."""
+    def test_an_uncapped_model_is_estimated_too(self, tmp_path):
+        """No max_tokens means output length is assumed, not that we give up."""
         estimate = estimate_for(project(tmp_path, PRICED_UNCAPPED))
-        assert estimate.bounded is False
+        assert estimate.usd > 0
 
     def test_it_scales_with_the_matrix(self, tmp_path):
         small = estimate_for(project(tmp_path / "a", PRICED_CAPPED, cases=2))
@@ -83,25 +82,29 @@ class TestWhatTheRunSays:
             catch_exceptions=False,
         )
 
-    def test_a_dry_run_shows_the_ceiling(self, tmp_path):
+    def test_a_dry_run_shows_the_estimate(self, tmp_path):
         """A dry run asks "what would this do"; cost is half the answer."""
         path = project(tmp_path, PRICED_CAPPED)
         result = self.invoke(path, "run", "--dry-run")
         assert result.exit_code == 0, result.output
-        assert "at most $" in result.output
+        assert "estimated" in result.output
 
     def test_validate_shows_it_too(self, tmp_path):
         path = project(tmp_path, PRICED_CAPPED)
-        assert "at most $" in self.invoke(path, "validate").output
+        assert "estimated" in self.invoke(path, "validate").output
 
-    def test_a_priced_run_reports_at_most(self, tmp_path):
-        path = project(tmp_path, PRICED_CAPPED)
-        result = self.invoke(path, "run")
-        assert "at most $" in result.output
+    def test_the_figure_is_presented_as_an_estimate(self, tmp_path):
+        """Token counts are approximate, prices drift, judges are uncounted."""
+        path = project(tmp_path, PRICED_CAPPED, cases=200)
+        output = self.invoke(path, "run").output
+        assert "estimated ~$" in output
+        for overclaim in ("at most", "exactly", "will cost"):
+            assert overclaim not in output
 
-    def test_an_uncapped_run_says_roughly(self, tmp_path):
-        path = project(tmp_path, PRICED_UNCAPPED)
-        assert "roughly $" in self.invoke(path, "run").output
+    def test_a_tiny_estimate_does_not_round_to_zero(self, tmp_path):
+        """ "$0.00" reads as free; "under $0.01" reads as cheap."""
+        path = project(tmp_path, PRICED_CAPPED, cases=1)
+        assert "under $0.01" in self.invoke(path, "run").output
 
     def test_an_unpriced_model_is_named(self, tmp_path):
         path = project(tmp_path, PRICED_CAPPED + UNPRICED)
