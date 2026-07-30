@@ -453,3 +453,68 @@ class TestProgressNotifications:
                 return json.loads(result.content[0].text)
 
         assert asyncio.run(go())["counts"]["succeeded"] == 1
+
+
+class TestSourceBackedRunsOverMcp:
+    """A source-backed config was completely unrunnable over MCP.
+
+    `run_eval_tool` called `select_matrix` purely to compute a progress total,
+    and that raises for a source. The error even said "use run_eval" to someone
+    already calling run_eval. Found by driving the no-look example for real —
+    no test reached it, because every MCP test used inline cases.
+    """
+
+    def project(self, tmp_path, limit="limit: 4"):
+        (tmp_path / "src.py").write_text(
+            "from evaling import Case, CasePage\n"
+            "class S:\n"
+            "    def fetch(self, cursor, limit):\n"
+            "        start = int(cursor or 0)\n"
+            "        stop = min(start + limit, 10)\n"
+            "        cases = [Case(id=f'c{i}', vars={'q': str(i)}) for i in range(start, stop)]\n"
+            "        return CasePage(cases=cases, cursor=str(stop) if stop < 10 else None)\n"
+            "def make():\n    return S()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            f"cases: {{source: 'src.py:make', page_size: 2, {limit}}}\n"
+            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def call(self, project, args=None):
+        async def go():
+            from mcp.shared.memory import create_connected_server_and_client_session as connect
+
+            server = build_server(output_dir=str(project / "runs"), config_path=None)
+            async with connect(server._mcp_server) as session:
+                return await session.call_tool(
+                    "run_eval", {"config_path": str(project / "eval.yaml"), **(args or {})}
+                )
+
+        return asyncio.run(go())
+
+    def test_a_source_backed_config_runs(self, tmp_path):
+        result = self.call(self.project(tmp_path))
+        assert not result.isError, result.content[0].text
+        assert json.loads(result.content[0].text)["counts"]["total"] == 4
+
+    def test_an_unbounded_source_asks_for_a_ceiling(self, tmp_path):
+        """An agent should not be able to start an unbounded paid run by accident."""
+        result = self.call(self.project(tmp_path, limit="page_size: 2"))
+        assert result.isError
+        assert "limit" in result.content[0].text and "max_cost_usd" in result.content[0].text
+
+    def test_an_unbounded_source_runs_with_a_ceiling(self, tmp_path):
+        result = self.call(self.project(tmp_path, limit="page_size: 2"), {"max_cost_usd": 1.0})
+        assert not result.isError, result.content[0].text
+        assert json.loads(result.content[0].text)["counts"]["total"] == 10
+
+    def test_case_filters_are_refused_with_a_reason(self, tmp_path):
+        result = self.call(self.project(tmp_path), {"cases": ["c1"]})
+        assert result.isError
+        assert "fetched lazily" in result.content[0].text

@@ -16,8 +16,15 @@ from typing import Any
 
 from evaling import __version__
 from evaling.config import load_config, resolve_settings
+from evaling.config.errors import ConfigError
 from evaling.config.loader import load_project_settings
-from evaling.engine import dry_run, run_eval_async, select_matrix
+from evaling.config.schema import CaseSourceRef
+from evaling.engine import (
+    dry_run,
+    run_eval_async,
+    select_matrix,
+    select_variants_models,
+)
 from evaling.errors import EvalingError
 from evaling.render import render_messages
 from evaling.scoring import cell_summary, compare_aggregates, filter_failures
@@ -118,10 +125,30 @@ async def run_eval_tool(
         },
         config.settings,
     )
-    variants_sel, models_sel, cases_sel = select_matrix(
-        config, models=models, variants=variants, cases=cases
-    )
-    total = len(variants_sel) * len(models_sel) * len(cases_sel)
+    if isinstance(config.cases, CaseSourceRef):
+        # A source is walked lazily, so there is no cell count to compute — and
+        # asking select_matrix for one raises. The CLI has the same split.
+        if cases:
+            raise ConfigError(
+                "cases cannot filter a source-backed run: cases are fetched lazily, so "
+                "evaling does not know the ids in advance. Filter inside your source, "
+                "or set `limit` in the config to take fewer."
+            )
+        if config.cases.limit is None and max_cost_usd is None:
+            raise ConfigError(
+                "this config fetches cases from a source with no `limit`, so the number "
+                "of model calls is whatever the source returns. Set `limit` in the "
+                "config, or pass max_cost_usd."
+            )
+        variants_sel, models_sel = select_variants_models(config, models=models, variants=variants)
+        total = (
+            len(variants_sel) * len(models_sel) * config.cases.limit if config.cases.limit else None
+        )
+    else:
+        variants_sel, models_sel, cases_sel = select_matrix(
+            config, models=models, variants=variants, cases=cases
+        )
+        total = len(variants_sel) * len(models_sel) * len(cases_sel)
 
     done = 0
 
@@ -412,11 +439,14 @@ def _reject_unknown_arguments(server) -> None:
     server._mcp_server.call_tool(validate_input=True)(server.call_tool)
 
 
-async def _report(ctx, done: int, total: int) -> None:
+async def _report(ctx, done: int, total: int | None) -> None:
     import contextlib
 
+    # total is None when cases stream from a source with no limit — the run
+    # size is not knowable in advance, so progress is indeterminate.
+    message = f"{done}/{total} cells" if total is not None else f"{done} cells"
     with contextlib.suppress(Exception):
-        await ctx.report_progress(done, total, f"{done}/{total} cells")
+        await ctx.report_progress(done, total, message)
 
 
 def serve(output_dir: str | None = None, config_path: str | None = None) -> None:

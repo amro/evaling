@@ -110,6 +110,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Source-backed configs could not be run over MCP at all.** `run_eval` called
+  `select_matrix` only to compute a progress total, which raises for a case
+  source — so an agent got "cases come from a source ... use run_eval" while
+  calling `run_eval`. Both headline features, large datasets and no-look, were
+  unreachable from an agent. Progress is now indeterminate when the run size
+  isn't knowable, and an unbounded source without `max_cost_usd` is refused
+  rather than started.
+
 - The MCP server reported the MCP SDK's version as its own, so an agent asking
   what it was connected to heard `1.28.1` rather than evaling's version.
 - MCP tool arguments are now validated against the advertised schema, so an
