@@ -1,13 +1,18 @@
 """MCP tools, tested directly (the transport is the SDK's job, not ours)."""
 
 import asyncio
+import contextlib
 import json
+import os
 from datetime import timedelta
 
 import pytest
 import yaml
+from click.testing import CliRunner
 
-from evaling.engine import run_eval
+from evaling.cli import main
+from evaling.config import Settings, load_config
+from evaling.engine import run_eval, run_eval_async
 from evaling.errors import EvalingError
 from evaling.mcp_server import (
     PAGE_SIZE,
@@ -20,6 +25,9 @@ from evaling.mcp_server import (
     run_eval_tool,
     set_baseline_tool,
 )
+from evaling.providers import _REGISTRY
+from evaling.providers.mock import MockProvider
+from evaling.storage import RunStore
 from helpers import make_config, make_settings
 
 CONFIG = """\
@@ -613,3 +621,338 @@ class TestNoLookOverASourceOverMcp:
         for path in (project / "runs").rglob("*"):
             if path.is_file():
                 assert self.CANARY not in path.read_text(encoding="utf-8", errors="ignore")
+
+
+class TestConcurrentToolCalls:
+    """One server instance, two runs in flight, one output directory.
+
+    Every test above issues one call at a time, but an agent driving two
+    variants in parallel — or two agents on one server — is ordinary. The
+    things that can go wrong are shared state in the server, results from one
+    run landing in the other's directory, and progress notifications
+    addressed to the wrong caller.
+    """
+
+    def config(self, cases):
+        return (
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: ["
+            + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(cases))
+            + "]\n"
+            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n"
+        )
+
+    def drive(self, tmp_path, sizes):
+        """Run one `run_eval` per size, concurrently, on a single server."""
+        for index, size in enumerate(sizes):
+            (tmp_path / f"eval{index}.yaml").write_text(self.config(size), encoding="utf-8")
+        progress = {index: [] for index in range(len(sizes))}
+
+        async def go():
+            from mcp.shared.memory import create_connected_server_and_client_session as connect
+
+            server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
+
+            async with connect(server._mcp_server) as session:
+
+                async def call(index):
+                    async def on_progress(done, total, message):
+                        progress[index].append((done, total))
+
+                    result = await session.call_tool(
+                        "run_eval",
+                        {
+                            "config_path": str(tmp_path / f"eval{index}.yaml"),
+                            "label": f"run-{index}",
+                        },
+                        progress_callback=on_progress,
+                    )
+                    return json.loads(result.content[0].text)
+
+                return await asyncio.gather(*(call(i) for i in range(len(sizes))))
+
+        return asyncio.run(go()), progress
+
+    def test_both_runs_complete_and_stay_separate(self, tmp_path):
+        sizes = [3, 7]
+        summaries, _ = self.drive(tmp_path, sizes)
+
+        assert [s["counts"]["total"] for s in summaries] == sizes
+        assert summaries[0]["run_id"] != summaries[1]["run_id"]
+
+        # Each run's own directory holds exactly its own cells, so nothing
+        # crossed over on the way to disk.
+        store = RunStore(tmp_path / "runs")
+        for summary, size in zip(summaries, sizes, strict=True):
+            records = store.load_results(summary["run_id"])
+            assert len(records) == size
+            assert {r.case_id for r in records} == {f"c{i}" for i in range(size)}
+
+    def test_progress_notifications_do_not_cross(self, tmp_path):
+        """Each caller's token must only ever carry that caller's totals."""
+        sizes = [3, 7]
+        _, progress = self.drive(tmp_path, sizes)
+
+        for index, size in enumerate(sizes):
+            reported = progress[index]
+            assert len(reported) == size, f"run {index} got {len(reported)} notifications"
+            assert {total for _, total in reported} == {float(size)}
+            assert [done for done, _ in reported] == [float(n) for n in range(1, size + 1)]
+
+    def test_one_run_failing_does_not_take_the_other_down(self, tmp_path):
+        """A bad config in one call must not disturb a healthy concurrent one."""
+        (tmp_path / "good.yaml").write_text(self.config(3), encoding="utf-8")
+
+        async def go():
+            from mcp.shared.memory import create_connected_server_and_client_session as connect
+
+            server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
+            async with connect(server._mcp_server) as session:
+                good, bad = await asyncio.gather(
+                    session.call_tool("run_eval", {"config_path": str(tmp_path / "good.yaml")}),
+                    session.call_tool("run_eval", {"config_path": str(tmp_path / "missing.yaml")}),
+                )
+                return json.loads(good.content[0].text), bad
+
+        summary, failure = asyncio.run(go())
+        assert summary["counts"]["total"] == 3
+        assert failure.isError is True
+
+
+class TestInterruptedRun:
+    """What the run directory looks like when a run is cut off mid-flight.
+
+    A blocking `run_eval` can be interrupted by the client going away, the
+    agent cancelling, or the transport dropping. Nothing covered what survives
+    on disk or whether `--resume` could pick it up — which matters most for
+    exactly the runs worth resuming, the long expensive ones.
+    """
+
+    #: Cells that complete before the rest hang, so the interruption always
+    #: lands in the middle of a run rather than at a random point in it.
+    COMPLETED = 4
+
+    @pytest.fixture
+    def stalling_mock(self, monkeypatch):
+        """A provider that answers COMPLETED calls, then hangs until released."""
+        state = {"calls": 0, "hang": True, "reached": asyncio.Event()}
+
+        class Stalling(MockProvider):
+            async def complete(self, request):
+                state["calls"] += 1
+                if state["hang"] and state["calls"] > TestInterruptedRun.COMPLETED:
+                    state["reached"].set()
+                    await asyncio.sleep(3600)
+                return await super().complete(request)
+
+        monkeypatch.setitem(_REGISTRY, "mock", Stalling)
+        return state
+
+    def config_text(self, cells=20):
+        return (
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: ["
+            + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(cells))
+            + "]\n"
+            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n"
+        )
+
+    def project(self, tmp_path, cells=20):
+        (tmp_path / "eval.yaml").write_text(self.config_text(cells), encoding="utf-8")
+        return tmp_path
+
+    def interrupt(self, project, state, concurrency=2):
+        """Start a run, wait until it is genuinely mid-flight, then cancel it."""
+        settings = Settings.model_validate(
+            {
+                "output_dir": str(project / "runs"),
+                "cache_dir": str(project / "cache"),
+                "cache": False,
+                "concurrency": concurrency,
+            }
+        )
+
+        async def go():
+            task = asyncio.create_task(run_eval_async(load_config(project / "eval.yaml"), settings))
+            await asyncio.wait_for(state["reached"].wait(), timeout=10)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        asyncio.run(go())
+        return settings
+
+    def test_the_partial_run_is_on_disk_and_readable(self, tmp_path, stalling_mock):
+        project = self.project(tmp_path)
+        settings = self.interrupt(project, stalling_mock)
+
+        store = RunStore(settings.output_dir)
+        runs = store.list_runs()
+        assert len(runs) == 1, "an interrupted run left no directory behind"
+        run_id = runs[0]["id"]
+        assert store.load_meta(run_id)["status"] != "complete"
+
+        records = store.load_results(run_id)
+        assert 0 < len(records) < 20, f"{len(records)} of 20 cells recorded"
+        # Whatever landed has to be intact: a half-written final line is
+        # tolerated, a corrupt record is not.
+        assert all(record.case_id for record in records)
+
+    def test_resume_finishes_it_without_repeating_work(self, tmp_path, stalling_mock):
+        project = self.project(tmp_path)
+        settings = self.interrupt(project, stalling_mock)
+        store = RunStore(settings.output_dir)
+        run_id = store.list_runs()[0]["id"]
+        done_before = {record.key for record in store.load_results(run_id)}
+
+        stalling_mock["hang"] = False
+        calls_before = stalling_mock["calls"]
+        result = run_eval(load_config(project / "eval.yaml"), settings, resume_run_id=run_id)
+
+        assert result.run_id == run_id, "resume started a new run"
+        assert result.counts["total"] == 20
+        keys = [record.key for record in store.load_results(run_id)]
+        assert len(keys) == len(set(keys)) == 20, "resume duplicated cells"
+        # The already-finished cells are skipped, not re-billed.
+        assert stalling_mock["calls"] - calls_before <= 20 - len(done_before)
+
+    def test_the_server_survives_a_cancelled_call(self, tmp_path, stalling_mock):
+        """The MCP layer's half: a client giving up must not break the server."""
+        project = self.project(tmp_path)
+
+        async def go():
+            from mcp.shared.memory import create_connected_server_and_client_session as connect
+
+            server = build_server(output_dir=str(project / "runs"), config_path=None)
+            async with connect(server._mcp_server) as session:
+                call = asyncio.create_task(
+                    session.call_tool("run_eval", {"config_path": str(project / "eval.yaml")})
+                )
+                await asyncio.wait_for(stalling_mock["reached"].wait(), timeout=10)
+                call.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await call
+                # The session is still usable, which is the point.
+                listed = await session.call_tool("list_runs", {})
+                return json.loads(listed.content[0].text)
+
+        payload = asyncio.run(go())
+        assert payload["total"] >= 1
+        assert payload["runs"][0]["status"] != "complete"
+
+
+class TestServerStartedFromAnotherDirectory:
+    """Every test and hand session so far set cwd to the project.
+
+    A real client doesn't. Claude Desktop and friends launch the server from
+    whatever directory the app happens to be in, so `evaling mcp` with an
+    absolute `-c` has to work — and without one it has to fail loudly rather
+    than quietly evaluate something else.
+    """
+
+    CONFIG = (
+        "models: [{id: mock, provider: mock}]\n"
+        "variants:\n  - name: v1\n"
+        '    prompt: [{role: user, content: "{{ q }}"}]\n'
+        "cases: [{id: c1, vars: {q: hi}}, {id: c2, vars: {q: there}}]\n"
+        "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n"
+    )
+
+    @pytest.fixture
+    def elsewhere(self, tmp_path):
+        """A project, and an unrelated directory to launch the server from."""
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "eval.yaml").write_text(self.CONFIG, encoding="utf-8")
+        launch = tmp_path / "launch"
+        launch.mkdir()
+        return project, launch
+
+    def drive(self, cwd, args, body):
+        import sys
+
+        async def go():
+            from mcp import ClientSession, StdioServerParameters
+            from mcp.client.stdio import stdio_client
+
+            params = StdioServerParameters(
+                command=sys.executable,
+                args=["-m", "evaling", *args, "mcp"],
+                cwd=str(cwd),
+                env={**os.environ, "EVALING_USER_CONFIG": str(cwd / "no-user-config.yaml")},
+            )
+            async with (
+                stdio_client(params) as (read, write),
+                ClientSession(read, write, read_timeout_seconds=timedelta(seconds=30)) as session,
+            ):
+                await session.initialize()
+                return await body(session)
+
+        return asyncio.run(go())
+
+    def test_an_absolute_config_works_from_anywhere(self, elsewhere):
+        project, launch = elsewhere
+
+        async def body(session):
+            result = await session.call_tool("run_eval", {})
+            return result.isError, json.loads(result.content[0].text)
+
+        is_error, summary = self.drive(launch, ["-c", str(project / "eval.yaml")], body)
+        assert is_error is False, summary
+        assert summary["counts"]["total"] == 2
+
+    def test_the_run_lands_with_the_config_not_the_launch_directory(self, elsewhere):
+        """Otherwise the agent's runs and yours are in two different places."""
+        project, launch = elsewhere
+
+        async def body(session):
+            await session.call_tool("run_eval", {})
+            return None
+
+        self.drive(launch, ["-c", str(project / "eval.yaml")], body)
+        assert (project / ".evaling" / "runs").is_dir(), "runs did not land beside the config"
+        assert not (launch / ".evaling").exists(), "runs landed in the launch directory"
+
+    def test_runs_are_visible_to_the_cli_afterwards(self, elsewhere):
+        """The agent and the human have to be looking at the same history."""
+        project, launch = elsewhere
+
+        async def body(session):
+            await session.call_tool("run_eval", {})
+            listed = await session.call_tool("list_runs", {})
+            return json.loads(listed.content[0].text)
+
+        over_mcp = self.drive(launch, ["-c", str(project / "eval.yaml")], body)
+        assert over_mcp["total"] == 1
+
+        previous = os.getcwd()
+        os.chdir(project)
+        try:
+            result = CliRunner().invoke(
+                main,
+                ["--json", "list"],
+                env={"EVALING_USER_CONFIG": "/nonexistent"},
+                catch_exceptions=False,
+            )
+        finally:
+            os.chdir(previous)
+        assert result.exit_code == 0, result.output
+        assert [row["id"] for row in json.loads(result.output)] == [
+            over_mcp["runs"][0]["run_id"]
+        ], "the CLI cannot see the run the agent just made"
+
+    def test_without_a_config_the_failure_is_explicit(self, elsewhere):
+        """A server launched in the wrong place must say so, not do something."""
+        _, launch = elsewhere
+
+        async def body(session):
+            result = await session.call_tool("run_eval", {})
+            return result.isError, result.content[0].text
+
+        is_error, text = self.drive(launch, [], body)
+        assert is_error is True
+        assert "not found" in text and "eval.yaml" in text
