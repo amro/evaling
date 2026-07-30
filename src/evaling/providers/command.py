@@ -13,6 +13,7 @@ script report usage too::
 import asyncio
 import contextlib
 import json
+import time
 from typing import Any
 
 from evaling.providers.base import Completion, CompletionRequest, Provider, ProviderError
@@ -27,10 +28,10 @@ class CommandProvider(Provider):
 
     SUPPORTED_MEDIA = frozenset({"image", "file", "audio", "video"})
 
-    def __init__(self, spec, *, env=None, base_dir=None):
+    def __init__(self, spec, *, env=None, base_dir=None, request_log=None):
         # Secrets reach the script through its environment — a wrapper around a
         # real API usually needs the same key evaling would have used.
-        super().__init__(spec, env=env, base_dir=base_dir)
+        super().__init__(spec, env=env, base_dir=base_dir, request_log=request_log)
 
     async def complete(self, request: CompletionRequest) -> Completion:
         payload = json.dumps(
@@ -42,7 +43,21 @@ class CommandProvider(Provider):
                 "messages": serialize_messages(request.messages),
             }
         )
+        started = time.perf_counter()
         stdout, stderr, code = await self._run(payload)
+        if self.request_log is not None:
+            # A script's stderr is where its own diagnostics go, so it is the
+            # useful half here — the analogue of a response body.
+            self.request_log.record(
+                model=self.spec.id,
+                provider=self.spec.provider,
+                command=self.spec.command,
+                request=json.loads(payload),
+                exit_code=code,
+                stdout=stdout[:4000],
+                stderr=stderr[:4000],
+                elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
+            )
 
         if code != 0:
             detail = stderr.strip() or stdout.strip() or "<no output>"

@@ -39,6 +39,7 @@ from evaling.privacy import redact_record
 from evaling.providers import Completion, CompletionRequest, create_provider
 from evaling.providers.retry import call_with_retries
 from evaling.render import render_messages
+from evaling.reqlog import open_log
 from evaling.scorers import create_scorers
 from evaling.scoring import Aggregator, GateResult, cell_summary, evaluate_gate
 from evaling.secrets import build_env
@@ -113,6 +114,7 @@ def run_eval(
     sample_seed: int | None = None,
     max_cost_usd: float | None = None,
     fail_fast: bool = False,
+    log_requests: str | Path | None = None,
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
     return asyncio.run(
@@ -129,6 +131,7 @@ def run_eval(
             sample_seed=sample_seed,
             max_cost_usd=max_cost_usd,
             fail_fast=fail_fast,
+            log_requests=log_requests,
             on_result=on_result,
         )
     )
@@ -148,14 +151,17 @@ async def run_eval_async(
     sample_seed: int | None = None,
     max_cost_usd: float | None = None,
     fail_fast: bool = False,
+    log_requests: str | Path | None = None,
     on_result: Callable[[ResultRecord], None] | None = None,
 ) -> RunResult:
     # ALL configured models get providers (judges need theirs); only selected
     # models get matrix cells. One secret env for the whole run: real
     # environment first, then any secrets file next to the config.
     secret_env, secret_warnings = build_env(config.base_dir)
+    request_log = open_log(log_requests, secret_env, no_look=config.privacy.no_look)
     providers = {
-        model.id: create_provider(model, secret_env, config.base_dir) for model in config.models
+        model.id: create_provider(model, secret_env, config.base_dir, request_log)
+        for model in config.models
     }
     try:
         return await _run_eval_impl(

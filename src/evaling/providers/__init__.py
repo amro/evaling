@@ -38,12 +38,14 @@ def create_provider(
     spec: ModelSpec,
     env: Mapping[str, str] | None = None,
     base_dir: "Path | None" = None,
+    request_log: object | None = None,
 ) -> Provider:
     """Build a provider.
 
     ``env`` supplies API keys (real environment plus any secrets file);
     providers that don't read the environment ignore it. ``base_dir`` is the
     config's directory, which the ``command`` provider runs its script in.
+    ``request_log`` is an optional :class:`evaling.reqlog.RequestLog`.
     """
     try:
         cls = provider_class(spec.provider)
@@ -51,4 +53,4 @@ def create_provider(
         raise ProviderError(
             f"model {spec.id!r}: provider {spec.provider!r} is not implemented yet"
         ) from None
-    return cls(spec, env=env, base_dir=base_dir)
+    return cls(spec, env=env, base_dir=base_dir, request_log=request_log)

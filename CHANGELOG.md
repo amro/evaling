@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--log-requests PATH`** — a JSONL trace of every provider call: the
+  request body sent, the response received, the status, and the elapsed time.
+  For the `command` provider it records exit code, stdout, and stderr, which
+  is otherwise invisible. The alternative was adding print statements to
+  evaling and running it from a checkout.
+
+  Headers are never written — the API key travels in one, so the way to
+  guarantee the file cannot contain it is to have no code path that writes
+  them — and secrets-file values are redacted from the bodies as well, for a
+  gateway that reflects credentials into an error. Refused under no-look,
+  where a verbatim record of prompts and completions is the exact artifact
+  that mode exists to prevent.
+
 - **`evaling doctor`** — version, Python, platform, the config it found, every
   resolved setting *with the layer that supplied it*, which secrets file is in
   play and which variables it defines, whether each model's API-key variable

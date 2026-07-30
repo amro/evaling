@@ -22,8 +22,8 @@ from evaling.render import RenderedText
 class MockProvider(Provider):
     SUPPORTED_MEDIA = frozenset({"image", "file", "audio", "video"})
 
-    def __init__(self, spec, *, env=None, base_dir=None):
-        super().__init__(spec, env=env, base_dir=base_dir)
+    def __init__(self, spec, *, env=None, base_dir=None, request_log=None):
+        super().__init__(spec, env=env, base_dir=base_dir, request_log=request_log)
         self._calls = 0
 
     async def complete(self, request: CompletionRequest) -> Completion:
@@ -45,6 +45,15 @@ class MockProvider(Provider):
             text = _echo_last_user_message(request)
 
         prompt_chars = sum(len(m.text) for m in request.messages)
+        if self.request_log is not None:
+            # Logged like any other provider, so a trace can be exercised
+            # offline and the flag has coverage that never touches a network.
+            self.request_log.record(
+                model=self.spec.id,
+                provider=self.spec.provider,
+                request={"messages": [{"role": m.role, "text": m.text} for m in request.messages]},
+                response={"text": text},
+            )
         return Completion(
             text=text,
             input_tokens=prompt_chars // 4,

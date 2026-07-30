@@ -8,6 +8,7 @@ run. Transport and status errors map to ProviderError with an accurate
 import asyncio
 import base64
 import os
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -39,8 +40,9 @@ class HttpProvider(Provider):
         *,
         env: Mapping[str, str] | None = None,
         base_dir: Path | None = None,
+        request_log: Any | None = None,
     ):
-        super().__init__(spec, env=env, base_dir=base_dir)
+        super().__init__(spec, env=env, base_dir=base_dir, request_log=request_log)
         self._env = os.environ if env is None else env
         self._client: httpx.AsyncClient | None = None
 
@@ -87,18 +89,22 @@ class HttpProvider(Provider):
     async def post_json(
         self, url: str, *, headers: dict[str, str], payload: dict[str, Any]
     ) -> dict[str, Any]:
+        started = time.perf_counter()
         try:
             response = await self.client().post(url, headers=headers, json=payload)
         except httpx.TimeoutException as exc:
+            self._log(url, payload, started, error=f"timeout after {self.timeout_s}s")
             raise ProviderError(
                 f"model {self.spec.id!r}: request timed out after {self.timeout_s}s",
                 retryable=True,
             ) from exc
         except httpx.HTTPError as exc:
+            self._log(url, payload, started, error=f"connection error: {exc}")
             raise ProviderError(
                 f"model {self.spec.id!r}: connection error: {exc}", retryable=True
             ) from exc
 
+        self._log(url, payload, started, response=response)
         if response.status_code >= 400:
             raise self._status_error(response)
         try:
@@ -108,6 +114,31 @@ class HttpProvider(Provider):
             raise ProviderError(
                 f"model {self.spec.id!r}: response was not JSON: {body!r}", retryable=False
             ) from exc
+
+    def _log(self, url, payload, started, *, response=None, error=None) -> None:
+        """One JSONL entry for this call. Headers are never included.
+
+        The API key travels in a header, so the way to guarantee a log cannot
+        leak one is to have no code path that writes them.
+        """
+        if self.request_log is None:
+            return
+        entry: dict[str, Any] = {
+            "model": self.spec.id,
+            "provider": self.spec.provider,
+            "url": url,
+            "request": payload,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+        }
+        if error is not None:
+            entry["error"] = error
+        if response is not None:
+            entry["status"] = response.status_code
+            try:
+                entry["response"] = response.json()
+            except ValueError:
+                entry["response_text"] = response.text[:4000]
+        self.request_log.record(**entry)
 
     def _status_error(self, response: httpx.Response) -> ProviderError:
         status = response.status_code

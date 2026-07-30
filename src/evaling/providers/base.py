@@ -99,8 +99,13 @@ class Provider(ABC):
         *,
         env: "Mapping[str, str] | None" = None,
         base_dir: "Path | None" = None,
+        request_log: "Any | None" = None,
     ):
         self.spec = spec
+        #: Optional evaling.reqlog.RequestLog. When set, providers write the
+        #: request they sent and the response they got. None by default: this
+        #: is a debugging aid, not part of a run.
+        self.request_log = request_log
         #: Environment used for API-key lookups: the real environment plus any
         #: secrets file. None means "use os.environ".
         self.env = env

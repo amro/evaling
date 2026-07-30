@@ -1,0 +1,272 @@
+"""`--log-requests`: a JSONL trace of what evaling sent and got back.
+
+For debugging a provider that misbehaves without adding print statements to
+evaling and running it from a checkout. The two properties that make it safe
+to turn on: it never writes headers (where the API key lives), and it is
+refused under no-look, where a verbatim record of prompts and completions is
+the exact artifact the mode exists to prevent.
+"""
+
+import json
+
+import httpx
+import pytest
+from click.testing import CliRunner
+
+from evaling.cli import main
+from evaling.config import Settings, load_config
+from evaling.engine import run_eval
+from evaling.errors import EvalingError
+from evaling.reqlog import RequestLog, open_log
+
+ENV = {"EVALING_USER_CONFIG": "/nonexistent"}
+
+CONFIG = """\
+models: [{id: mock, provider: mock}]
+variants:
+  - name: v1
+    prompt: [{role: user, content: "{{ q }}"}]
+cases: [{id: c1, vars: {q: alpha}}, {id: c2, vars: {q: beta}}]
+scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]
+"""
+
+
+@pytest.fixture
+def project(tmp_path):
+    (tmp_path / "eval.yaml").write_text(CONFIG, encoding="utf-8")
+    return tmp_path
+
+
+def settings_for(path):
+    return Settings.model_validate(
+        {
+            "output_dir": str(path / "runs"),
+            "cache_dir": str(path / "cache"),
+            "cache": False,
+            "concurrency": 2,
+        }
+    )
+
+
+def entries(path):
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+
+
+class TestWhatItWrites:
+    def test_one_entry_per_call(self, project):
+        log = project / "trace.jsonl"
+        run_eval(load_config(project / "eval.yaml"), settings_for(project), log_requests=log)
+
+        written = entries(log)
+        assert len(written) == 2
+        assert {entry["model"] for entry in written} == {"mock"}
+        assert all("request" in entry and "response" in entry for entry in written)
+
+    def test_the_prompt_that_was_sent_is_in_it(self, project):
+        log = project / "trace.jsonl"
+        run_eval(load_config(project / "eval.yaml"), settings_for(project), log_requests=log)
+        texts = [entry["request"]["messages"][0]["text"] for entry in entries(log)]
+        assert sorted(texts) == ["alpha", "beta"]
+
+    def test_it_is_valid_jsonl(self, project):
+        """Written to be grepped and piped to jq, so every line must parse."""
+        log = project / "trace.jsonl"
+        run_eval(load_config(project / "eval.yaml"), settings_for(project), log_requests=log)
+        for line in log.read_text(encoding="utf-8").splitlines():
+            json.loads(line)
+
+    def test_nothing_is_written_without_the_flag(self, project):
+        run_eval(load_config(project / "eval.yaml"), settings_for(project))
+        assert not list(project.glob("*.jsonl"))
+
+    def test_each_run_starts_a_fresh_log(self, project):
+        """A log that accumulates across runs is unreadable, and the question
+        is always about the run you just made."""
+        log = project / "trace.jsonl"
+        for _ in range(3):
+            run_eval(load_config(project / "eval.yaml"), settings_for(project), log_requests=log)
+        assert len(entries(log)) == 2
+
+
+class TestItNeverLeaksCredentials:
+    def test_headers_are_not_recorded(self, project, tmp_path, monkeypatch):
+        """The key lives in a header, so no code path may write headers."""
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["auth"] = request.headers.get("x-api-key")
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "hi"}],
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            )
+
+        transport = httpx.MockTransport(handler)
+        original = httpx.AsyncClient.__init__
+
+        def patched(self, *args, **kwargs):
+            kwargs["transport"] = transport
+            original(self, *args, **kwargs)
+
+        monkeypatch.setattr(httpx.AsyncClient, "__init__", patched)
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: claude, provider: anthropic, params: {max_tokens: 8}}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: alpha}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-the-actual-secret")
+        log = tmp_path / "trace.jsonl"
+        run_eval(load_config(tmp_path / "eval.yaml"), settings_for(tmp_path), log_requests=log)
+
+        text = log.read_text(encoding="utf-8")
+        assert seen["auth"] == "sk-ant-the-actual-secret", "the key was not actually sent"
+        assert "sk-ant-the-actual-secret" not in text
+        assert "x-api-key" not in text.lower()
+        # ...and the useful half is still there.
+        assert "max_tokens" in text and "200" in text
+
+    def test_a_secret_reflected_in_a_response_is_redacted(self, tmp_path):
+        """A gateway that echoes credentials into its body must not persist one."""
+
+        class FakeEnv(dict):
+            secret_values = ["sk-super-secret-value"]
+
+        log = open_log(tmp_path / "trace.jsonl", FakeEnv(), no_look=False)
+        log.record(model="m", response={"error": "bad key sk-super-secret-value"})
+        text = (tmp_path / "trace.jsonl").read_text(encoding="utf-8")
+        assert "sk-super-secret-value" not in text
+        assert "<redacted>" in text
+
+
+class TestNoLookRefusesIt:
+    def test_the_two_cannot_be_asked_for_together(self, project):
+        (project / "eval.yaml").write_text(CONFIG + "privacy: {no_look: true}\n", encoding="utf-8")
+        with pytest.raises(EvalingError, match="cannot be written in no-look mode"):
+            run_eval(
+                load_config(project / "eval.yaml"),
+                settings_for(project),
+                log_requests=project / "trace.jsonl",
+            )
+
+    def test_nothing_is_written_before_the_refusal(self, project):
+        (project / "eval.yaml").write_text(CONFIG + "privacy: {no_look: true}\n", encoding="utf-8")
+        log = project / "trace.jsonl"
+        with pytest.raises(EvalingError):
+            run_eval(load_config(project / "eval.yaml"), settings_for(project), log_requests=log)
+        assert not log.exists()
+
+    def test_the_cli_flag_is_refused_too(self, project):
+        (project / "eval.yaml").write_text(CONFIG + "privacy: {no_look: true}\n", encoding="utf-8")
+        result = CliRunner().invoke(
+            main,
+            [
+                "-c",
+                str(project / "eval.yaml"),
+                "-o",
+                str(project / "runs"),
+                "run",
+                "--log-requests",
+                str(project / "trace.jsonl"),
+            ],
+            env=ENV,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 2
+        assert "no-look" in result.output
+
+    def test_the_no_look_flag_counts_too(self, project):
+        """--no-look turns the mode on, so it must close this door as well."""
+        result = CliRunner().invoke(
+            main,
+            [
+                "-c",
+                str(project / "eval.yaml"),
+                "-o",
+                str(project / "runs"),
+                "run",
+                "--no-look",
+                "--log-requests",
+                str(project / "trace.jsonl"),
+            ],
+            env=ENV,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 2
+        assert "no-look" in result.output
+
+
+class TestItNeverBreaksARun:
+    def test_an_unwritable_log_fails_before_anything_is_spent(self, project):
+        with pytest.raises(EvalingError, match="could not open request log"):
+            run_eval(
+                load_config(project / "eval.yaml"),
+                settings_for(project),
+                log_requests=project / "missing-dir" / "x" / "\x00bad",
+            )
+
+    def test_an_empty_path_is_refused(self, project):
+        with pytest.raises(EvalingError, match="empty path"):
+            run_eval(load_config(project / "eval.yaml"), settings_for(project), log_requests="")
+
+    def test_a_write_failure_mid_run_does_not_fail_the_run(self, project, monkeypatch):
+        """The run being diagnosed matters more than the diagnosis of it."""
+        log = RequestLog(project / "trace.jsonl")
+
+        def explode(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(type(log.path), "open", explode, raising=False)
+        log.record(model="m")  # must not raise
+
+    def test_an_unserializable_entry_is_still_a_line(self, project):
+        log = RequestLog(project / "trace.jsonl")
+        log.record(model="m", weird=object())
+        written = entries(project / "trace.jsonl")
+        assert len(written) == 1
+
+
+class TestThroughTheCli:
+    def test_the_flag_writes_the_file_and_says_so(self, project):
+        log = project / "trace.jsonl"
+        result = CliRunner().invoke(
+            main,
+            [
+                "-c",
+                str(project / "eval.yaml"),
+                "-o",
+                str(project / "runs"),
+                "run",
+                "--log-requests",
+                str(log),
+            ],
+            env=ENV,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        assert "request log written to" in result.output
+        assert len(entries(log)) == 2
+
+    def test_an_empty_path_is_a_usage_error(self, project):
+        result = CliRunner().invoke(
+            main,
+            [
+                "-c",
+                str(project / "eval.yaml"),
+                "-o",
+                str(project / "runs"),
+                "run",
+                "--log-requests",
+                "",
+            ],
+            env=ENV,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 2
+        assert "empty path" in result.output

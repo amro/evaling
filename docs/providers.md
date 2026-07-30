@@ -217,3 +217,17 @@ class MyProvider(HttpProvider):
 type fails at validation/dry-run time instead of mid-run. `HttpProvider` gives
 you client lifecycle, key resolution, timeouts, and error mapping; raise
 `ProviderError(msg, retryable=...)` for anything it doesn't cover.
+
+## When a provider misbehaves
+
+```sh
+evaling run --sample 3 --log-requests trace.jsonl
+```
+
+One JSON object per call — the request body sent, the response received, the
+status, and the elapsed time — so you can see what the provider actually got
+rather than what you meant to send. For the `command` provider it records the
+script's exit code, stdout, and stderr, which is otherwise invisible.
+
+Headers are never recorded, so the file cannot contain your API key; see
+[cli.md](cli.md#debugging-a-provider).

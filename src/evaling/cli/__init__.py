@@ -176,6 +176,14 @@ def main(ctx, config_path, output_dir, cache_dir, no_color, quiet, verbose, json
     is_flag=True,
     help="Never store or display prompts, outputs, or attachments — scores only.",
 )
+@click.option(
+    "--log-requests",
+    "log_requests",
+    type=click.Path(),
+    default=None,
+    metavar="PATH",
+    help="Write a JSONL trace of every provider request and response here.",
+)
 @click.option("--no-cache", is_flag=True, help="Bypass the response cache.")
 @click.option("--resume", "resume_ref", default=None, help="Resume an interrupted run.")
 @click.option(
@@ -206,6 +214,7 @@ def run(
     dry,
     max_cost,
     fail_fast,
+    log_requests,
     no_look,
     yes,
     no_cache,
@@ -335,6 +344,9 @@ def run(
         "sample_seed": sample_seed,
     }
     filters["fail_fast"] = fail_fast
+    if log_requests is not None:
+        _require_path(log_requests, "--log-requests")
+    filters["log_requests"] = log_requests
     if progress is not None:
         with progress:
             result = _execute(
@@ -386,6 +398,8 @@ def run(
         if gate:
             for line in display.gate_lines(gate):
                 app.show(line)
+        if log_requests:
+            app.say(f"request log written to [bold]{log_requests}[/bold]")
         if result.selection:
             app.say(
                 f"sampled {result.selection['sample']} of "

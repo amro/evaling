@@ -61,6 +61,7 @@ configured thresholds fail, `2` on config errors.
 | `--max-cost USD` | Stop issuing model calls once accumulated cost reaches the limit; remaining cells record a skip error. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
 | `--fail-fast` | Stop at the first failing cell; exits 1 (see below) |
 | `-y, --yes` | Skip the confirmation shown for 100+ request matrices |
+| `--log-requests PATH` | Write a JSONL trace of every provider request and response (see below) |
 | `--no-cache` | Bypass the response cache |
 | `--resume RUN` | Finish an interrupted run (same config required; the run keeps its original label — `--label` is ignored) |
 | `--baseline RUN` | Gate against this run's aggregates |
@@ -76,6 +77,29 @@ used automatically (pin one first with `evaling baseline set`).
 `privacy.no_look: true` cannot be loosened from the command line. A run whose
 cases come from a source refuses to start without `limit` or `--max-cost`, and
 cannot be resumed; see [no-look.md](no-look.md) for why.
+
+#### Debugging a provider
+
+`--log-requests PATH` writes one JSON object per model call: the request body
+evaling sent, the response it got, the status, and how long it took. For a
+gateway returning something odd, or a `command` script whose stderr you can't
+see, it beats adding print statements to evaling and running it from a
+checkout.
+
+```sh
+evaling run --sample 3 --log-requests trace.jsonl
+jq -r 'select(.status >= 400) | .response' trace.jsonl
+```
+
+**Headers are never written.** The API key travels in a header, so the way to
+guarantee the file cannot contain one is to have no code path that writes
+them. Values from your secrets file are additionally redacted from the bodies,
+for a gateway that reflects credentials back in an error.
+
+The bodies are still your prompts and the model's completions, so treat the
+file as you would the run itself. It is refused outright under
+[no-look](no-look.md), where a verbatim record is the exact artifact the mode
+exists to prevent. Each run truncates the file rather than appending.
 
 #### Failing fast
 
