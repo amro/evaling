@@ -192,7 +192,7 @@ def run(
     html_path,
 ):
     """Run the eval matrix and print the summary."""
-    config = load_config(config_arg or app.config_path or "eval.yaml")
+    config = load_config(_config_target(config_arg, app))
     model_filter = list(models) or None
     variant_filter = list(variants) or None
     case_filter = list(case_ids) or None
@@ -318,7 +318,8 @@ def run(
         )
 
     gate = asdict(result.gate) if result.gate else None
-    if html_path:
+    if html_path is not None:
+        _require_path(html_path, "--html")
         # Read the run back from storage so the report is rendered from the
         # same source of truth as `evaling export`.
         meta = store.load_meta(result.run_id)
@@ -377,6 +378,27 @@ def _say_totals(app, counts, totals):
         f"{counts['failed']} failed, {counts['cached']} cached — "
         f"{totals['input_tokens']} in / {totals['output_tokens']} out tokens, ${cost:.4f}"
     )
+
+
+def _require_path(value: str, flag: str) -> None:
+    """An empty path silently skipped the write it was asked for."""
+    if not str(value).strip():
+        raise click.UsageError(f"{flag} was given an empty path")
+
+
+def _config_target(config_arg: str | None, app) -> str:
+    """Which config to load, refusing an empty one.
+
+    `evaling run ""` — an unset variable in a script — used to fall through to
+    the default config, so the run silently evaluated something other than what
+    was asked for.
+    """
+    for candidate in (config_arg, app.config_path):
+        if candidate is not None:
+            if not str(candidate).strip():
+                raise click.UsageError("config path is empty")
+            return candidate
+    return "eval.yaml"
 
 
 def _say_judge_only(app, config) -> None:
@@ -518,7 +540,8 @@ def compare(app, ref_a, ref_b, html_path):
         metas.append(meta)
     meta_a, meta_b = metas
     diff = compare_aggregates(meta_a["aggregates"], meta_b["aggregates"])
-    if html_path:
+    if html_path is not None:
+        _require_path(html_path, "--html")
         Path(html_path).write_text(
             render_compare_html(meta_a, meta_b, diff), encoding="utf-8", newline="\n"
         )
@@ -552,7 +575,8 @@ def export(app, ref, fmt, out):
     store = app.store()
     run_id = store.resolve_ref(ref)
     text = export_run(store.load_meta(run_id), store.load_results(run_id), fmt)
-    if out:
+    if out is not None:
+        _require_path(out, "--out")
         Path(out).write_text(text, encoding="utf-8", newline="\n")
         app.say(f"wrote {out}")
     else:
@@ -602,7 +626,7 @@ def validate(app, config_arg, models, variants, case_ids):
 
     The same work as `run --dry-run`, named so it's findable.
     """
-    config = load_config(config_arg or app.config_path or "eval.yaml")
+    config = load_config(_config_target(config_arg, app))
     _do_dry_run(app, config, list(models) or None, list(variants) or None, list(case_ids) or None)
 
 

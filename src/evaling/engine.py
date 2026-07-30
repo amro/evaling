@@ -496,7 +496,12 @@ def _resolve_baseline(store: RunStore, config: EvalConfig, override: str | None)
     ``override`` (any run reference) wins; otherwise ``thresholds.baseline``
     applies, where ``"regression"`` means the pinned baseline.
     """
-    ref = override or config.thresholds.baseline
+    # An explicitly empty override — an unset variable in a CI script passing
+    # `--baseline "$BASELINE"` — must fail rather than quietly disable the
+    # regression gate, which is the thing the build is there to enforce.
+    if override is not None and not str(override).strip():
+        raise ConfigError("baseline was given an empty run reference")
+    ref = override if override is not None else config.thresholds.baseline
     if not ref:
         return None
     if ref == "regression":

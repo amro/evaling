@@ -87,18 +87,26 @@ spending anything.
 
 ## Argument names must match exactly
 
-Tool arguments are validated against the advertised schema, so a misspelled or
-unknown argument is refused:
+An argument a tool doesn't declare is refused, and the error names what it does
+take:
 
 ```
-Input validation error: Additional properties are not allowed ('config' was unexpected)
+unknown argument(s) for run_eval: config. This tool takes: cases, config_path,
+label, max_cost_usd, models, no_cache, variants.
 ```
 
-That matters most for `run_eval`, which spends money: without validation a
-typo'd `config_path` would have run the *default* config and reported success.
-Types are checked too, so send `2` rather than `"2"` for an integer. Take
-parameter names from `list_tools` rather than guessing — `run_eval` takes
-`config_path`, not `config`.
+That matters most for `run_eval`, which spends money: without the check a
+typo'd `config_path` ran the *default* config and reported success. Only
+argument *names* are checked — list and object arguments sent as JSON-encoded
+strings still work, since some clients send them that way.
+
+### Source-backed configs
+
+`cases` cannot narrow a run whose cases come from a
+[case source](large-datasets.md): they're fetched lazily, so the ids aren't
+known in advance. Filter inside your source instead. Such a run also needs a
+bound — `limit` in the config or `max_cost_usd` on the call — since otherwise
+the number of model calls is whatever the source returns.
 
 ## Design notes
 

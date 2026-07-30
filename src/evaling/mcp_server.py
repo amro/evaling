@@ -359,7 +359,7 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         import asyncio
         import contextlib
 
-        def on_progress(done: int, total: int) -> None:
+        def on_progress(done: int, total: int | None) -> None:
             # Fire-and-forget: a progress notification must never fail a run.
             with contextlib.suppress(Exception):
                 asyncio.get_running_loop().create_task(_report(ctx, done, total))
@@ -428,15 +428,39 @@ def _reject_unknown_arguments(server) -> None:
     """
     manager = getattr(server, "_tool_manager", None)
     tools = getattr(manager, "_tools", None)
-    if isinstance(tools, dict):
+    if not isinstance(tools, dict):  # pragma: no cover - SDK internals moved
+        tools = {}
+    if tools:
         for tool in tools.values():
             schema = getattr(tool, "parameters", None)
             if isinstance(schema, dict):
                 schema.setdefault("additionalProperties", False)
-    # Same handler, validation on. jsonschema also checks argument *types*,
-    # so a client sending "2" where an integer is declared is refused rather
-    # than quietly coerced.
-    server._mcp_server.call_tool(validate_input=True)(server.call_tool)
+    # Reject arguments the tool doesn't declare, and nothing else.
+    #
+    # The lowlevel server's `validate_input=True` would do this, but it runs
+    # full jsonschema validation ahead of FastMCP's `pre_parse_json` — which
+    # exists because some clients send list and object arguments as
+    # JSON-encoded strings. Turning it on therefore refused calls those clients
+    # make correctly today, to fix a different problem. Checking names only
+    # keeps the leniency and closes the hole.
+    from mcp.server.fastmcp.exceptions import ToolError  # optional dep
+
+    declared = {
+        name: set((getattr(tool, "parameters", {}) or {}).get("properties", {}))
+        for name, tool in (tools or {}).items()
+    }
+    inner = server.call_tool
+
+    async def call_tool_checked(name: str, arguments: dict):
+        unknown = sorted(set(arguments or {}) - declared.get(name, set()))
+        if unknown:
+            known = ", ".join(sorted(declared.get(name, set()))) or "none"
+            raise ToolError(
+                f"unknown argument(s) for {name}: {', '.join(unknown)}. This tool takes: {known}."
+            )
+        return await inner(name, arguments)
+
+    server._mcp_server.call_tool(validate_input=False)(call_tool_checked)
 
 
 async def _report(ctx, done: int, total: int | None) -> None:

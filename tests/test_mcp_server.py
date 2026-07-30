@@ -514,7 +514,102 @@ class TestSourceBackedRunsOverMcp:
         assert not result.isError, result.content[0].text
         assert json.loads(result.content[0].text)["counts"]["total"] == 10
 
+    def test_lenient_argument_encodings_still_work(self, tmp_path):
+        """Some clients send list and object arguments as JSON-encoded strings.
+
+        FastMCP has `pre_parse_json` for exactly that. Full jsonschema
+        validation would run ahead of it and refuse calls those clients make
+        correctly, so the unknown-argument check looks at names only.
+        """
+        project = self.project(tmp_path)
+        result = self.call(project, {"variants": '["v1"]'})
+        assert not result.isError, result.content[0].text
+        assert json.loads(result.content[0].text)["counts"]["total"] == 4
+
+    def test_an_unknown_argument_names_what_the_tool_takes(self, tmp_path):
+        result = self.call(self.project(tmp_path), {"varients": ["v1"]})
+        assert result.isError
+        text = result.content[0].text
+        assert "varients" in text and "This tool takes:" in text and "variants" in text
+
     def test_case_filters_are_refused_with_a_reason(self, tmp_path):
         result = self.call(self.project(tmp_path), {"cases": ["c1"]})
         assert result.isError
         assert "fetched lazily" in result.content[0].text
+
+
+class TestNoLookOverASourceOverMcp:
+    """The combination all three features are actually used in together.
+
+    Each was exercised separately — no-look by hand, sources in the tests
+    above — but the intersection had no coverage, and it is the configuration
+    the feature exists for: production rows an agent may run against but not
+    read.
+    """
+
+    CANARY = "PATIENT-Rk8x2-MCP-4417"
+
+    def project(self, tmp_path):
+        (tmp_path / "src.py").write_text(
+            "from evaling import Case, CasePage\n"
+            f"MARK = {self.CANARY!r}\n"
+            "def make():\n"
+            "    class S:\n"
+            "        def fetch(self, cursor, limit):\n"
+            "            start = int(cursor or 0); stop = min(start + limit, 6)\n"
+            "            cases = [Case(id=f'{MARK}-{i}', vars={'note': f'{MARK} {i}'},\n"
+            "                          expected=MARK) for i in range(start, stop)]\n"
+            "            return CasePage(cases=cases, cursor=str(stop) if stop < 6 else None)\n"
+            "    return S()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ note }}"}]\n'
+            "cases: {source: 'src.py:make', page_size: 2, limit: 6}\n"
+            # A failing criterion, whose detail names the expected value.
+            "scorecard: [{criterion: acc, scorer: {type: exact}}]\n"
+            "privacy: {no_look: true}\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_nothing_leaks_through_any_tool(self, tmp_path):
+        project = self.project(tmp_path)
+
+        async def go():
+            from mcp.shared.memory import create_connected_server_and_client_session as connect
+
+            server = build_server(output_dir=str(project / "runs"), config_path=None)
+            seen = []
+            async with connect(server._mcp_server) as session:
+                run = await session.call_tool(
+                    "run_eval", {"config_path": str(project / "eval.yaml")}
+                )
+                seen.append(run.content[0].text)
+                for detail in ("summary", "failures", "full"):
+                    res = await session.call_tool("get_run", {"run_id": "latest", "detail": detail})
+                    seen.append(res.content[0].text)
+                cells = json.loads(seen[-1]).get("cells") or []
+                if cells:
+                    c = cells[0]
+                    cell = await session.call_tool(
+                        "get_case_result",
+                        {
+                            "run_id": "latest",
+                            "variant": c["variant"],
+                            "model": c["model"],
+                            "case_id": c["case_id"],
+                        },
+                    )
+                    seen.append(cell.content[0].text)
+            return json.loads(seen[0]), "".join(seen)
+
+        summary, everything = asyncio.run(go())
+        assert summary["counts"]["total"] == 6, summary
+        assert self.CANARY not in everything, "case data reached an MCP client"
+        # and nothing on disk either
+        for path in (project / "runs").rglob("*"):
+            if path.is_file():
+                assert self.CANARY not in path.read_text(encoding="utf-8", errors="ignore")

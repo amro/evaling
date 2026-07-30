@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 from click.testing import CliRunner
@@ -228,7 +229,10 @@ class TestRunListingStaysUsable:
 
         run = {
             "id": "20260730T011532113-6245",
-            "label": None,
+            # A label long enough that rich must squeeze *something*. Without
+            # it the id absorbs the pressure and the cost assertion passes
+            # either way, which it did as first written.
+            "label": "regression-sweep-against-last-weeks-baseline",
             "status": "complete",
             "started_at": "2026-07-30T01:15:32Z",
             "aggregates": {"overall": {"score": 0.691, "pass_rate": 0.528}},
@@ -249,3 +253,86 @@ class TestRunListingStaysUsable:
     def test_wide_terminals_are_unaffected(self):
         out = self.render(160)
         assert "20260730T011532113-6245" in out and "$12.3456" in out
+
+
+class TestEmptyOptionValuesAreRefused:
+    """An unset shell variable must not read as "use the default".
+
+    `--resume ""` bought a second full run; `--baseline ""` quietly disabled
+    the regression gate CI exists to enforce; `run ""` evaluated the default
+    config; `--html ""` skipped the report it was asked for. All four exited 0.
+    A script doing `--baseline "$BASELINE"` with the variable unset got a green
+    build that had checked nothing.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path):
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: hi}}]\n"
+            "scorecard: [{criterion: a, scorer: {type: contains, value: ''}}]\n"
+        )
+        return tmp_path
+
+    def run(self, project, *args):
+        # Run *inside* the project, so `eval.yaml` resolves. Without this every
+        # case fails on "config not found" and the test passes for the wrong
+        # reason — which it did on the first attempt.
+        base = ["-o", str(project / "runs"), "--cache-dir", str(project / "c")]
+        with CliRunner().isolated_filesystem(temp_dir=project) as _:
+            os.chdir(project)
+            return CliRunner().invoke(main, base + list(args), env=ENV, catch_exceptions=False)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            pytest.param(["run", ""], id="config-argument"),
+            pytest.param(["-c", "", "run"], id="global-config-flag"),
+            pytest.param(["run", "--resume", ""], id="resume"),
+            pytest.param(["run", "--baseline", ""], id="baseline"),
+            pytest.param(["run", "--html", ""], id="html"),
+            pytest.param(["export", "latest", "--format", "md", "--out", ""], id="export-out"),
+        ],
+    )
+    def test_an_empty_value_is_an_error(self, project, args):
+        self.run(project, "run")  # a run to reference
+        result = self.run(project, *args)
+        assert result.exit_code != 0, (
+            f"`{' '.join(args)}` succeeded with an empty value — a script with an "
+            "unset variable would silently get the default"
+        )
+
+    def test_the_baseline_gate_still_works_when_given_a_real_run(self, project):
+        """The fix must not break the flag it guards."""
+        self.run(project, "run", "--label", "first")
+        result = self.run(project, "run", "--baseline", "first")
+        assert result.exit_code == 0, result.output
+        assert "baseline" in result.output
+
+
+def test_a_corrupt_timestamp_cannot_crash_the_listing():
+    """`list` is what you run on an unfamiliar runs directory, so it has to survive one.
+
+    The shortened-timestamp path returned raw slices, dropping the markup
+    escaping the previous code had — a run.json carrying rich markup in its
+    timestamp took the whole listing down with a MarkupError.
+    """
+    from io import StringIO
+
+    from rich.console import Console
+
+    from evaling.cli import display
+
+    run = {
+        "id": "20260730T011532113-6245",
+        "label": None,
+        "status": "complete",
+        "started_at": "0000-[/z]aX[/z]bZZ",
+        "aggregates": {"overall": {"score": 1.0, "pass_rate": 1.0}},
+        "totals": {"cost_usd": 0.0},
+    }
+    buffer = StringIO()
+    Console(file=buffer, width=120, no_color=True).print(display.runs_table([run]))
+    assert "20260730T011532113-6245" in buffer.getvalue()

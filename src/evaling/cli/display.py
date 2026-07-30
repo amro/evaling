@@ -73,7 +73,7 @@ def _short_time(stamp: str | None) -> str:
     """
     if not stamp or len(stamp) < 16 or stamp[4] != "-":
         return safe(stamp or "")
-    return f"{stamp[5:10]} {stamp[11:16]}"
+    return safe(f"{stamp[5:10]} {stamp[11:16]}")
 
 
 def runs_table(runs: list[dict[str, Any]]) -> Table:

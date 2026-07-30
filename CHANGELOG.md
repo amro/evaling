@@ -110,6 +110,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Empty option values are no longer read as "use the default". `--baseline ""`
+  quietly disabled the regression gate CI exists to enforce, `evaling run ""`
+  and `-c ""` evaluated the default config, `--html ""` skipped the report, and
+  `--out ""` fell back to stdout — all exiting 0. A script passing
+  `--baseline "$BASELINE"` with the variable unset therefore got a green build
+  that had checked nothing.
+- `evaling list` could crash on a run whose stored timestamp contained markup:
+  the shortened-timestamp path dropped the escaping the previous code had.
+
 - `evaling run --resume ""` started a fresh run instead of failing. An unset
   shell variable in a CI script (`--resume "$RUN_ID"`) therefore bought a
   second full run rather than an error.
@@ -128,11 +137,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The MCP server reported the MCP SDK's version as its own, so an agent asking
   what it was connected to heard `1.28.1` rather than evaling's version.
-- MCP tool arguments are now validated against the advertised schema, so an
-  unknown or misspelled one is refused. Previously it was accepted and
-  silently dropped, so `run_eval` with a typo'd `config_path` ran the default
-  config and reported success — the failure mode that looks like it worked, on
-  the one tool that spends money. Argument types are checked too.
+- MCP tools reject an argument they don't declare, naming the ones they do
+  take. Previously an unknown argument was accepted and silently dropped, so
+  `run_eval` with a typo'd `config_path` ran the default config and reported
+  success — the failure mode that looks like it worked, on the one tool that
+  spends money. Only names are checked, so list and object arguments sent as
+  JSON-encoded strings keep working.
 
 - **No-look mode leaked case content on every failure path.** A failing
   `contains` criterion wrote the case's `expected` value into
