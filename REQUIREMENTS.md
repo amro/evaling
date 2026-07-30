@@ -410,11 +410,27 @@ differ from what a reader of the original draft would assume:
   commit. "Stale docs are treated as bugs" is enforced by CI rather than by
   good intentions.
 
-## M11: no-look evals (design, not yet implemented)
+## M11: no-look evals
 
 Evaluating production data that humans may not read. Two parts: a datasource
 interface users implement, and a mode that keeps the data out of every
-artifact. Decisions taken 2026-07-24, before implementation:
+artifact. Shipped; the decisions below were taken 2026-07-24, before
+implementation, and each notes where the result differed.
+
+### The name stays `privacy.no_look`
+
+Decided 2026-07-30. Renaming it to something broader — "privacy mode", or
+naming it after the large-dataset half — was considered and rejected.
+
+The feature does one specific thing: it keeps case data out of every artifact
+a run produces, for data nobody is permitted to read. "Privacy mode" would
+promise more than that, and the mode makes no formal guarantee about what an
+aggregate reveals. The large-dataset half is a separate feature that no-look
+happens to build on, and it has [its own page](docs/large-datasets.md).
+
+`docs/no-look.md` maps the name onto the established vocabulary — *eyes-off*
+evaluation, *data minimization* — so a reader arriving with either term finds
+it, and so does anyone fitting it into a governance process.
 
 ### Scope of "no look"
 

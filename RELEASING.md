@@ -97,5 +97,3 @@ instructions are true the moment anyone reads them.
 ## Deferred
 
 - A screenshot of the HTML report in the README (P2).
-- Decide whether `privacy.no_look` should be renamed; see the discussion in
-  `docs/no-look.md` for why the precise name was kept.
