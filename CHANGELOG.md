@@ -236,6 +236,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Resuming a no-look run re-ran and re-billed every finished cell.** Records
+  are stored with hashed case ids, but the resume skip-set was built from raw
+  ids, so nothing ever matched: a two-cell run resumed produced four records,
+  doubled counts, and doubled spend.
+
+- **Hitting `--max-cost` wedged the run.** Cells the ceiling skipped were
+  recorded as failures, so the pass rate was computed over cells that were
+  never attempted and read as a quality collapse; the run then finalized as
+  `complete`, and resume refuses a complete run, so the skipped cells could
+  never be finished. The ceiling now stops the run, marks it `incomplete`,
+  says so, and a resume with a higher ceiling finishes it. **The CLI exits 1
+  for an incomplete run** — it did not evaluate what it was asked to.
+
+- **A resumed run's totals dropped the first half's judge spend.** Judge calls
+  leave no per-cell record, and `finalize` replaces the total rather than
+  adding to it, so a resume reported only what its own half spent on judges.
+
 - **Three paths a credential could take out of evaling**, all of them text
   arriving from elsewhere that evaling relayed. A YAML syntax error in a
   secrets file is by construction an error on a line holding a key, and

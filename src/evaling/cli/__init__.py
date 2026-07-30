@@ -392,6 +392,7 @@ def run(
                 "warnings": result.warnings,
                 "selection": result.selection,
                 "stopped_early": result.stopped_early,
+                "incomplete": result.incomplete,
                 **({"html": str(html_path)} if html_path else {}),
             }
         )
@@ -419,9 +420,16 @@ def run(
     # --fail-fast exits non-zero on its own: it only stops because a cell
     # failed, and a build that ended early but exited 0 would read as a pass.
     gate_failed = bool(gate and not gate["passed"])
-    if gate_failed or result.stopped_early:
+    # An incomplete run is not a pass either: it did not evaluate what it was
+    # asked to, and its scores cover only the cells that ran.
+    if gate_failed or result.stopped_early or result.incomplete:
         if app.quiet and not app.json_output:
-            app.err.print("[red]gate FAILED[/red]" if gate_failed else "[red]stopped early[/red]")
+            reason = (
+                "gate FAILED"
+                if gate_failed
+                else ("incomplete: cost ceiling" if result.incomplete else "stopped early")
+            )
+            app.err.print(f"[red]{reason}[/red]")
         raise SystemExit(1)
 
 

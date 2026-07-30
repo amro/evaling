@@ -412,9 +412,10 @@ class RunWriter:
         gate: dict[str, Any] | None = None,
         warnings: list[str] | None = None,
         stopped_early: bool = False,
+        status: str = "complete",
     ) -> None:
         self.meta.update(
-            status="complete",
+            status=status,
             # Complete, but deliberately short: --fail-fast ended it at the
             # first failing cell. Distinct from a run that was interrupted,
             # which never reaches finalize at all.

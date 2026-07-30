@@ -59,7 +59,7 @@ errors.
 | `--sample N` | Evaluate a random N of the selected cases (see below) |
 | `--sample-seed N` | Repeat an earlier draw; requires `--sample` |
 | `--dry-run` | Validate config, render every prompt, print the request count — no model calls. Exits 2 if anything fails to render. |
-| `--max-cost USD` | Stop issuing model calls once accumulated cost reaches the limit; remaining cells record a skip error. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
+| `--max-cost USD` | Stop the run once accumulated cost reaches the limit. Remaining cells are skipped rather than failed, the run is marked `incomplete` (resume it with a higher ceiling), and the exit code is 1. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
 | `--fail-fast` | Stop at the first failing cell; exits 1 (see below) |
 | `-y, --yes` | Skip the confirmation shown for 100+ request matrices |
 | `--log-requests PATH` | Write a JSONL trace of every provider request and response (see below) |
@@ -314,5 +314,5 @@ open. For complete per-cell data at that size use `export --format csv`, or
 | Code | Meaning |
 |---|---|
 | 0 | Success (and gate passed, if configured) |
-| 1 | The threshold gate failed, or `--fail-fast` stopped the run |
+| 1 | The gate failed, `--fail-fast` stopped the run, or `--max-cost` left it incomplete |
 | 2 | Config, usage, or reference errors |

@@ -91,6 +91,10 @@ class RunResult:
     #: True when --fail-fast ended the run at the first failing cell, so the
     #: matrix is deliberately incomplete rather than merely unfinished.
     stopped_early: bool = False
+    #: True when the cost ceiling ended the run with cells still owed. Unlike
+    #: ``stopped_early`` this leaves the run resumable, because those cells
+    #: were never attempted rather than attempted and failed.
+    incomplete: bool = False
     #: How the cases were narrowed, when they were: ``{sample, seed, available}``.
     #: The seed is what makes a sampled run repeatable, so it is reported back
     #: as well as stored — a draw nobody can reproduce is not much of a draw.
@@ -303,6 +307,10 @@ async def _run_eval_impl(
         _check_resumable_matrix(resume_run_id, writer.meta.get("matrix"), matrix)
         prior_records = store.load_results(resume_run_id)
         done = {record.key for record in prior_records}
+        # Records are stored with whatever id no-look left on them, so the
+        # candidate key has to be transformed the same way. Comparing raw ids
+        # against hashed ones matched nothing, and a resumed no-look run
+        # therefore re-ran and re-billed every cell it had already finished.
     else:
         writer = store.create_run(
             config,
@@ -327,7 +335,10 @@ async def _run_eval_impl(
 
     # Judge spend is real spend. It is not attributable to a cell — a judge is
     # not a matrix member — so it is tracked here and reported separately.
-    judge_spend = [0.0]
+    # Seeded from what the run has already spent on judges. finalize()
+    # overwrites the total rather than adding to it, so starting from zero
+    # made a resumed run report only its second half's judge cost.
+    judge_spend = [_prior_judge_cost(store, resume_run_id)]
 
     async def _governed_call(model: ModelSpec, rendered) -> Completion:
         """A model call from outside the matrix — currently an LLM judge.
@@ -384,6 +395,14 @@ async def _run_eval_impl(
         criterion.criterion for criterion, _ in scorecard if criterion.scorer.type == "python"
     )
 
+    def recorded_id(case: Case) -> str:
+        """The case id as it appears on disk for this run."""
+        return _reported_case_id(case.id or "", privacy)
+
+    # Set when the cost ceiling is hit, which ends the run without finishing
+    # it — unlike --fail-fast, the remaining cells are still owed.
+    budget_gone = [False]
+
     # A one-element list rather than a plain bool: `execute` and the cell
     # generator are separate closures and both need to see the same flag.
     stop_early = [False]
@@ -392,6 +411,12 @@ async def _run_eval_impl(
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
         try:
             await _execute_cell(record, variant_name, model, case)
+        except BudgetExhausted as exc:
+            # Not a result: this cell was never attempted. It is recorded as
+            # an error for visibility but the run stays unfinished, so the
+            # remaining cells can be run later with a higher ceiling.
+            budget_gone[0] = True
+            record.error = _describe_error(exc, safe=privacy.no_look)
         except Exception as exc:  # noqa: BLE001 - per-cell isolation: no cell may kill the run
             record.error = _describe_error(exc, safe=privacy.no_look)
         # The one place case data can leave this function. Redacting here, in
@@ -400,6 +425,11 @@ async def _run_eval_impl(
         # each having to remember not to.
         if privacy.no_look:
             redact_record(record, keep_detail, hash_case_ids=not privacy.keep_case_ids)
+        if budget_gone[0]:
+            # Nothing more can be paid for, so stop handing out cells rather
+            # than recording a wall of "skipped" failures for a matrix that
+            # was never attempted.
+            stop_early[0] = True
         if fail_fast and not cell_summary(record)[1]:
             # Set, not raised: cells already in flight finish and are recorded,
             # and the run finalizes normally. An exception here would discard
@@ -503,7 +533,7 @@ async def _run_eval_impl(
                         # without cancelling work already paid for.
                         if stop_early[0]:
                             return
-                        if (variant.name, model.id, case.id) not in done:
+                        if (variant.name, model.id, recorded_id(case)) not in done:
                             yield partial(execute, variant.name, model, case)
 
         cell_stream = fixed_cells()
@@ -531,7 +561,13 @@ async def _run_eval_impl(
     records = retained if retain else []
 
     warnings: list[str] = list(extra_warnings or [])
-    if stop_early[0]:
+    if budget_gone[0]:
+        warnings.append(
+            "stopped at the cost ceiling with cells still to run — they were skipped, "
+            "not failed, so the scores below cover only what was attempted. Resume with "
+            "a higher --max-cost to finish it."
+        )
+    elif stop_early[0]:
         warnings.append(
             f"stopped early: --fail-fast, after {tally.total} of "
             f"{expected_total if expected_total is not None else 'an unknown number of'} cells"
@@ -552,7 +588,10 @@ async def _run_eval_impl(
         aggregates,
         asdict(gate) if gate else None,
         warnings,
-        stopped_early=stop_early[0],
+        stopped_early=stop_early[0] and not budget_gone[0],
+        # Not "complete": cells are still owed, and resume refuses a complete
+        # run. A capped run used to wedge itself permanently.
+        status="incomplete" if budget_gone[0] else "complete",
     )
     return RunResult(
         run_id=writer.run_id,
@@ -565,7 +604,8 @@ async def _run_eval_impl(
         gate=gate,
         warnings=warnings,
         selection=selection,
-        stopped_early=stop_early[0],
+        stopped_early=stop_early[0] and not budget_gone[0],
+        incomplete=budget_gone[0],
     )
 
 
@@ -674,6 +714,19 @@ def _check_resumable_matrix(
     )
 
 
+def _prior_judge_cost(store: RunStore, resume_run_id: str | None) -> float:
+    """Judge spend already recorded on the run being resumed.
+
+    Judge calls are not cells, so they leave no record in results.jsonl —
+    only the run's totals remember them, and finalize() replaces that total
+    rather than adding to it.
+    """
+    if resume_run_id is None:
+        return 0.0
+    totals = store.load_meta(resume_run_id).get("totals") or {}
+    return float(totals.get("judge_cost_usd") or 0.0)
+
+
 def _reported_case_id(case_id: str, privacy: "Privacy") -> str:
     """The id as it may be shown, which under no-look is the hashed one."""
     if privacy.no_look and not privacy.keep_case_ids:
@@ -777,6 +830,15 @@ class _RunTally:
         return self._aggregator.result()
 
 
+class BudgetExhausted(EvalingError):
+    """The cost ceiling was reached, so this cell was never attempted.
+
+    Distinct from a cell that failed: nothing was sent, nothing was spent, and
+    the cell is still owed. Recording these as failures made a capped run read
+    as a quality collapse — a pass rate computed over cells that never ran.
+    """
+
+
 class _CostBudget:
     """Admission control for --max-cost under concurrency.
 
@@ -802,7 +864,7 @@ class _CostBudget:
         async with self._cond:
             while True:
                 if self.spent >= self.limit:
-                    raise EvalingError(
+                    raise BudgetExhausted(
                         f"skipped: max cost limit reached (${self.spent:.4f} spent, "
                         f"limit ${self.limit:.4f})"
                     )

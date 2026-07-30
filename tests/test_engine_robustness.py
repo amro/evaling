@@ -80,8 +80,11 @@ class TestCostBudgetConcurrency:
             eight_cases(tmp_path), make_settings(tmp_path, concurrency=1), max_cost_usd=3.0
         )
         assert result.totals["cost_usd"] <= 3.0
-        assert result.counts["failed"] > 0  # remaining cells skipped by the budget
-        assert not result.warnings
+        assert result.counts["total"] < 8, "the cap did not stop the run"
+        # Skipped, not failed: the run stops rather than recording a wall of
+        # failures for cells it never attempted, and stays resumable.
+        assert result.incomplete is True
+        assert any("cost ceiling" in warning for warning in result.warnings)
 
     def test_no_cap_means_no_warning(self, tmp_path, probe):
         probe.reset(cost=None)
@@ -275,11 +278,11 @@ class TestJudgeCallsAreGoverned:
             model_filter=["m"],
             max_cost_usd=0.05,
         )
-        stopped = sum(1 for r in result.records if r.error)
-        assert stopped >= 15, (
-            f"only {stopped}/20 cells stopped. Cells cost $0.002 total, so the $0.05 cap "
+        assert result.incomplete is True, (
+            "the run finished all 20 cells. Cells cost $0.002 in total, so the $0.05 cap "
             "can only be breached by judge spend — which escaped the budget."
         )
+        assert result.counts["total"] < 20
 
     def test_judge_spend_is_reported(self, tmp_path, monkeypatch):
         """Enforcing it but not reporting it makes the run's own totals lie."""
@@ -350,3 +353,94 @@ class TestBudgetDistinguishesFailureFromUnpriced:
         assert result.counts["failed"] == 1
         unpriced = [w for w in result.warnings if "pricing" in w]
         assert not unpriced, f"a failed call was reported as an unpriced model: {unpriced}"
+
+
+class TestACappedRunCanBeFinished:
+    """Hitting the cost ceiling leaves cells owed, not failed.
+
+    The old behaviour recorded every unattempted cell as a failure, computed a
+    pass rate over cells that never ran, finalized the run as `complete`, and
+    then refused to resume it — so the skipped half could never be finished
+    and the numbers looked like a quality collapse.
+    """
+
+    def config(self, tmp_path, cases=12):
+        return make_config(
+            tmp_path,
+            models=[{"id": "m", "provider": "mock", "params": {"cost": 0.01}}],
+            cases=[{"id": f"c{i}", "vars": {"q": str(i)}} for i in range(cases)],
+        )
+
+    def capped(self, tmp_path):
+        settings = make_settings(tmp_path, concurrency=1)
+        result = run_eval(self.config(tmp_path), settings, max_cost_usd=0.03)
+        return settings, result
+
+    def test_the_run_stops_instead_of_failing_every_remaining_cell(self, tmp_path):
+        _, result = self.capped(tmp_path)
+        assert result.counts["total"] < 12
+        assert result.incomplete is True
+
+    def test_the_scores_cover_only_what_ran(self, tmp_path):
+        """A pass rate computed over cells that were never attempted is a lie."""
+        _, result = self.capped(tmp_path)
+        assert result.aggregates["overall"]["cases"] == result.counts["total"]
+
+    def test_it_says_what_happened(self, tmp_path):
+        _, result = self.capped(tmp_path)
+        assert any("cost ceiling" in warning for warning in result.warnings)
+
+    def test_the_run_is_not_marked_complete(self, tmp_path):
+        settings, result = self.capped(tmp_path)
+        meta = RunStore(settings.output_dir).load_meta(result.run_id)
+        assert meta["status"] == "incomplete"
+
+    def test_a_higher_ceiling_finishes_it(self, tmp_path):
+        settings, first = self.capped(tmp_path)
+        resumed = run_eval(
+            self.config(tmp_path), settings, resume_run_id=first.run_id, max_cost_usd=10.0
+        )
+        assert resumed.run_id == first.run_id
+        assert resumed.counts["total"] == 12
+        assert resumed.incomplete is False
+        keys = [record.key for record in RunStore(settings.output_dir).load_results(first.run_id)]
+        assert len(keys) == len(set(keys)) == 12, "resume duplicated cells"
+
+    def test_an_uncapped_run_is_unaffected(self, tmp_path):
+        result = run_eval(self.config(tmp_path), make_settings(tmp_path))
+        assert result.incomplete is False
+        assert result.counts["total"] == 12
+        assert not result.warnings
+
+    def test_the_cli_exits_nonzero(self, tmp_path):
+        """An incomplete run is not a pass; it did not evaluate what was asked."""
+        from click.testing import CliRunner
+
+        from evaling.cli import main
+
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock, params: {cost: 0.01}}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [" + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(12)) + "]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        result = CliRunner().invoke(
+            main,
+            [
+                "-c",
+                str(tmp_path / "eval.yaml"),
+                "-o",
+                str(tmp_path / "runs"),
+                "run",
+                "--concurrency",
+                "1",
+                "--max-cost",
+                "0.03",
+            ],
+            env={"EVALING_USER_CONFIG": "/nonexistent"},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 1, result.output
+        assert "cost ceiling" in result.output
