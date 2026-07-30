@@ -7,6 +7,16 @@ eval, read the scores, drill into what failed, iterate.
 CI does **not** need this — use the CLI there (exit codes plus `--json` or
 `--html`). MCP is for interactive, agent-driven iteration.
 
+
+## Argument names must match exactly
+
+Tool schemas declare `additionalProperties: false`, so a client that validates
+arguments against the schema refuses a misspelled one. If yours doesn't
+validate, an unknown argument is dropped silently by the MCP SDK — which for
+`run_eval` means a successful run of the *default* config rather than the one
+you meant. Check the parameter names in `list_tools` rather than guessing;
+`run_eval` takes `config_path`, not `config`.
+
 ## Install
 
 The MCP SDK is an optional extra, so CLI-only users don't carry it:

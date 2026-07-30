@@ -1,6 +1,7 @@
 """MCP tools, tested directly (the transport is the SDK's job, not ours)."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -269,3 +270,107 @@ class TestServerWiring:
         # FastMCP returns (content_blocks, structured_result)
         structured = result[1] if isinstance(result, tuple) else result
         assert structured["total"] == 1
+
+
+@pytest.mark.slow
+class TestOverTheProtocol:
+    """Drive the server the way an agent does — stdio, JSON-RPC, real subprocess.
+
+    Everything above calls the tool functions directly, so the protocol layer
+    was entirely untested: registration, schema generation, serialization, and
+    error mapping. Two bugs lived there — the server reported the MCP SDK's
+    version as its own, and an unknown argument was silently dropped.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path):
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: hi}}, {id: c2, vars: {q: there}}]\n"
+            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def drive(self, project, body):
+        """Run `body(session)` against a real `evaling mcp` subprocess."""
+        import sys
+
+        async def go():
+            from mcp import ClientSession, StdioServerParameters
+            from mcp.client.stdio import stdio_client
+
+            params = StdioServerParameters(
+                command=sys.executable,
+                args=["-m", "evaling", "mcp"],
+                cwd=str(project),
+            )
+            async with (
+                stdio_client(params) as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                init = await session.initialize()
+                return await body(session, init)
+
+        return asyncio.run(go())
+
+    def test_server_identifies_itself_as_evaling(self, project):
+        from evaling import __version__
+
+        async def body(session, init):
+            return init.serverInfo.name, init.serverInfo.version
+
+        name, version = self.drive(project, body)
+        assert name == "evaling"
+        assert version == __version__, "the server reported the MCP SDK's version, not its own"
+
+    def test_every_tool_is_reachable(self, project):
+        async def body(session, init):
+            return sorted(t.name for t in (await session.list_tools()).tools)
+
+        assert self.drive(project, body) == [
+            "compare_runs",
+            "get_case_result",
+            "get_run",
+            "list_runs",
+            "render_prompt",
+            "run_eval",
+            "set_baseline",
+        ]
+
+    def test_a_run_completes_through_the_protocol(self, project):
+        async def body(session, init):
+            result = await session.call_tool("run_eval", {})
+            return json.loads(result.content[0].text)
+
+        summary = self.drive(project, body)
+        assert summary["counts"] == {"total": 2, "succeeded": 2, "failed": 0, "cached": 0}
+        assert summary["aggregates"]["overall"]["cases"] == 2
+
+    def test_errors_reach_the_client_as_errors(self, project):
+        async def body(session, init):
+            result = await session.call_tool("get_run", {"run_id": "ghost"})
+            return result.isError, result.content[0].text
+
+        is_error, text = self.drive(project, body)
+        assert is_error is True
+        assert "no run matches 'ghost'" in text
+
+    def test_tools_advertise_that_they_take_no_extra_arguments(self, project):
+        """A misspelled argument must not read as a successful run of the default.
+
+        This is advertisement, not enforcement — see _forbid_unknown_arguments.
+        A client that validates against the schema refuses before we see it.
+        """
+
+        async def body(session, init):
+            return {
+                t.name: t.inputSchema.get("additionalProperties")
+                for t in (await session.list_tools()).tools
+            }
+
+        strictness = self.drive(project, body)
+        permissive = [name for name, value in strictness.items() if value is not False]
+        assert not permissive, f"these tools accept unknown arguments: {permissive}"

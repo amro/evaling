@@ -14,6 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from evaling import __version__
 from evaling.config import load_config, resolve_settings
 from evaling.config.loader import load_project_settings
 from evaling.engine import dry_run, run_eval_async, select_matrix
@@ -313,6 +314,9 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         ) from None
 
     server = FastMCP("evaling", instructions=INSTRUCTIONS)
+    # FastMCP has no version parameter, so it reports the SDK's version as the
+    # server's. An agent asking what it is connected to should hear evaling's.
+    server._mcp_server.version = __version__
 
     @server.tool(description=run_eval_tool.__doc__)
     async def run_eval(
@@ -373,7 +377,34 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
     ) -> dict[str, Any]:
         return render_prompt_tool(config_path_arg or config_path or "eval.yaml", variant, case_id)
 
+    _forbid_unknown_arguments(server)
     return server
+
+
+def _forbid_unknown_arguments(server) -> None:
+    """Advertise that a tool takes exactly the arguments it declares.
+
+    Without this the generated schema permits anything, so an agent that
+    misspells `config_path` gets a successful run of the *default* config
+    rather than an error — the worst kind of wrong, since it looks like it
+    worked. A conforming client checks arguments against the advertised schema
+    and refuses first.
+
+    Note this is advertisement, not enforcement: FastMCP validates arguments
+    with a Pydantic model that ignores extras, so a client that skips schema
+    validation still has its unknown argument dropped silently. Reaching into
+    the tool manager is the only way to set this today, so it is best-effort —
+    a test asserts the schemas really are strict, which is what catches an SDK
+    change rather than users doing so.
+    """
+    manager = getattr(server, "_tool_manager", None)
+    tools = getattr(manager, "_tools", None)
+    if not isinstance(tools, dict):  # pragma: no cover - SDK internals moved
+        return
+    for tool in tools.values():
+        schema = getattr(tool, "parameters", None)
+        if isinstance(schema, dict):
+            schema.setdefault("additionalProperties", False)
 
 
 async def _report(ctx, done: int, total: int) -> None:
