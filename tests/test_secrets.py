@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from pathlib import Path
 
 import httpx
 import pytest
@@ -16,8 +17,11 @@ from evaling.secrets import (
     PROJECT_SECRETS_NAME,
     SecretsError,
     build_env,
+    candidate_paths,
+    describe_secrets,
     load_secrets,
     redact,
+    user_secrets_path,
     world_readable,
 )
 from helpers import make_config, make_settings
@@ -204,3 +208,127 @@ def test_redact_helper():
     assert redact("nothing", []) == "nothing"
     # too short to redact safely (would mangle unrelated text)
     assert redact("abc appears", ["abc"]) == "abc appears"
+
+
+class TestEveryCandidateIsConsidered:
+    """A missing file is skipped, not a reason to stop looking.
+
+    Mutation testing turned the `continue` into a `break` and nothing
+    noticed — which would mean a project with no `.evaling.secrets.yaml`
+    silently never reads `~/.config/evaling/secrets.yaml` either. Every
+    existing test put the file in the first place searched, so no test ever
+    walked past a missing candidate.
+    """
+
+    def user_file_at(self, monkeypatch, path):
+        """Point the last candidate — the user config — at a temp file."""
+        monkeypatch.setattr("evaling.secrets.user_secrets_path", lambda: path)
+
+    def test_a_later_file_is_found_when_an_earlier_one_is_absent(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        assert not (project / PROJECT_SECRETS_NAME).exists(), "the earlier candidate must be absent"
+        self.user_file_at(monkeypatch, write_secrets(tmp_path / "user.yaml", "LATER: found-it\n"))
+        values, _ = load_secrets(project)
+        assert values.get("LATER") == "found-it", "the search stopped at the missing file"
+
+    def test_an_earlier_file_takes_precedence(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        write_secrets(project / PROJECT_SECRETS_NAME, "SHARED: from-project\n")
+        self.user_file_at(monkeypatch, write_secrets(tmp_path / "user.yaml", "SHARED: from-user\n"))
+        values, _ = load_secrets(project)
+        assert values["SHARED"] == "from-project", "the project file is searched first"
+
+    def test_keys_from_both_are_merged(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        write_secrets(project / PROJECT_SECRETS_NAME, "ONLY_PROJECT: a\n")
+        self.user_file_at(monkeypatch, write_secrets(tmp_path / "user.yaml", "ONLY_USER: b\n"))
+        values, _ = load_secrets(project)
+        assert values == {"ONLY_PROJECT": "a", "ONLY_USER": "b"}
+
+
+class TestOneBadEntryDoesNotHideTheRest:
+    def test_a_valueless_key_is_skipped_and_the_rest_load(self, tmp_path):
+        path = write_secrets(
+            tmp_path / PROJECT_SECRETS_NAME,
+            "EMPTY_ONE:\nREAL_KEY: real-value\nANOTHER: second-value\n",
+        )
+        values, _ = load_secrets(path.parent)
+        assert "EMPTY_ONE" not in values
+        assert values["REAL_KEY"] == "real-value"
+        assert values["ANOTHER"] == "second-value", "a skipped entry stopped the loop"
+
+
+class TestWhatTheMessagesSay:
+    def test_a_missing_explicit_file_names_it(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("EVALING_SECRETS", str(tmp_path / "nowhere.yaml"))
+        with pytest.raises(SecretsError, match="nowhere.yaml"):
+            load_secrets(tmp_path)
+
+    def test_a_non_mapping_names_the_type_it_actually_found(self, tmp_path):
+        write_secrets(tmp_path / PROJECT_SECRETS_NAME, "- just\n- a list\n")
+        with pytest.raises(SecretsError, match="got list"):
+            load_secrets(tmp_path)
+
+    def test_a_nested_value_names_the_type_it_actually_found(self, tmp_path):
+        write_secrets(tmp_path / PROJECT_SECRETS_NAME, "KEY:\n  nested: mapping\n")
+        with pytest.raises(SecretsError, match="got dict"):
+            load_secrets(tmp_path)
+
+
+class TestTheRedactionLengthFloor:
+    """Below eight characters a "secret" mangles ordinary text."""
+
+    def test_a_value_of_exactly_eight_is_redacted(self):
+        assert redact("the key is abcdefgh here", ["abcdefgh"]) == "the key is <redacted> here"
+
+    def test_a_value_of_seven_is_left_alone(self):
+        assert redact("the word abcdefg here", ["abcdefg"]) == "the word abcdefg here"
+
+
+class TestTheUserConfigLocation:
+    """The documented fallback path, spelled exactly.
+
+    Nothing asserted it, so mutation testing could rename it freely — and a
+    wrong path here is silent: no error, just a secrets file that is never
+    found and keys that appear to be missing.
+    """
+
+    def test_it_is_the_documented_location(self):
+        assert user_secrets_path() == Path("~/.config/evaling/secrets.yaml").expanduser()
+
+    def test_it_is_absolute(self):
+        assert user_secrets_path().is_absolute(), "~ must be expanded"
+
+    def test_it_is_the_last_candidate_consulted(self):
+        assert candidate_paths(Path("/project"))[-1] == user_secrets_path()
+
+
+class TestDescribeSecretsUsesTheEnvironmentItIsGiven:
+    """`doctor` passes an environment; ignoring it would name the wrong file.
+
+    A diagnostic that reports a different secrets file from the one actually
+    loaded is worse than no diagnostic.
+    """
+
+    def test_an_explicit_file_is_described(self, tmp_path):
+        explicit = write_secrets(tmp_path / "explicit.yaml", "FROM_EXPLICIT: v\n")
+        described = describe_secrets(tmp_path, {"EVALING_SECRETS": str(explicit)})
+        assert str(explicit) in [entry["path"] for entry in described]
+
+    def test_its_variable_names_are_reported_and_its_values_are_not(self, tmp_path):
+        explicit = write_secrets(tmp_path / "explicit.yaml", "FROM_EXPLICIT: super-secret\n")
+        described = describe_secrets(tmp_path, {"EVALING_SECRETS": str(explicit)})
+        [entry] = [e for e in described if e["path"] == str(explicit)]
+        assert entry["keys"] == ["FROM_EXPLICIT"]
+        assert "super-secret" not in str(entry)
+
+    def test_an_absent_file_is_skipped_without_stopping_the_walk(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        project.mkdir()
+        user = write_secrets(tmp_path / "user.yaml", "FROM_USER: v\n")
+        monkeypatch.setattr("evaling.secrets.user_secrets_path", lambda: user)
+        described = describe_secrets(project)
+        assert [entry["keys"] for entry in described] == [["FROM_USER"]]

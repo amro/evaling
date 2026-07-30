@@ -16,7 +16,7 @@ from evaling.config import EvalConfig
 from evaling.engine import run_eval
 from evaling.errors import EvalingError
 from evaling.export import export_run
-from evaling.privacy import hash_case_id, redact_record
+from evaling.privacy import hash_case_id, redact_record, scrub_secrets
 from evaling.storage import ResultRecord, RunStore
 from helpers import make_settings
 
@@ -555,3 +555,75 @@ class TestValidationLeaksNothingEither:
             config_path=str(tmp_path / "eval.yaml"), variant="v1", case_id="c1"
         )
         assert out["messages"][0]["parts"][0]["text"] == "alpha"
+
+
+class TestScrubSecretsOnItsOwn:
+    """The function's own contract, not the engine's use of it.
+
+    Every existing test reached `scrub_secrets` through a full run, where the
+    engine has already redacted the completion text before the record is
+    built. That made the scrubbing here pure defence-in-depth — and mutation
+    testing showed it: replacing the values it scrubs with `None`, which makes
+    `redact` a silent no-op, changed nothing any test could see.
+
+    Defence-in-depth that nothing exercises is defence-in-depth that can rot
+    without anyone noticing, and this is the layer standing between a
+    credential and `results.jsonl`.
+    """
+
+    KEY = "sk-ant-a-real-looking-live-credential"
+
+    def record(self, **fields):
+        record = ResultRecord(variant="v", model="m", case_id="c")
+        for name, value in fields.items():
+            setattr(record, name, value)
+        return record
+
+    def test_a_credential_in_the_output_is_removed(self):
+        record = scrub_secrets(self.record(output=f"here you go: {self.KEY}"), [self.KEY])
+        assert self.KEY not in record.output
+        assert "<redacted>" in record.output
+
+    def test_a_credential_in_an_error_is_removed(self):
+        record = scrub_secrets(self.record(error=f"401 for {self.KEY}"), [self.KEY])
+        assert self.KEY not in record.error
+
+    def test_a_credential_in_a_score_detail_is_removed(self):
+        record = self.record()
+        record.scores = {"acc": {"detail": f"judge saw {self.KEY}", "score": 0.0}}
+        scrub_secrets(record, [self.KEY])
+        assert self.KEY not in record.scores["acc"]["detail"]
+
+    def test_a_credential_in_a_score_error_is_removed(self):
+        """`error` is the second field scanned, and only `detail` was covered."""
+        record = self.record()
+        record.scores = {"acc": {"error": f"scorer crashed on {self.KEY}", "score": 0.0}}
+        scrub_secrets(record, [self.KEY])
+        assert self.KEY not in record.scores["acc"]["error"]
+
+    def test_everything_at_once(self):
+        record = self.record(output=self.KEY, error=self.KEY)
+        record.scores = {"acc": {"detail": self.KEY, "error": self.KEY, "score": 0.0}}
+        scrub_secrets(record, [self.KEY])
+        assert self.KEY not in json.dumps([record.output, record.error, record.scores], default=str)
+
+    def test_content_that_is_not_a_secret_survives(self):
+        record = scrub_secrets(self.record(output="a perfectly ordinary answer"), [self.KEY])
+        assert record.output == "a perfectly ordinary answer"
+
+    def test_no_known_secrets_is_a_no_op(self):
+        record = scrub_secrets(self.record(output=self.KEY), [])
+        assert record.output == self.KEY, "nothing to scrub against, so nothing changes"
+
+
+class TestRedactRecordDefaults:
+    def test_case_ids_are_kept_unless_asked_for(self):
+        """The default is off; every caller passes it, so nothing pinned it."""
+        record = ResultRecord(variant="v", model="m", case_id="readable")
+        redact_record(record)
+        assert record.case_id == "readable"
+
+    def test_hashing_is_opt_in(self):
+        record = ResultRecord(variant="v", model="m", case_id="readable")
+        redact_record(record, hash_case_ids=True)
+        assert record.case_id == hash_case_id("readable")
