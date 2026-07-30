@@ -51,12 +51,17 @@ class App:
             cli["cache"] = cache
         if config is not None:
             eval_settings = config.settings
+            base_dir = config.base_dir
         else:
             # Commands that don't need the full eval (show, list, baseline …)
             # still honor the project's settings block, so every command
             # resolves the same output/cache directories as `run`.
-            eval_settings = load_project_settings(self.config_path or "eval.yaml")
-        return resolve_settings(cli, eval_settings)
+            target = Path(self.config_path or "eval.yaml")
+            eval_settings = load_project_settings(target)
+            # No config file means no project to anchor to, so relative
+            # directories stay relative to where the command was run.
+            base_dir = target.resolve().parent if target.is_file() else None
+        return resolve_settings(cli, eval_settings, base_dir=base_dir)
 
     def store(self, settings=None) -> RunStore:
         return RunStore((settings or self.settings()).output_dir)

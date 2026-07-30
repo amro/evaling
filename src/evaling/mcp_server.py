@@ -56,9 +56,11 @@ def _snip(text: str | None, limit: int = SNIPPET) -> str | None:
 
 def _settings(output_dir: str | None = None, config_path: str | None = None):
     """Same layering the CLI uses, so both see the same runs."""
+    target = Path(config_path or "eval.yaml")
     return resolve_settings(
         {"output_dir": Path(output_dir) if output_dir else None},
-        load_project_settings(config_path or "eval.yaml"),
+        load_project_settings(target),
+        base_dir=target.resolve().parent if target.is_file() else None,
     )
 
 
@@ -124,6 +126,7 @@ async def run_eval_tool(
             "cache": False if no_cache else None,
         },
         config.settings,
+        base_dir=config.base_dir,
     )
     if isinstance(config.cases, CaseSourceRef):
         # A source is walked lazily, so there is no cell count to compute — and

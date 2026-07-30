@@ -170,7 +170,7 @@ async def _run_eval_impl(
     extra_warnings: list[str] | None = None,
 ) -> RunResult:
     if settings is None:
-        settings = resolve_settings(None, config.settings)
+        settings = resolve_settings(None, config.settings, base_dir=config.base_dir)
 
     privacy = config.privacy
     source_ref = config.cases if isinstance(config.cases, CaseSourceRef) else None

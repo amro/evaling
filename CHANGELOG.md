@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A relative `output_dir`/`cache_dir` now resolves against the eval config's
+  directory**, not the working directory. Previously
+  `evaling -c projects/foo/eval.yaml run` wrote to `./.evaling/runs`, so
+  `cd projects/foo && evaling list` found nothing — the runs were somewhere
+  else entirely, and nothing said so. Every other relative path in a config
+  (prompts, datasets, attachments) already resolved against the config's
+  directory; this was the exception. Defaults are included, so a config with
+  no `settings:` block keeps its runs beside itself too.
+
+  `--output-dir`, `--cache-dir`, and the `EVALING_*` variables are unchanged
+  and still resolve against the working directory: you type those where you
+  are standing. Absolute paths are never rewritten. **This moves where runs
+  land for anyone who passes `-c` with a path outside their working
+  directory**; pass `--output-dir` to keep the old location.
+
 ### Fixed
 
 - **A malformed config produced a traceback instead of a message** in two

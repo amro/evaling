@@ -1,4 +1,5 @@
 import json
+import os
 
 from click.testing import CliRunner
 
@@ -168,3 +169,66 @@ def test_max_cost_flag_reaches_engine(tmp_path):
     payload = json.loads(result.output)
     assert payload["counts"]["failed"] == 1  # second cell skipped by the budget
     assert payload["totals"]["cost_usd"] == 1.0
+
+
+class TestRunsLiveWithTheirConfig:
+    """The cross-directory bug, end to end through the CLI.
+
+    `evaling -c project/eval.yaml run` used to write to ./.evaling/runs, so
+    running `evaling list` from inside the project found nothing. No flags
+    here: the whole point is what happens when you set none.
+    """
+
+    def project(self, tmp_path):
+        directory = tmp_path / "project"
+        directory.mkdir()
+        (directory / "eval.yaml").write_text(CONFIG, encoding="utf-8")
+        return directory
+
+    def invoke_from(self, cwd, *args):
+        """Run the CLI with the process actually sitting in `cwd`.
+
+        Not CliRunner.isolated_filesystem, which makes a fresh directory
+        *inside* the one you pass and chdirs into that instead.
+        """
+        previous = os.getcwd()
+        os.chdir(cwd)
+        try:
+            return CliRunner().invoke(main, list(args), env=ENV, catch_exceptions=False)
+        finally:
+            os.chdir(previous)
+
+    def test_a_run_started_elsewhere_is_visible_from_the_project(self, tmp_path):
+        project = self.project(tmp_path)
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+
+        started = self.invoke_from(elsewhere, "-c", str(project / "eval.yaml"), "run")
+        assert started.exit_code == 0, started.output
+
+        assert (project / ".evaling" / "runs").is_dir(), "the run did not land beside its config"
+        listed = self.invoke_from(project, "list")
+        assert listed.exit_code == 0, listed.output
+        assert "no runs yet" not in listed.output
+
+    def test_the_working_directory_is_left_clean(self, tmp_path):
+        project = self.project(tmp_path)
+        elsewhere = tmp_path / "elsewhere2"
+        elsewhere.mkdir()
+
+        result = self.invoke_from(elsewhere, "-c", str(project / "eval.yaml"), "run")
+        assert result.exit_code == 0, result.output
+        assert not (elsewhere / ".evaling").exists(), "runs were written to the wrong directory"
+
+    def test_an_explicit_output_dir_still_wins(self, tmp_path):
+        """A flag is typed in the moment; it must not be second-guessed."""
+        project = self.project(tmp_path)
+        target = tmp_path / "explicit"
+        result = self.invoke_from(
+            tmp_path, "-c", str(project / "eval.yaml"), "-o", str(target), "run"
+        )
+        assert result.exit_code == 0, result.output
+        assert target.is_dir()
+        # Only output_dir was overridden, so the cache still anchors to the
+        # project -- but no runs may appear there.
+        assert not (project / ".evaling" / "runs").exists()

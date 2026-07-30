@@ -321,3 +321,21 @@ Environment variables:
 The user config file takes the same shape as the `settings:` block. A config
 layer only overrides the fields it explicitly sets — e.g. a user config with
 just `cache: false` changes nothing else.
+
+### Where a relative directory points
+
+A relative `output_dir` or `cache_dir` resolves against **the eval config's
+directory**, so a project's runs live beside the config that produced them
+however you invoke evaling:
+
+```sh
+evaling -c projects/triage/eval.yaml run   # writes projects/triage/.evaling/runs
+cd projects/triage && evaling list         # reads the same place
+```
+
+That includes the defaults, so a config with no `settings:` block at all still
+keeps its runs together.
+
+Paths from `--output-dir`, `--cache-dir`, and the `EVALING_*` variables are the
+exception: they resolve against your working directory, since you type them
+where you're standing. Absolute paths are never rewritten.

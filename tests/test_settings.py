@@ -8,8 +8,10 @@ from evaling.config.settings import default_user_config_path, resolve_settings
 MISSING = Path("/nonexistent/evaling-config.yaml")
 
 
-def resolve(cli=None, eval_settings=None, env=None, user_config_path=MISSING):
-    return resolve_settings(cli, eval_settings, env=env or {}, user_config_path=user_config_path)
+def resolve(cli=None, eval_settings=None, env=None, user_config_path=MISSING, base_dir=None):
+    return resolve_settings(
+        cli, eval_settings, env=env or {}, user_config_path=user_config_path, base_dir=base_dir
+    )
 
 
 def test_defaults_when_no_layers_present():
@@ -145,3 +147,48 @@ def test_user_config_path_from_env(tmp_path):
     user.write_text("concurrency: 3\n", encoding="utf-8")
     settings = resolve_settings(env={"EVALING_USER_CONFIG": str(user)}, user_config_path=None)
     assert settings.concurrency == 3
+
+
+class TestRelativeDirectoriesAnchorToTheConfig:
+    """Where a relative `output_dir` points depends on which layer set it.
+
+    Before this, everything resolved against the working directory, so
+    `evaling -c a/eval.yaml run` wrote to ./.evaling/runs while
+    `cd a && evaling list` read a/.evaling/runs and reported nothing. Every
+    other relative path in a config already resolved against the config's own
+    directory; this was the exception.
+    """
+
+    def test_the_default_lands_beside_the_config(self, tmp_path):
+        settings = resolve(base_dir=tmp_path)
+        assert settings.output_dir == tmp_path / ".evaling/runs"
+        assert settings.cache_dir == tmp_path / ".evaling/cache"
+
+    def test_a_relative_path_in_the_config_lands_beside_it(self, tmp_path):
+        eval_settings = Settings.model_validate({"output_dir": "runs"})
+        settings = resolve(eval_settings=eval_settings, base_dir=tmp_path)
+        assert settings.output_dir == tmp_path / "runs"
+
+    def test_an_absolute_path_in_the_config_is_left_alone(self, tmp_path):
+        eval_settings = Settings.model_validate({"output_dir": "/somewhere/else"})
+        settings = resolve(eval_settings=eval_settings, base_dir=tmp_path)
+        assert settings.output_dir == Path("/somewhere/else")
+
+    def test_a_relative_path_in_the_user_config_lands_beside_the_eval_config(self, tmp_path):
+        """One rule for every file: relative means relative to the project."""
+        user = tmp_path / "user.yaml"
+        user.write_text("output_dir: shared-runs\n", encoding="utf-8")
+        settings = resolve(user_config_path=user, base_dir=tmp_path / "project")
+        assert settings.output_dir == tmp_path / "project" / "shared-runs"
+
+    def test_a_cli_flag_stays_relative_to_the_working_directory(self, tmp_path):
+        """Typed in the moment, so it means what it says where you're standing."""
+        settings = resolve({"output_dir": Path("here")}, base_dir=tmp_path)
+        assert settings.output_dir == Path("here")
+
+    def test_an_env_var_stays_relative_to_the_working_directory(self, tmp_path):
+        settings = resolve(env={"EVALING_OUTPUT_DIR": "here"}, base_dir=tmp_path)
+        assert settings.output_dir == Path("here")
+
+    def test_without_a_config_nothing_is_anchored(self):
+        assert resolve().output_dir == Path(".evaling/runs")
