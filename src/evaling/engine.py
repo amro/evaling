@@ -655,10 +655,14 @@ def _check_resumable_matrix(
         if was != now:
             changed.append(f"{name} {sorted(was)} → {sorted(now)}")
     if recorded.get("population") != current["population"]:
-        changed.append(
-            f"a different set of cases to draw from ({recorded.get('count')} cells → "
-            f"{current['count']})"
+        # Only mention the sizes when they differ; "2 cells → 2" reads as a
+        # contradiction of the sentence it is attached to.
+        sizes = (
+            f" ({recorded.get('count')} cells → {current['count']})"
+            if recorded.get("count") != current["count"]
+            else ""
         )
+        changed.append(f"a different set of cases to draw from{sizes}")
     elif recorded.get("cases") != current["cases"]:
         changed.append(f"a different selection of cases ({current['count']} of the same set)")
     raise StorageError(
