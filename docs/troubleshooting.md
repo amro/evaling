@@ -290,6 +290,20 @@ The server speaks stdio and is meant to be launched by an MCP client, not run
 interactively — started by hand it will look like it's hanging. See
 [mcp.md](mcp.md).
 
+## Start here
+
+```sh
+evaling doctor
+```
+
+Version, the config it found, every resolved setting **with the layer that set
+it**, which secrets file is in play, whether each model's API-key variable
+resolves, and the cache and run-store sizes. It touches no network and works
+when nothing else does — a missing or broken config is reported rather than
+raised.
+
+Most of the entries below are things `doctor` will name for you.
+
 ## Still stuck
 
 Useful things to include in a bug report:

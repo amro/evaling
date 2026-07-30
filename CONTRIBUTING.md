@@ -138,10 +138,12 @@ that a source returning a repeated cursor has to raise rather than loop.
 Include:
 
 ```sh
-evaling --version
-evaling validate            # does the config itself check out?
-evaling --json show latest  # the full run record
+evaling doctor --json       # version, settings and where each came from, providers
+evaling --json show latest  # the full run record, if a run is involved
 ```
+
+`doctor` reports which secrets files it found and which variables they define,
+by name — never their values — so its output is safe to paste.
 
 A run directory (`.evaling/runs/<id>/`) contains the config snapshot and
 per-cell results and is usually enough to reproduce a problem — without your

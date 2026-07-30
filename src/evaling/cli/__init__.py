@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.markup import escape as markup_escape
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
-from evaling import __version__
+from evaling import __version__, diagnostics
 from evaling.cli import display
 from evaling.cli.scaffold import scaffold_project
 from evaling.config import load_config, resolve_settings
@@ -756,6 +756,44 @@ def cache_clear(app, older_than, yes):
         click.confirm(f"Delete {scope} from {stats['path']}?", abort=True)
     removed = store.prune(older_than)
     app.console.print(f"removed [bold]{removed}[/bold] cached response(s)")
+
+
+@main.command()
+@click.option(
+    "--check-providers",
+    is_flag=True,
+    help="Also make one tiny call per model to check credentials (costs a fraction of a cent).",
+)
+@pass_app
+@cli_errors
+def doctor(app, check_providers):
+    """Report version, resolved settings, secrets, providers, and cache.
+
+    Everything a bug report needs, and the answer to "why is it not using
+    what I told it to use" — every setting is shown with the layer it came
+    from. No network unless --check-providers is given.
+    """
+    report = diagnostics.collect(app.config_path or "eval.yaml", app._cli_settings)
+    probes = None
+    if check_providers:
+        config = load_config(_config_target(None, app))
+        app.say("calling each model once — this spends a little money")
+        probes = diagnostics.probe(config, config.base_dir)
+
+    if app.json_output:
+        payload = report.as_dict()
+        if probes is not None:
+            payload["provider_checks"] = probes
+        app.echo_json(payload)
+    else:
+        for line in display.doctor_lines(report, probes):
+            # soft_wrap so long paths stay on one line: this output's job is
+            # to be pasted into an issue, and rich's wrapping mangles that.
+            app.console.print(line, soft_wrap=True)
+    # Exit 1 on findings, so `evaling doctor` is usable as a setup check in a
+    # script rather than something a human has to read.
+    if report.problems:
+        raise SystemExit(1)
 
 
 @main.command()

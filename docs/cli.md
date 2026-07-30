@@ -168,6 +168,36 @@ The cache key covers only what changes a response — provider, model, base
 URL, request parameters, and the rendered messages — so run labels and output
 directories never invalidate it. Use `--json` for machine-readable output.
 
+### `evaling doctor [--check-providers]`
+
+Report the state of an installation: version, Python, platform, the config it
+found, every resolved setting **with the layer that supplied it**, which
+secrets file is in play, which API-key variables each model needs and whether
+they resolve, and the cache and run-store sizes.
+
+| Flag | Effect |
+|---|---|
+| `--check-providers` | Also make one tiny call per model to check credentials — the only part that touches the network, and it costs a fraction of a cent |
+
+Exits `1` if it finds problems, so it works as a setup check in a script.
+`--json` gives the whole report as one object, which is the useful thing to
+attach to a bug report.
+
+The provenance is usually what you came for. When runs are not where you
+expect, this says which layer decided:
+
+```
+settings  (value, and the layer it came from)
+  output_dir   /srv/evals/runs      from EVALING_OUTPUT_DIR
+  cache_dir    /home/me/p/.evaling/cache  from default
+  concurrency  2                    from config eval.yaml
+  cache        True                 from default
+```
+
+Secrets are described, never printed: you get the file's path and the names of
+the variables it defines, so you can check the name you got wrong without the
+value ending up in an issue.
+
 ### `evaling mcp`
 
 Start the MCP server on stdio so an agent can drive evaling directly. Needs the

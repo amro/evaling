@@ -178,3 +178,110 @@ def _delta(value: float, fmt) -> str:
     color = "green" if value > 0 else "red"
     sign = "+" if value > 0 else ""
     return f"[{color}]{sign}{fmt(value)}[/{color}]"
+
+
+def doctor_lines(report, probes=None) -> list[str]:
+    """`evaling doctor` as flat text, so it pastes into an issue unmangled.
+
+    Deliberately not a table: this output exists to be copied into a bug
+    report, where box-drawing characters and terminal-width wrapping are
+    noise. Every value is escaped — a path or a model id can contain
+    brackets, and rich would eat them as markup.
+    """
+    sections = report.sections
+    lines: list[str] = []
+
+    install = sections["evaling"]
+    lines.append("[bold]evaling[/bold]")
+    lines.append(f"  version      {safe(install['version'])}")
+    lines.append(f"  python       {safe(install['python'])}  ({safe(install['executable'])})")
+    lines.append(f"  platform     {safe(install['platform'])}")
+    lines.append(f"  mcp extra    {'installed' if install['mcp_extra'] else 'not installed'}")
+
+    config = sections["config"]
+    lines.append("")
+    lines.append("[bold]config[/bold]")
+    lines.append(f"  path         {safe(config['path'])}")
+    if not config["found"]:
+        lines.append("  [red]not found[/red]")
+    elif config["error"]:
+        lines.append(f"  [red]{safe(config['error'])}[/red]")
+    else:
+        lines.append(f"  models       {safe(', '.join(config['models']))}")
+        lines.append(f"  variants     {safe(', '.join(config['variants']))}")
+        lines.append(f"  cases        {safe(config['cases'])}")
+        lines.append(f"  criteria     {safe(', '.join(config['criteria']))}")
+        if config["judges"]:
+            lines.append(f"  judges       {safe(', '.join(config['judges']))}")
+        if config["no_look"]:
+            lines.append("  privacy      no-look is on")
+
+    lines.append("")
+    lines.append("[bold]settings[/bold]  (value, and the layer it came from)")
+    for name, entry in sections["settings"].items():
+        lines.append(f"  {name:<12} {safe(entry['value'])}  [dim]from {safe(entry['from'])}[/dim]")
+
+    secrets = sections["secrets"]
+    lines.append("")
+    lines.append("[bold]secrets[/bold]")
+    if not secrets["files"]:
+        lines.append("  none found  [dim](API keys come from the environment)[/dim]")
+    for entry in secrets["files"]:
+        lines.append(f"  {safe(entry['path'])}")
+        if entry["error"]:
+            lines.append(f"    [red]{safe(entry['error'])}[/red]")
+        else:
+            # Names only, never values.
+            lines.append(f"    defines  {safe(', '.join(entry['keys']) or '(nothing)')}")
+
+    if sections["models"]:
+        lines.append("")
+        lines.append("[bold]models[/bold]")
+        width = max(len(entry["id"]) for entry in sections["models"])
+        for entry in sections["models"]:
+            bits = [f"provider {safe(entry['provider'])}", f"role {safe(entry['role'])}"]
+            if entry.get("api_key_env"):
+                found = "found" if entry.get("api_key_found") else "[red]missing[/red]"
+                bits.append(f"{safe(entry['api_key_env'])} {found}")
+            if entry.get("base_url"):
+                bits.append(f"at {safe(entry['base_url'])}")
+            if entry.get("command"):
+                bits.append(f"runs {safe(entry['command'])}")
+            if entry.get("error"):
+                bits.append(f"[red]{safe(entry['error'])}[/red]")
+            lines.append(f"  {safe(entry['id']):<{width}}  {' · '.join(bits)}")
+
+    cache, runs = sections["cache"], sections["runs"]
+    megabytes = cache["bytes"] / 1_048_576
+    lines.append("")
+    lines.append("[bold]storage[/bold]")
+    lines.append(
+        f"  cache        {cache['entries']} entries · {megabytes:.1f} MB · {safe(cache['path'])}"
+        + ("" if cache["enabled"] else "  [dim](disabled)[/dim]")
+    )
+    lines.append(
+        f"  runs         {runs['count']} stored · {safe(runs['path'])}"
+        + ("" if runs["writable"] else "  [red](not writable)[/red]")
+    )
+    if runs["baseline"]:
+        lines.append(f"  baseline     {safe(runs['baseline'])}")
+
+    if probes is not None:
+        lines.append("")
+        lines.append("[bold]provider checks[/bold]")
+        for entry in probes:
+            if entry["reachable"]:
+                cost = entry.get("cost_usd")
+                spent = f" (${cost:.6f})" if cost else ""
+                lines.append(f"  [green]ok[/green]    {safe(entry['id'])}{spent}")
+            else:
+                lines.append(f"  [red]fail[/red]  {safe(entry['id'])}: {safe(entry['error'])}")
+
+    lines.append("")
+    if report.problems:
+        lines.append(f"[bold red]{len(report.problems)} problem(s)[/bold red]")
+        for problem in report.problems:
+            lines.append(f"  [red]•[/red] {safe(problem)}")
+    else:
+        lines.append("[green]no problems found[/green]")
+    return lines

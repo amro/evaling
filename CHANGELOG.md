@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`evaling doctor`** — version, Python, platform, the config it found, every
+  resolved setting *with the layer that supplied it*, which secrets file is in
+  play and which variables it defines, whether each model's API-key variable
+  resolves, and cache/run-store sizes. The bug-report recipe was three
+  commands whose combined output still omitted the things that actually go
+  wrong.
+
+  It touches no network and works when nothing else does: a missing config, a
+  config that will not parse, or a broken secrets file are all reported rather
+  than raised. `--check-providers` opts into one minimal call per model to
+  check credentials, which is the only part that spends anything. Exits 1 on
+  findings, so it works as a setup check in a script. Secrets are described,
+  never printed — the file's path and the *names* of the variables it defines,
+  so its output is safe to paste into an issue.
+
 - **The large-matrix confirmation now applies over MCP.** `run` asks before
   100+ model calls, but only at a terminal — so CI skipped it deliberately
   (a prompt would hang the build; `--max-cost` is the guard there) and MCP

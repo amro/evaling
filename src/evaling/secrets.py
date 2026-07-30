@@ -111,6 +111,36 @@ def load_secrets(
     return merged, warnings
 
 
+def describe_secrets(
+    base_dir: Path | None = None, env: Mapping[str, str] | None = None
+) -> list[dict[str, Any]]:
+    """Which secrets files are in play and which variables each defines.
+
+    Names only — never values. Diagnostics live in another module, and the
+    decision that a secrets file may be *described* but not *quoted* belongs
+    here, next to the loading, rather than being re-decided by every caller
+    that wants to be helpful about configuration.
+    """
+    described = []
+    for path in candidate_paths(base_dir, env):
+        if not path.is_file():
+            continue
+        try:
+            keys = sorted(_load_file(path))
+            error = None
+        except SecretsError as exc:
+            keys, error = [], str(exc)
+        described.append(
+            {
+                "path": str(path),
+                "keys": keys,
+                "error": error,
+                "world_readable": world_readable(path),
+            }
+        )
+    return described
+
+
 class SecretEnv(Mapping):
     """Environment lookups that fall back to secrets files.
 
