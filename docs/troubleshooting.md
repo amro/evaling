@@ -129,7 +129,9 @@ Thresholds are evaluated over the cells that actually ran. If the ceiling was
 reached before any of them, there is nothing to judge and the run reports
 `gate not evaluated — no cell ran` rather than a verdict — a pass rate of 0%
 over 0 cases is missing data, not a measured regression. The run still exits
-`1`, because it did not evaluate what it was asked to.
+`1`, because it did not evaluate what it was asked to. The same applies to
+any run that evaluated nothing, including a [case source](large-datasets.md)
+that returned no rows.
 
 ### `variant 'v' uses video content, which model 'm' (provider 'openai') does not support`
 

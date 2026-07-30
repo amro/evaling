@@ -138,9 +138,11 @@ provider covers everything above the transport. A test that needs the network
 is a test that will be flaky in someone else's CI.
 
 This one is enforced rather than trusted, because it was quietly broken for a
-while. `tests/conftest.py` strips every `*_API_KEY` variable and
-`EVALING_SECRETS` from the environment, so your exported key cannot be spent
-by a test run, and it gives any HTTP client built without an injected
+while. `tests/conftest.py` removes every credential the suite could otherwise
+pick up — `*_API_KEY` and `*_API_TOKEN` variables, `EVALING_SECRETS`, and
+your `~/.config/evaling/secrets.yaml`, which the engine reads when a project
+has no secrets file of its own — so a key of yours cannot be spent or even
+seen by a test run. It also gives any HTTP client built without an injected
 transport one that refuses to send:
 
 ```

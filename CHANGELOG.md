@@ -333,9 +333,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Thresholds are still evaluated over whatever cells ran; zero cells now
   yields no verdict, reported as `gate not evaluated — no cell ran`, and
-  `gate` is `null` in `--json`. The run still exits `1` — it did not evaluate
-  what it was asked to — but now for the honest reason, which is also the one
-  CI can act on: `incomplete: cost ceiling` rather than a phantom regression.
+  `gate` is `null` in `--json`. "No verdict" is not "passed": a run that
+  evaluated nothing exits `1` whether or not thresholds were configured, so
+  an empty case source or an exhausted budget cannot take a build green. What
+  changed is the reason CI is given — `no cell ran`, or `incomplete: cost
+  ceiling` — rather than a phantom regression.
 
 - **`--label latest` and `--label baseline` were refused after the run
   appeared to start.** Both are reserved because `resolve_ref` resolves them
