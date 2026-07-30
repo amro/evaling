@@ -13,12 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead.** `run` now prints the matrix size and, where the models are
   priced, the likely spend — `estimated ~$38.40` — and then runs. `--dry-run`
   and `validate` show the same line. Deliberately hedged: token counts are
-  approximated, the price table is a convenience rather than an invoice,
-  retries bill again, and LLM judges are not counted, so a confident-looking
-  figure would be the wrong kind of help. `--max-cost` is what actually
-  holds. LLM judges are counted: a judge is a billable call per cell, so a
-  scorecard with two judged criteria makes three calls per cell and leaving
-  them out understated a judged run by roughly half.
+  approximated, the price table is a convenience rather than an invoice, and
+  retries bill again, so a confident-looking figure would be the wrong kind
+  of help. `--max-cost` is what actually holds. LLM judges *are* counted: a
+  judge is a billable call per cell, so a scorecard with two judged criteria
+  makes three calls per cell, and leaving them out understated a judged run
+  by roughly half.
 
   The prompt fired on a fixed cell count, which is a poor proxy for cost: a
   hundred cells against a local model is free, and anyone whose ordinary eval
@@ -304,6 +304,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adding one line.
 
 ### Fixed
+
+- **The test suite could reach the network and spend a real API key.**
+  "Tests never touch the network, no real API keys" was a rule in
+  `CONTRIBUTING.md` and nothing else, and it was already being broken: one
+  test ran a full eval against an `openai-compatible` model and genuinely
+  resolved and connected to the host in its `base_url`. Nothing removed
+  credentials from the environment either, so on a machine with
+  `ANTHROPIC_API_KEY` exported — evaling's own primary variable, so most
+  contributors' machines — a test of that shape would have spent that key
+  against the live API.
+
+  `tests/conftest.py` now enforces both: every `*_API_KEY` variable and
+  `EVALING_SECRETS` are stripped for the whole suite, and an HTTP client
+  built without an injected transport gets one that refuses to send, naming
+  the host and how to stage the call. `tests/test_suite_isolation.py` fails
+  if either guard is removed. Contributors are unaffected — the suite passes
+  unchanged — but a test that quietly starts making real calls no longer can.
+
+  This also made the suite safe to run under `fork()`: consulting the macOS
+  proxy resolver in a forked child was segfaulting 41 of the mutation-testing
+  runs, which had been reporting as inconclusive rather than as failures.
 
 - `evaling --json show <run> --failures` ignored `--failures` and returned
   every record, with nothing to say it had not been narrowed.

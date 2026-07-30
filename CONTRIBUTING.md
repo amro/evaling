@@ -72,14 +72,32 @@ uv run --with mutmut python -m mutmut show evaling.privacy.x_scrub_secrets__mutm
 
 Scoped, in two ways, both in `[tool.mutmut]` in `pyproject.toml`. Only the
 modules that encode invariants are mutated — that is where an untested
-guarantee does real damage. And only the tests that could kill those mutants
-are run, because mutmut resolves its own relative paths inside each test, so
-any test that changes directory breaks the run.
+guarantee does real damage. And the few tests that change directory are
+excluded, because mutmut resolves its own relative paths inside each test.
+That second list is an *exclusion* list on purpose: the inclusion list it
+replaced went stale the first time a test file was added, and 17 survivors
+turned out to be one function whose tests simply were not being run.
 
-**A surviving mutant is a question, not a bug.** Some are equivalent mutants
-that cannot change behaviour; some survive only because the narrowed test
-selection excluded their killer. Triage the list rather than trusting it. CI
-runs this weekly and reports; it is not a gate.
+**A surviving mutant is a question, not a bug.** Triage the list rather than
+trusting it. Classes established as equivalent, so you can skip them:
+
+| Survivor | Why it cannot be killed usefully |
+|---|---|
+| `round(x, 6)` → `round(x, 7)` | Below any precision the data carries. |
+| `json.dumps(..., sort_keys=True)` → `False` | Key order in a log line; no behaviour claims it. |
+| Prose changed or case-flipped | Killing these means asserting exact message text, which makes messages unimprovable. Assert fragments. |
+| `.get(key, default)` default changed | The schema guarantees the key. Defensive code. |
+| `if total_weight == 0:` branch | Weights must be positive, so the branch is unreachable. |
+
+What triage has actually found, and what a real gap looks like: the sign on
+the overall pass-rate delta (`b - a` → `b + a`) survived the whole suite, as
+did `>=` → `>` on `min_score` — a run scoring exactly its threshold. Both
+were cases where every existing test sat comfortably away from the boundary.
+
+CI runs this weekly and reports; it is not a gate. Check the run for
+`segfault` and `Failed to run clean test` before reading the survivor count —
+mutmut reports those separately from failures, and a broken run can look like
+a clean sheet.
 
 ### Performance guards
 
@@ -103,6 +121,20 @@ before the fix is applied.
 `httpx.MockTransport`; rate limiters take an injectable clock; the mock
 provider covers everything above the transport. A test that needs the network
 is a test that will be flaky in someone else's CI.
+
+This one is enforced rather than trusted, because it was quietly broken for a
+while. `tests/conftest.py` strips every `*_API_KEY` variable and
+`EVALING_SECRETS` from the environment, so your exported key cannot be spent
+by a test run, and it gives any HTTP client built without an injected
+transport one that refuses to send:
+
+```
+RefusedRequest: this test tried to reach https://api.example.com/v1 for real.
+```
+
+If you see that, stage the call instead — `provider._client =
+httpx.AsyncClient(transport=httpx.MockTransport(handler))`, or use the mock
+provider. `tests/test_suite_isolation.py` covers the guards themselves.
 
 **Commits are small and individually green.** Each commit should leave the
 tree passing on its own, so `git bisect` stays useful.
