@@ -107,8 +107,10 @@ class TestWhatTheRunSays:
         assert "under $0.01" in self.invoke(path, "run").output
 
     def test_an_unpriced_model_is_named(self, tmp_path):
+        # --dry-run because the claim is about the estimate, and the unpriced
+        # model here is a local endpoint: a real `run` would try to reach it.
         path = project(tmp_path, PRICED_CAPPED + UNPRICED)
-        assert "no pricing" in self.invoke(path, "run").output
+        assert "no pricing" in self.invoke(path, "run", "--dry-run").output
 
     def test_an_unpriced_run_says_nothing_about_money(self, tmp_path):
         """Better silent than a figure nobody should trust."""
