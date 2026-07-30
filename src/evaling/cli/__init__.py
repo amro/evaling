@@ -24,6 +24,7 @@ from evaling.engine import dry_run as engine_dry_run
 from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.report import render_compare_html, render_run_html
+from evaling.reqlog import check_target as check_log_target
 from evaling.scoring import compare_aggregates, selection_note
 from evaling.storage import RunStore
 
@@ -242,6 +243,13 @@ def run(
         config = config.model_copy(
             update={"privacy": config.privacy.model_copy(update={"no_look": True})}
         )
+    if log_requests is not None:
+        # Checked here, before the progress display exists. The engine refuses
+        # the same combination — it has to, for library callers — but by then
+        # the run has visibly started, and a run that appears to begin and then
+        # fails on its arguments reads as a crash rather than a refusal.
+        _require_path(log_requests, "--log-requests")
+        check_log_target(log_requests, no_look=config.privacy.no_look)
     settings = app.settings(config, concurrency=concurrency, cache=False if no_cache else None)
     store = RunStore(settings.output_dir)
 
@@ -344,8 +352,6 @@ def run(
         "sample_seed": sample_seed,
     }
     filters["fail_fast"] = fail_fast
-    if log_requests is not None:
-        _require_path(log_requests, "--log-requests")
     filters["log_requests"] = log_requests
     if progress is not None:
         with progress:

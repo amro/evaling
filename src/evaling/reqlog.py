@@ -56,10 +56,15 @@ class RequestLog:
             pass
 
 
-def open_log(path: str | Path | None, env: Any, *, no_look: bool) -> "RequestLog | None":
-    """Build the log a run should use, or None. Refuses under no-look."""
+def check_target(path: "str | Path | None", *, no_look: bool) -> None:
+    """Refuse an impossible request log, without creating anything.
+
+    Separate from :func:`open_log` so a caller can settle this before starting
+    a run. The CLI does: a run that appears to begin and then fails on its own
+    arguments reads as a crash rather than a refusal.
+    """
     if path is None:
-        return None
+        return
     if not str(path).strip():
         raise EvalingError("request log was given an empty path")
     if no_look:
@@ -68,4 +73,11 @@ def open_log(path: str | Path | None, env: Any, *, no_look: bool) -> "RequestLog
             "completions verbatim, which is exactly what the mode exists to prevent. "
             "Reproduce the problem on data you are allowed to read instead."
         )
+
+
+def open_log(path: "str | Path | None", env: Any, *, no_look: bool) -> "RequestLog | None":
+    """Build the log a run should use, or None. Refuses under no-look."""
+    check_target(path, no_look=no_look)
+    if path is None:
+        return None
     return RequestLog(path, getattr(env, "secret_values", ()))
