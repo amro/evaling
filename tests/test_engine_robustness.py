@@ -395,6 +395,18 @@ class TestACappedRunCanBeFinished:
         meta = RunStore(settings.output_dir).load_meta(result.run_id)
         assert meta["status"] == "incomplete"
 
+    def test_a_skipped_cell_leaves_no_record(self, tmp_path):
+        """It was never attempted, so it is not a failure and not done.
+
+        Writing a record for it counted it against the pass rate and — worse —
+        marked it complete for a later resume, leaving that one cell
+        permanently failed.
+        """
+        settings, result = self.capped(tmp_path)
+        records = RunStore(settings.output_dir).load_results(result.run_id)
+        assert not [r for r in records if r.error and "max cost" in r.error]
+        assert len(records) == result.counts["total"]
+
     def test_a_higher_ceiling_finishes_it(self, tmp_path):
         settings, first = self.capped(tmp_path)
         resumed = run_eval(
@@ -403,8 +415,11 @@ class TestACappedRunCanBeFinished:
         assert resumed.run_id == first.run_id
         assert resumed.counts["total"] == 12
         assert resumed.incomplete is False
-        keys = [record.key for record in RunStore(settings.output_dir).load_results(first.run_id)]
+        records = RunStore(settings.output_dir).load_results(first.run_id)
+        keys = [record.key for record in records]
         assert len(keys) == len(set(keys)) == 12, "resume duplicated cells"
+        # And every cell really ran, including the one the ceiling stopped at.
+        assert not [r for r in records if r.error], "a cell was left failed by the ceiling"
 
     def test_an_uncapped_run_is_unaffected(self, tmp_path):
         result = run_eval(self.config(tmp_path), make_settings(tmp_path))

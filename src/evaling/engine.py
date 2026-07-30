@@ -412,16 +412,18 @@ async def _run_eval_impl(
     # generator are separate closures and both need to see the same flag.
     stop_early = [False]
 
-    async def execute(variant_name: str, model: ModelSpec, case: Case) -> ResultRecord:
+    async def execute(variant_name: str, model: ModelSpec, case: Case) -> "ResultRecord | None":
         record = ResultRecord(variant=variant_name, model=model.id, case_id=case.id or "")
         try:
             await _execute_cell(record, variant_name, model, case)
-        except BudgetExhausted as exc:
-            # Not a result: this cell was never attempted. It is recorded as
-            # an error for visibility but the run stays unfinished, so the
-            # remaining cells can be run later with a higher ceiling.
+        except BudgetExhausted:
+            # Never attempted, so it leaves no trace: writing a record would
+            # count it as a failure in the aggregates and, worse, mark it done
+            # for a later resume — which is how the first version of this fix
+            # left one cell permanently failed instead of all of them.
             budget_gone[0] = True
-            record.error = _describe_error(exc, safe=privacy.no_look)
+            stop_early[0] = True
+            return None
         except Exception as exc:  # noqa: BLE001 - per-cell isolation: no cell may kill the run
             record.error = _describe_error(exc, safe=privacy.no_look)
         # The one place case data can leave this function. Redacting here, in
@@ -554,7 +556,11 @@ async def _run_eval_impl(
         tally.add(record)
     retained: list[ResultRecord] = list(prior_records) if retain else []
 
-    def collect(record: ResultRecord) -> None:
+    def collect(record: ResultRecord | None) -> None:
+        # None means the cell was never attempted (the cost ceiling); it is
+        # not a result and must not reach the tally or the record list.
+        if record is None:
+            return
         tally.add(record)
         if retain:
             retained.append(record)

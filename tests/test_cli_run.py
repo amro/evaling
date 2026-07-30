@@ -167,8 +167,13 @@ def test_max_cost_flag_reaches_engine(tmp_path):
         config=config,
     )
     payload = json.loads(result.output)
-    assert payload["counts"]["failed"] == 1  # second cell skipped by the budget
+    # The second cell is skipped, not failed — never attempted, so the run is
+    # incomplete and resumable rather than carrying a phantom failure.
+    assert payload["counts"]["total"] == 1
+    assert payload["counts"]["failed"] == 0
+    assert payload["incomplete"] is True
     assert payload["totals"]["cost_usd"] == 1.0
+    assert result.exit_code == 1
 
 
 class TestRunsLiveWithTheirConfig:

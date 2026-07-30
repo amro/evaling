@@ -268,8 +268,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never attempted and read as a quality collapse; the run then finalized as
   `complete`, and resume refuses a complete run, so the skipped cells could
   never be finished. The ceiling now stops the run, marks it `incomplete`,
-  says so, and a resume with a higher ceiling finishes it. **The CLI exits 1
-  for an incomplete run** — it did not evaluate what it was asked to.
+  says so, and a resume with a higher ceiling finishes it. A cell the ceiling
+  skipped leaves no record at all — it was never attempted, so recording it
+  would both count it against the pass rate and mark it done for the resume.
+  **The CLI exits 1 for an incomplete run** — it did not evaluate what it was
+  asked to.
 
 - **A resumed run's totals dropped the first half's judge spend.** Judge calls
   leave no per-cell record, and `finalize` replaces the total rather than

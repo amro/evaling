@@ -347,10 +347,12 @@ def test_max_cost_guard_skips_cells_over_limit(tmp_path):
         cases=[{"id": f"c{i}", "vars": {"q": f"q{i}"}} for i in range(4)],
     )
     result = run_eval(config, make_settings(tmp_path, concurrency=1), max_cost_usd=2.5)
+    # Three cells fit under the ceiling; the fourth is never attempted, so it
+    # is not a failure and leaves no record to mark it done for a resume.
     assert result.counts["succeeded"] == 3
-    assert result.counts["failed"] == 1
-    [skipped] = [r for r in result.records if r.error]
-    assert "max cost limit reached" in skipped.error
+    assert result.counts["failed"] == 0
+    assert not [r for r in result.records if r.error]
+    assert result.incomplete is True
     assert result.totals["cost_usd"] == 3.0
 
 
@@ -366,7 +368,10 @@ def test_max_cost_not_overshot_by_concurrency(tmp_path):
     result = run_eval(config, make_settings(tmp_path, concurrency=5), max_cost_usd=1.0)
     assert result.totals["cost_usd"] == 1.0
     assert result.counts["succeeded"] == 1
-    assert result.counts["failed"] == 4
+    # The other four were never attempted, so the overshoot this guards
+    # against would show up as spend, not as recorded failures.
+    assert result.counts["total"] == 1
+    assert result.incomplete is True
 
 
 def test_case_filter_limits_matrix(tmp_path):
