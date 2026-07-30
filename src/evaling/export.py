@@ -75,9 +75,11 @@ def export_csv(records: list[ResultRecord]) -> str:
     for record in records:
         score, passed = cell_summary(record)
         row: dict[str, Any] = {
-            "variant": record.variant,
-            "model": record.model,
-            "case_id": record.case_id,
+            # Every text cell, not just the model's: a case id comes from the
+            # dataset, which is as external as the model's output.
+            "variant": _csv_safe(record.variant),
+            "model": _csv_safe(record.model),
+            "case_id": _csv_safe(record.case_id),
             "cell_score": score,
             "cell_passed": passed,
             "cached": record.cached,

@@ -276,6 +276,7 @@ def run(
         count = (
             len(variants_sel) * len(models_sel) * config.cases.limit if config.cases.limit else None
         )
+        _confirm_large(count, yes)
     else:
         # The same selection the engine will execute — filters validate here,
         # before any progress display.
@@ -294,8 +295,7 @@ def run(
         if sample is not None:
             app.say(f"  sampling {selected} of {available} cases")
         _say_judge_only(app, config)
-        if count >= CONFIRM_THRESHOLD and not yes and sys.stdin.isatty():
-            click.confirm(f"That is {count} model calls — continue?", abort=True)
+        _confirm_large(count, yes)
 
     # baseline resolution (including thresholds.baseline: regression) is core
     # logic — the engine handles it; any run reference passes through.
@@ -487,6 +487,19 @@ def _say_judge_only(app, config) -> None:
         app.say(f"  {display.safe(', '.join(judges))}: judge only, not evaluated")
 
 
+def _confirm_large(count, yes) -> None:
+    """Ask before a large run, wherever the cases come from.
+
+    This used to sit only in the inline-cases branch, so a source-backed run
+    with `limit: 150` started unprompted while the MCP server refused the
+    identical run — the two surfaces disagreeing about the same ceiling.
+    """
+    if count is None or count < CONFIRM_THRESHOLD or yes:
+        return
+    if sys.stdin.isatty():
+        click.confirm(f"That is {count} model calls — continue?", abort=True)
+
+
 def _check_sample(sample, sample_seed) -> None:
     if sample is not None and sample < 1:
         raise click.UsageError("--sample must be at least 1")
@@ -528,8 +541,9 @@ def _do_dry_run(
             )
         for cell in report.errors:
             app.console.print(
-                f"  [red]✗[/red] {cell['variant']} × {cell['model']} × {cell['case_id']}: "
-                f"{cell['error']}"
+                f"  [red]✗[/red] {display.safe(cell['variant'])} × "
+                f"{display.safe(cell['model'])} × {display.safe(cell['case_id'])}: "
+                f"{display.safe(cell['error'])}"
             )
         if not report.errors:
             app.say("all prompts render cleanly")
@@ -565,8 +579,12 @@ def show(app, ref, failures, case_id):
         app.console.print(display.case_table(subset))
         if app.verbose:
             for record in subset:
-                app.console.print(f"\n[bold]{record.variant} × {record.model}[/bold]")
-                app.console.print(record.error or record.output or "")
+                app.console.print(
+                    f"\n[bold]{display.safe(record.variant)} × {display.safe(record.model)}[/bold]"
+                )
+                # Model output is the least trustworthy string here: markup in
+                # it either crashed the command or restyled the terminal.
+                app.console.print(display.safe(record.error or record.output or ""))
         return
 
     if failures:
@@ -577,7 +595,9 @@ def show(app, ref, failures, case_id):
             app.console.print(line)
         return
 
-    label = f" ({meta['label']})" if meta.get("label") else ""
+    # Escaped: a label is user text, and an unbalanced tag in it made `show`
+    # crash with a MarkupError — on the one command for reading a run back.
+    label = f" ({display.safe(meta['label'])})" if meta.get("label") else ""
     app.console.print(f"[bold]{meta['id']}[/bold]{label} — {meta['status']}")
     if meta.get("aggregates"):
         app.console.print(display.matrix_table(meta["aggregates"]))

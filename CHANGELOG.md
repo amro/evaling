@@ -236,6 +236,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A pinned baseline pointing at an unfinished run failed the run after full
+  spend**, contradicting the "must fail before any model call" intent — the
+  baseline's aggregates were only read once every cell had executed, and the
+  run was then left wedged in status `running`.
+
+- **`evaling show` and `validate` crashed on markup in run metadata or model
+  output.** A run labelled `[/bold]x`, or a model that emitted one, made the
+  commands whose whole job is reading a run back die with a `MarkupError`
+  traceback. Labels, model output, and dry-run cell names are now escaped.
+
+- **The large-matrix confirmation skipped source-backed runs.** It lived only
+  in the inline-cases branch, so `limit: 150` started unprompted at a terminal
+  while the MCP server refused the identical run.
+
+- **CSV export was formula-injectable through case id, variant, and model.**
+  Only the model's output and error were escaped, but a case id comes from the
+  dataset, which is as external as anything the model says.
+
+- `parse_json_lenient` was quadratic on adversarial model output — 16 KB of
+  `[` took five seconds while holding a concurrency slot — because every
+  bracket restarted a full parse. Now bounded to the first 64 candidates.
+
 - **Resuming a no-look run re-ran and re-billed every finished cell.** Records
   are stored with hashed case ids, but the resume skip-set was built from raw
   ids, so nothing ever matched: a two-cell run resumed produced four records,

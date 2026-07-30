@@ -352,3 +352,110 @@ class TestDryRun:
         config._base_dir = source_dir  # noqa: SLF001
         report = dry_run(config)
         assert report.errors and "missing" in report.errors[0]["error"]
+
+
+class TestABoundedSourceIsConfirmedLikeAnyOtherRun:
+    """The large-matrix ceiling applies wherever the cases come from.
+
+    It lived only in the inline-cases branch, so a source-backed run with
+    `limit: 150` started unprompted on a terminal while the MCP server refused
+    the identical run — two surfaces disagreeing about the same ceiling.
+    """
+
+    def project(self, tmp_path, limit):
+        (tmp_path / "src.py").write_text(
+            "from evaling import Case, CasePage\n"
+            "class S:\n"
+            "    def fetch(self, cursor, limit):\n"
+            "        start = int(cursor or 0)\n"
+            "        rows = [Case(id=f'c{i}', vars={'q': str(i)}) "
+            "for i in range(start, start + limit)]\n"
+            "        return CasePage(cases=rows, cursor=str(start + limit))\n"
+            "def make():\n"
+            "    return S()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            f"cases: {{source: 'src.py:make', page_size: 50, limit: {limit}}}\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def counts_confirmed(self, path, *args, monkeypatch):
+        """The cell count the run offered for confirmation, or None.
+
+        CliRunner replaces sys.stdin, so the tty check inside the guard cannot
+        be patched from out here; this tests that the source branch reaches
+        the guard at all, which is the regression.
+        """
+        from click.testing import CliRunner
+
+        import evaling.cli as cli_module
+
+        seen = []
+        monkeypatch.setattr(cli_module, "_confirm_large", lambda count, yes: seen.append(count))
+        result = CliRunner().invoke(
+            cli_module.main,
+            ["-c", str(path / "eval.yaml"), "-o", str(path / "runs"), "run", *args],
+            env={"EVALING_USER_CONFIG": "/nonexistent"},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        return seen[0] if seen else None
+
+    def test_a_source_backed_run_reaches_the_confirmation(self, tmp_path, monkeypatch):
+        from evaling.engine import CONFIRM_THRESHOLD
+
+        path = self.project(tmp_path, CONFIRM_THRESHOLD + 50)
+        assert self.counts_confirmed(path, monkeypatch=monkeypatch) == CONFIRM_THRESHOLD + 50
+
+    def test_an_inline_run_still_does_too(self, tmp_path, monkeypatch):
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: a}}, {id: c2, vars: {q: b}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        assert self.counts_confirmed(tmp_path, monkeypatch=monkeypatch) == 2
+
+
+class TestTheConfirmationThreshold:
+    """The guard itself, away from CliRunner's stdin."""
+
+    def guard(self, count, yes, tty, monkeypatch):
+        import sys
+
+        import evaling.cli as cli_module
+
+        asked = []
+        monkeypatch.setattr(cli_module.click, "confirm", lambda *a, **k: asked.append(a))
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: tty, raising=False)
+        cli_module._confirm_large(count, yes)
+        return bool(asked)
+
+    def test_it_asks_above_the_threshold(self, monkeypatch):
+        from evaling.engine import CONFIRM_THRESHOLD
+
+        assert self.guard(CONFIRM_THRESHOLD, False, True, monkeypatch) is True
+
+    def test_it_stays_quiet_below(self, monkeypatch):
+        from evaling.engine import CONFIRM_THRESHOLD
+
+        assert self.guard(CONFIRM_THRESHOLD - 1, False, True, monkeypatch) is False
+
+    def test_yes_skips_it(self, monkeypatch):
+        assert self.guard(10_000, True, True, monkeypatch) is False
+
+    def test_no_tty_skips_it(self, monkeypatch):
+        """CI would hang on a prompt; --max-cost is the ceiling there."""
+        assert self.guard(10_000, False, False, monkeypatch) is False
+
+    def test_an_unknown_count_skips_it(self, monkeypatch):
+        """An unbounded source has no count; a different guard covers it."""
+        assert self.guard(None, False, True, monkeypatch) is False

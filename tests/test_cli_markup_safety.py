@@ -5,11 +5,22 @@ command; "[red]" silently restyled the terminal; and an error message
 mentioning "evaling[mcp]" lost the bracketed part entirely.
 """
 
+import pytest
 from click.testing import CliRunner
 
 from evaling.cli import main
 
 ENV = {"EVALING_USER_CONFIG": "/nonexistent"}
+
+
+def invoke(path, *args):
+    return CliRunner().invoke(
+        main,
+        ["-c", str(path / "eval.yaml"), "-o", str(path / "runs"), *args],
+        env=ENV,
+        catch_exceptions=False,
+    )
+
 
 HOSTILE = "answer [/bold] with [red]markup[/red] and [unclosed"
 
@@ -82,3 +93,62 @@ def test_mcp_hint_survives_when_extra_missing(tmp_path, monkeypatch):
     assert result.exit_code == 2
     # "evaling[mcp]" must survive intact — it's the install command
     assert "evaling[mcp]" in result.output
+
+
+class TestHostileTextInEveryReadingPath:
+    """Run metadata and model output reach rich as markup.
+
+    A label is typed by a user; model output is the least trustworthy string
+    in the system. Both used to reach `console.print` unescaped, so a stray
+    `[/bold]` either crashed the command with a MarkupError traceback or
+    restyled the terminal — on the commands whose entire job is reading a run
+    back after something went wrong.
+    """
+
+    HOSTILE = "[/bold]danger[red]"
+
+    @pytest.fixture
+    def run_with_hostile_output(self, tmp_path):
+        (tmp_path / "eval.yaml").write_text(
+            "models:\n"
+            "  - id: mock\n"
+            "    provider: mock\n"
+            f"    params: {{response: '{self.HOSTILE}'}}\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            "cases: [{id: c1, vars: {q: alpha}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        result = invoke(tmp_path, "run", "--label", self.HOSTILE)
+        assert result.exit_code == 0, result.output
+        return tmp_path
+
+    def test_show_survives_a_hostile_label(self, run_with_hostile_output):
+        result = invoke(run_with_hostile_output, "show", "latest")
+        assert result.exit_code == 0, result.output
+        assert "danger" in result.output
+
+    def test_verbose_case_drilldown_survives_hostile_output(self, run_with_hostile_output):
+        result = invoke(run_with_hostile_output, "-v", "show", "latest", "--case", "c1")
+        assert result.exit_code == 0, result.output
+        assert "danger" in result.output
+
+    def test_list_survives_a_hostile_label(self, run_with_hostile_output):
+        result = invoke(run_with_hostile_output, "list")
+        assert result.exit_code == 0, result.output
+
+    def test_a_render_error_with_markup_does_not_crash_validate(self, tmp_path):
+        """The dry-run path prints variant, model, case id and the error."""
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: 'v[/bold]1'\n"
+            '    prompt: [{role: user, content: "{{ nope }}"}]\n'
+            "cases: [{id: 'c[/red]1', vars: {q: alpha}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        result = invoke(tmp_path, "validate")
+        # Exit 2 because the render fails, not because rich blew up.
+        assert result.exit_code == 2, result.output
+        assert "MarkupError" not in result.output

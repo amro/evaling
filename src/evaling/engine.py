@@ -285,6 +285,11 @@ async def _run_eval_impl(
     # for real further down, once the limiters and budget a judge needs exist.
     create_scorers(config, providers)
     baseline_id = _resolve_baseline(store, config, baseline_run_id)
+    # Read now, not after the run: the comment above says a bad baseline must
+    # fail before any model call, and resolving the id alone did not check the
+    # run had finished. A baseline pointing at an unfinished run used to fail
+    # the run after full spend and leave it wedged in status "running".
+    baseline_overall = _load_baseline_overall(store, baseline_id)
     fingerprint = config_fingerprint(config)
     if resume_run_id is not None and source_ref is not None:
         raise StorageError(
@@ -580,7 +585,6 @@ async def _run_eval_impl(
         )
 
     aggregates = tally.aggregates
-    baseline_overall = _load_baseline_overall(store, baseline_id)
     gate = evaluate_gate(config.thresholds, aggregates["overall"], baseline_overall)
     writer.finalize(
         counts,

@@ -76,12 +76,29 @@ def parse_json_lenient(text: str) -> Any:
             pass
 
     decoder = json.JSONDecoder()
-    for index, char in enumerate(stripped):
-        if char in "{[":
-            try:
-                value, _ = decoder.raw_decode(stripped, index)
-                return value
-            except json.JSONDecodeError:
-                continue
+    for index in _candidate_starts(stripped):
+        try:
+            value, _ = decoder.raw_decode(stripped, index)
+            return value
+        except json.JSONDecodeError:
+            continue
 
     raise first_error
+
+
+#: How many embedded-JSON starts to try. Each attempt can scan the whole
+#: remaining text, so trying every one is quadratic: 16 KB of "[" took five
+#: seconds, and a megabyte of it would hold a concurrency slot for hours.
+#: Model output with the real answer past the 64th bracket does not exist.
+MAX_JSON_STARTS = 64
+
+
+def _candidate_starts(text: str) -> "list[int]":
+    """Positions worth attempting a parse from, newest-first budget applied."""
+    starts = []
+    for index, char in enumerate(text):
+        if char in "{[":
+            starts.append(index)
+            if len(starts) >= MAX_JSON_STARTS:
+                break
+    return starts
