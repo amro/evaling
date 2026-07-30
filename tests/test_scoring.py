@@ -313,3 +313,38 @@ class TestARunThatEvaluatedNothing:
         ran = {"cases": 1, "score": 0.0, "pass_rate": 0.0, "errors": 0}
         gate = evaluate_gate(Thresholds(min_pass_rate=0.5), ran)
         assert gate is not None and not gate.passed
+
+
+class TestComparingAgainstARunThatRecordedNoCaseList:
+    """An older run, or one from before the digest existed.
+
+    `_different_cases` compares a digest of the cases each run covered. When
+    one side has none it cannot conclude anything, and the honest answer is
+    silence rather than a warning about a difference it did not observe.
+    Mutation testing flipped the guard's `or` to `and`, which makes a
+    one-sided comparison either crash or invent a warning, and nothing
+    noticed.
+    """
+
+    def meta(self, run_id, cases=None):
+        entry = {"id": run_id, "matrix": {}}
+        if cases is not None:
+            entry["matrix"]["cases"] = cases
+        return entry
+
+    def test_no_warning_when_only_one_side_recorded_its_cases(self):
+        assert selection_note(self.meta("a", "digest-1"), self.meta("b")) is None
+
+    def test_no_warning_when_only_the_other_side_did(self):
+        assert selection_note(self.meta("a"), self.meta("b", "digest-1")) is None
+
+    def test_no_warning_when_neither_did(self):
+        assert selection_note(self.meta("a"), self.meta("b")) is None
+
+    def test_a_warning_when_both_recorded_and_they_differ(self):
+        note = selection_note(self.meta("a", "digest-1"), self.meta("b", "digest-2"))
+        assert note is not None
+        assert "different sets of cases" in note
+
+    def test_no_warning_when_both_recorded_the_same(self):
+        assert selection_note(self.meta("a", "same"), self.meta("b", "same")) is None

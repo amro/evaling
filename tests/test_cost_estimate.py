@@ -13,7 +13,7 @@ from click.testing import CliRunner
 from evaling.cli import main
 from evaling.config import load_config
 from evaling.engine import estimate_run_cost, select_matrix
-from evaling.providers.pricing import estimate_run
+from evaling.providers.pricing import ASSUMED_OUTPUT_TOKENS, estimate_run, price_for
 
 ENV = {"EVALING_USER_CONFIG": "/nonexistent"}
 
@@ -200,3 +200,95 @@ class TestJudgesAreCounted:
         )
         estimate = estimate_for(tmp_path)
         assert estimate.unpriced == ("local-judge",)
+
+
+MODEL = "claude-sonnet-5"
+
+
+class TestTheEstimateArithmetic:
+    """The sums behind the figure, exercised directly on groups.
+
+    Every other test here goes through a config, which fixes the token counts
+    and the cell count together — so mutation testing found the arithmetic
+    barely pinned at all. Dropping the input half entirely, or dividing by the
+    cell count instead of multiplying, both survived the suite.
+    """
+
+    def price(self):
+        price = price_for(MODEL, {})
+        assert price is not None, f"{MODEL} is expected to be in the built-in table"
+        return price
+
+    def test_both_halves_scale_with_the_cell_count(self):
+        price, cells, input_each = self.price(), 10, 1000
+        estimate = estimate_run([(MODEL, {}, input_each, cells)])
+        expected = (
+            input_each * cells * price.input + ASSUMED_OUTPUT_TOKENS * cells * price.output
+        ) / 1_000_000
+        assert estimate.usd == pytest.approx(round(expected, 4))
+
+    def test_the_input_half_is_actually_counted(self):
+        """It contributed nothing and no test noticed."""
+        without = estimate_run([(MODEL, {}, 0, 10)]).usd
+        with_input = estimate_run([(MODEL, {}, 5000, 10)]).usd
+        assert with_input > without
+
+    def test_ten_times_the_cells_costs_ten_times_as_much(self):
+        one = estimate_run([(MODEL, {}, 1000, 1)]).usd
+        ten = estimate_run([(MODEL, {}, 1000, 10)]).usd
+        assert ten == pytest.approx(one * 10, rel=1e-6)
+
+
+class TestMaxTokensCapsTheOutputHalf:
+    """`max_tokens` is the only thing that makes the output guess better."""
+
+    def test_a_cap_lowers_the_estimate(self):
+        capped = estimate_run([(MODEL, {"max_tokens": 100}, 100, 10)]).usd
+        uncapped = estimate_run([(MODEL, {}, 100, 10)]).usd
+        assert capped < uncapped
+
+    def test_the_cap_is_the_number_used(self):
+        price = price_for(MODEL, {})
+        estimate = estimate_run([(MODEL, {"max_tokens": 100}, 0, 10)])
+        assert estimate.usd == pytest.approx(round(100 * 10 * price.output / 1_000_000, 4))
+
+    @pytest.mark.parametrize("cap", [0, -1, "many", None, 2.5])
+    def test_a_cap_that_is_not_a_positive_count_falls_back(self, cap):
+        """Zero is the interesting one: it is a number, and it is not a cap."""
+        fallback = estimate_run([(MODEL, {}, 100, 10)]).usd
+        assert estimate_run([(MODEL, {"max_tokens": cap}, 100, 10)]).usd == fallback
+
+    def test_a_cap_of_one_is_honoured(self):
+        """The boundary: 1 is a positive count, however silly."""
+        tiny = estimate_run([(MODEL, {"max_tokens": 1}, 0, 10)]).usd
+        assert tiny < estimate_run([(MODEL, {}, 0, 10)]).usd
+
+
+class TestWhichNameIsPriced:
+    """An `openai-compatible` model's `params.model` names the real model.
+
+    The evaling-side id is arbitrary — `local`, `prod-gateway` — so pricing has
+    to look at what is actually sent.
+    """
+
+    def test_params_model_wins_over_the_evaling_id(self):
+        estimate = estimate_run([("my-alias", {"model": MODEL}, 100, 1)])
+        assert estimate is not None and estimate.priced and estimate.usd > 0
+
+    def test_without_it_the_id_is_what_gets_looked_up(self):
+        assert estimate_run([("my-alias", {}, 100, 1)]) is None
+
+
+class TestAnUnpricedGroupDoesNotStopTheRest:
+    def test_a_priced_group_after_an_unpriced_one_still_counts(self):
+        estimate = estimate_run([("unknown-model", {}, 100, 1), (MODEL, {}, 100, 1)])
+        assert estimate is not None
+        assert estimate.usd > 0
+        assert estimate.unpriced == ("unknown-model",)
+        assert estimate.priced is False, "part of the run has no price"
+
+    def test_every_unpriced_model_is_named_once(self):
+        estimate = estimate_run(
+            [("a", {}, 1, 1), ("b", {}, 1, 1), ("a", {}, 1, 1), (MODEL, {}, 1, 1)]
+        )
+        assert estimate.unpriced == ("a", "b")
