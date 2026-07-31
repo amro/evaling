@@ -1,0 +1,36 @@
+name: Docs
+
+# The proportionate build for a documentation-only change.
+#
+# Skipping CI entirely on markdown would be wrong here, because the docs are
+# genuinely tested: `ruff format` reformats Python inside markdown fences, and
+# tests/test_docs.py validates every YAML example against the real config
+# schema, checks that each command and flag appears in docs/cli.md, and
+# resolves every relative link. A broken docs change fails a build.
+#
+# What it does not need is nine of them. One ubuntu runner is the whole matrix
+# here: nothing about a prose change is platform- or version-dependent, and
+# ubuntu bills at 1x against macOS at 10x.
+#
+# The full suite rather than a curated subset of test files. It costs about a
+# minute more and removes the question of whether the subset is still the
+# right one a year from now.
+on:
+  push:
+    branches: [main]
+    paths: ["**.md", "docs/**"]
+  pull_request:
+    paths: ["**.md", "docs/**"]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -m "not perf"

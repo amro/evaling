@@ -1,9 +1,15 @@
 name: CI
 
+# Documentation-only changes go to docs.yml instead, which runs the same
+# checks on one runner rather than nine. The docs are tested — ruff formats
+# Python inside markdown fences, and test_docs validates every YAML example
+# against the real schema — so they get a build, just a proportionate one.
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**"]
 
 jobs:
   lint:
@@ -32,10 +38,14 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
         include:
           # One Windows job: the command provider, SIGPIPE handling, and path
-          # logic are the POSIX-shaped parts worth guarding.
+          # logic are the POSIX-shaped parts worth guarding. Kept per-push at
+          # 2x billing because it has already caught a real encoding bug that
+          # every POSIX job passed.
+          #
+          # macOS is not here: it bills at 10x, which made it around 85% of the
+          # cost of every push while agreeing with Linux essentially always.
+          # It runs daily instead — see macos.yml.
           - os: windows-latest
-            python-version: "3.12"
-          - os: macos-latest
             python-version: "3.12"
     steps:
       - uses: actions/checkout@v7

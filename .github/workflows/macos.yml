@@ -1,0 +1,31 @@
+name: macOS
+
+# macOS on a schedule rather than on every push.
+#
+# It bills at 10x, which made one macOS job roughly 85% of the cost of running
+# CI on a push — while disagreeing with the Linux jobs almost never. The real
+# platform risk in this project is Windows (path separators, encodings, no
+# SIGPIPE), and that stays per-push at 2x.
+#
+# Daily is a fixed cost: about 12 billable minutes a day whether or not
+# anything was committed. That is cheaper than per-push once you push more
+# than once a day, and more expensive on a quiet week — worth revisiting if
+# the pattern changes.
+#
+# workflow_dispatch so it can be run on demand: do that before a release,
+# where you want every platform green against the exact commit you publish.
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      - run: uv run pytest -m "not perf"

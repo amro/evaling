@@ -35,9 +35,19 @@ uv run pytest                # tests
 change can still fail formatting. Running the exact commands above avoids
 that surprise.
 
-The full matrix is Linux on Python 3.10–3.13, plus one macOS and one Windows
-job. Windows is not decorative: it has already caught a real
-encoding bug that every POSIX job passed.
+Every change runs Linux on Python 3.10–3.13 plus one Windows job. Windows is
+not decorative: it has already caught a real encoding bug that every POSIX job
+passed.
+
+macOS runs on a daily schedule instead of per change (`.github/workflows/
+macos.yml`), because GitHub bills it at ten times the Linux rate — it was
+about 85% of the cost of a push while agreeing with Linux essentially always.
+Run it on demand from the Actions tab before a release, when you want every
+platform green against the exact commit you publish.
+
+A change touching only markdown gets `.github/workflows/docs.yml` instead of
+the full matrix: the same lint, format, and test run, on one runner. The docs
+are tested, so they still get a build — just a proportionate one.
 
 Faster loop while working:
 
