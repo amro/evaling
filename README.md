@@ -152,4 +152,4 @@ Worth saying plainly rather than leaving you to infer it from the commit log.
 
 ## License
 
-[MIT](LICENSE) © 2026 Amro Mousa
+[MIT](LICENSE); © 2026 Amro Mousa
