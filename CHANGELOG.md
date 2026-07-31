@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-31
+
+First release. The entries below are the development history leading to it —
+`Changed` and `Fixed` describe work against unreleased code, since there was
+no previous version to change or to have bugs in. They are kept because how a
+thing came to work is often the most useful documentation of why it works
+that way.
+
 ### Changed
 
 - **The large-matrix confirmation is gone; runs report what they will cost

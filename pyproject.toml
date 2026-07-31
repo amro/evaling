@@ -29,6 +29,13 @@ classifiers = [
     "Topic :: Software Development :: Testing",
 ]
 
+[project.urls]
+Homepage = "https://github.com/amro/evaling"
+Repository = "https://github.com/amro/evaling"
+Documentation = "https://github.com/amro/evaling/tree/main/docs"
+Changelog = "https://github.com/amro/evaling/blob/main/CHANGELOG.md"
+Issues = "https://github.com/amro/evaling/issues"
+
 [project.scripts]
 evaling = "evaling.cli:main"
 

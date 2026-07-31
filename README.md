@@ -60,13 +60,18 @@ pin a baseline, and fail CI on a regression rather than on a hunch.
 
 ## Install
 
-Needs Python 3.10+ and [uv](https://docs.astral.sh/uv/). Not yet on PyPI, so
-for now install from a checkout:
+Needs Python 3.10+ and [uv](https://docs.astral.sh/uv/):
+
+```sh
+uv tool install evaling
+evaling --version
+```
+
+Or from a checkout, which is also the contributor setup:
 
 ```sh
 git clone https://github.com/amro/evaling && cd evaling
 uv tool install .
-evaling --version
 ```
 
 Working on evaling itself? Use `uv sync` and `uv run evaling` instead, which

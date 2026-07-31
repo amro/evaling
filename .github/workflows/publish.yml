@@ -1,0 +1,50 @@
+name: Publish
+
+# Publishes to PyPI when a GitHub Release is published.
+#
+# Trusted publishing (OIDC), not an API token: PyPI verifies the request came
+# from this repository and this workflow, so there is no long-lived credential
+# to store, rotate, or leak. The `pypi` environment must exist and must match
+# the publisher configured on PyPI.
+#
+# Triggered by the release rather than the tag, so pushing a tag by accident
+# does not publish. Publishing is irreversible — a version number on PyPI can
+# be yanked but never reused.
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # the OIDC token trusted publishing exchanges
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+
+      # The tag is the thing a human typed; the version is the thing that gets
+      # published. Disagreement between them means the wrong artifact ships
+      # under the right name, which is not recoverable after upload.
+      - name: Tag must match the package version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(uv run python -c "import tomllib,pathlib; \
+            print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          echo "tag=$tag version=$version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pyproject version $version"
+            exit 1
+          fi
+
+      - run: uv build
+
+      # Catches a malformed README before PyPI rejects the upload, and proves
+      # the metadata renders on the project page.
+      - run: uvx twine check dist/*
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
