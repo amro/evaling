@@ -153,8 +153,8 @@ evaling was written with heavy use of AI coding tools — most of it with Claude
 Code, working from requirements and design decisions recorded in
 [REQUIREMENTS.md](REQUIREMENTS.md). Every change is reviewed before it lands,
 carries tests, and has to pass the same CI as anything else: lint, formatting,
-a dependency audit, and the full suite on Linux across Python 3.10–3.13 and on
-Windows, with macOS covered weekly. The docs and the worked examples are
+a dependency audit, and the full suite on Linux across Python 3.10–3.13, plus
+macOS and Windows. The docs and the worked examples are
 exercised by that suite too, so they cannot quietly drift from the code.
 
 Worth saying plainly rather than leaving you to infer it from the commit log.

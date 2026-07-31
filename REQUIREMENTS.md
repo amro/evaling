@@ -402,7 +402,7 @@ differ from what a reader of the original draft would assume:
   provider accepts it yet; the capability check rejects it before a request is
   sent rather than failing mid-run.
 - **Platform support is verified, not assumed.** CI runs Linux (3.10–3.13),
-  macOS, and Windows. All file I/O is explicitly UTF-8 with fixed newlines, so
+  macOS, and Windows on every change. All file I/O is explicitly UTF-8 with fixed newlines, so
   runs are portable between platforms.
 - **The docs are tested.** YAML examples are validated against the real schema,
   `docs/cli.md` is checked against actual `--help` output, links are resolved,

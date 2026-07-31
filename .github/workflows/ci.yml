@@ -37,15 +37,11 @@ jobs:
         os: [ubuntu-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
         include:
-          # One Windows job: the command provider, SIGPIPE handling, and path
-          # logic are the POSIX-shaped parts worth guarding. Kept per-push at
-          # 2x billing because it has already caught a real encoding bug that
-          # every POSIX job passed.
-          #
-          # macOS is not here: it bills at 10x, which made it around 85% of the
-          # cost of every push while agreeing with Linux essentially always.
-          # It runs daily instead — see macos.yml.
+          # One Windows and one macOS job. Windows is not decorative: it has
+          # already caught a real encoding bug that every POSIX job passed.
           - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
             python-version: "3.12"
     steps:
       - uses: actions/checkout@v7
