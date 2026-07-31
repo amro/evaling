@@ -229,9 +229,9 @@ API keys, which are never stored in it.
 
 ## Releasing
 
-See [RELEASING.md](RELEASING.md). Several doc claims are true only before or
-only after publishing, so they have to change in the same commit as the
-release.
+See [RELEASING.md](RELEASING.md) — four steps, and publishing itself is
+automated: a published GitHub Release builds and uploads to PyPI over OIDC,
+with no token involved.
 
 ## Security
 

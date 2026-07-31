@@ -1,72 +1,51 @@
 # Releasing
 
-Checklist for cutting a release. The docs contain a few claims that are true
-only before or only after publishing, so they have to move together.
+Cutting a release is four steps. Publishing is automated: a **published GitHub
+Release** triggers `.github/workflows/publish.yml`, which builds and uploads to
+PyPI over OIDC. There is no token to manage and nothing to upload by hand.
 
-## 1. Docs that go stale on publish
+## 1. Version and changelog
 
-These are accurate today and become wrong the moment the package is on PyPI.
-Update them in the same change as the release, not after.
-
-The README, tutorial, and getting-started guide all lead with the from-source
-install, because that is the only one that works before publishing. On release
-each needs PyPI promoted to the primary path, with the checkout kept as the
-contributor route.
-
-| File | Says now | Should say |
-| --- | --- | --- |
-| `README.md` | "Not yet on PyPI, so for now install from a checkout" | `uv tool install evaling`, checkout as the alternative |
-| `docs/getting-started.md` | "Not yet on PyPI, so install from a checkout" | Same |
-| `docs/tutorial.md` §1 | Checkout first; "Once evaling is on PyPI this becomes…" | Swap the order; drop the "once published" line |
-| `docs/tutorial.md` CI example | `uv tool install evaling` | Correct already — pin a version, e.g. `evaling==0.1.0` |
-| `CONTRIBUTING.md` | `uv tool install --force .` | Correct already — the from-source path stays |
-
-Find them all:
-
-```sh
-grep -rn "Not yet on PyPI\|not yet on PyPI\|Once evaling is on PyPI" README.md docs/
+```toml
+# pyproject.toml
+version = "0.2.0"
 ```
 
-Also state the current version where it helps someone decide whether the docs
-they are reading match the package they installed. The README status line and
-`docs/getting-started.md` are the two places worth it; everywhere else, the
-version in `evaling --version` is enough.
+In `CHANGELOG.md`, retitle `## [Unreleased]` as `## [0.2.0] - YYYY-MM-DD` and
+leave a fresh empty `## [Unreleased]` above it.
 
-## 2. Version and changelog
+The version and the tag must match — `publish.yml` refuses the release if they
+disagree, because the tag is what a human typed and the version is what
+actually ships. Merge this, and wait for CI to go green on `main`.
 
-- Move everything under `## [Unreleased]` in `CHANGELOG.md` into a dated
-  section, e.g. `## [0.1.0] - YYYY-MM-DD`, and leave a fresh empty
-  `## [Unreleased]` above it.
-- Confirm `version` in `pyproject.toml` matches.
-- Tag after merging: `git tag v0.1.0 && git push --tags`, then cut a GitHub
-  release pointing at the changelog section.
-
-## 3. Package metadata
-
-- Add `[project.urls]` — Homepage, Repository, Issues, Changelog,
-  Documentation. Without it the PyPI page has no links out, which is most of
-  how someone evaluates an unfamiliar package.
-- Confirm the built metadata still has no email address:
+## 2. Tag
 
 ```sh
-uv build && python3 -c "
-import zipfile, glob
-whl = glob.glob('dist/*.whl')[0]
-archive = zipfile.ZipFile(whl)
-meta = archive.read(next(n for n in archive.namelist() if n.endswith('METADATA'))).decode()
-author = [line for line in meta.splitlines() if line.startswith('Author')]
-print('author:', author, '| contains @:', any('@' in line for line in author))
-"
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-## 4. Publish
+A tag on its own publishes nothing. That is deliberate: an accidental tag push
+should not be able to ship a package.
 
-- Reserve the name by publishing. `evaling` was unclaimed as of 2026-07-26,
-  and publishing is what claims it — the window between announcing and
-  publishing is when someone else can take it.
-- Prefer PyPI trusted publishing (OIDC from GitHub Actions) over a long-lived
-  API token.
-- Smoke test from a clean environment before announcing:
+## 3. Release
+
+```sh
+gh release create v0.2.0 --title "v0.2.0" --notes "See CHANGELOG.md."
+```
+
+This is the irreversible step. It fires `publish.yml`, which checks the tag
+against the version, builds, runs `twine check`, and uploads. Watch it:
+
+```sh
+gh run watch $(gh run list --workflow=Publish --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+If it fails, nothing was published and the version number is still free. If it
+succeeds, that version is permanent — PyPI lets you yank a release but never
+reuse the number.
+
+## 4. Smoke test what you actually published
 
 ```sh
 uv venv /tmp/check && uv pip install --python /tmp/check/bin/python evaling
@@ -74,36 +53,31 @@ uv venv /tmp/check && uv pip install --python /tmp/check/bin/python evaling
 cd $(mktemp -d) && /tmp/check/bin/evaling init && /tmp/check/bin/evaling run
 ```
 
-## 5. Security contact
+The test suite runs against the working tree; this is the only thing that
+exercises the built artifact — wrong packaging, a missing data file, a broken
+entry point. Worth the thirty seconds.
 
-Add `SECURITY.md` pointing at **private vulnerability reporting**, and enable
-that setting as the *first* action after the repo goes public — it is offered
-for public repositories only, so it cannot be switched on in advance. Settings
-→ Code security (called Advanced Security in some accounts) → Private
-vulnerability reporting → Enable.
+## Notes
 
-Order matters here and cuts against the instinct: `SECURITY.md` ships in the
-release commit, visibility flips, then the setting goes on. The gap is however
-long it takes you to click it, so do it before announcing anything.
+**Semver, pre-1.0.** The config format is still allowed to shift. Breaking
+changes go in the minor position (0.1 → 0.2) and are called out at the top of
+the changelog section, since that is the only warning anyone gets.
 
-No email address anywhere — not in `SECURITY.md`, `CONTRIBUTING.md`, or the
-package metadata (step 3 checks the last of these). A published address is
-scraped within days and cannot be unpublished, and private reporting is a
-complete channel without one.
+**The docs are tested**, so a stale claim fails CI rather than shipping. If a
+doc says something that is true only before or only after a release, it has to
+move in the release commit itself.
 
-## 6. Repo
+## One-time setup, for reference
 
-- Flip visibility to public.
-- Topics are already set (`llm`, `evaluation`, `evals`, `gemini`, …); add
-  `ollama` if local models should be part of the pitch.
-- Set the homepage field once there is a docs URL or a PyPI page.
+Already done for this project; recorded in case it is ever needed again.
 
-## Order
-
-Docs and changelog → publish to PyPI → make the repo public → announce.
-Publishing before going public means the name is claimed and the install
-instructions are true the moment anyone reads them.
-
-## Deferred
-
-- A screenshot of the HTML report in the README (P2).
+- **PyPI trusted publishing.** On PyPI: *Publishing* → a publisher for owner
+  `amro`, repository `evaling`, workflow `publish.yml`, environment `pypi`. The
+  matching `pypi` environment exists under repository Settings → Environments.
+  No API token is stored anywhere.
+- **Security reports** go through GitHub private vulnerability reporting
+  (Settings → Code security), which `SECURITY.md` points at. It is offered for
+  public repositories only, so it cannot be enabled before a repo goes public.
+- **Secret scanning and push protection** are on, which is worth keeping: push
+  protection blocks a commit containing a credential before it lands, and this
+  is a tool whose failure mode is leaking one.
