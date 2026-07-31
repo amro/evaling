@@ -80,9 +80,15 @@ cd $(mktemp -d) && /tmp/check/bin/evaling init && /tmp/check/bin/evaling run
 
 ## 5. Security contact
 
-Enable **private vulnerability reporting** (Settings → Security) *before*
-flipping visibility, so the channel exists the moment anyone can read the code.
-Add `SECURITY.md` pointing at it.
+Add `SECURITY.md` pointing at **private vulnerability reporting**, and enable
+that setting as the *first* action after the repo goes public — it is offered
+for public repositories only, so it cannot be switched on in advance. Settings
+→ Code security (called Advanced Security in some accounts) → Private
+vulnerability reporting → Enable.
+
+Order matters here and cuts against the instinct: `SECURITY.md` ships in the
+release commit, visibility flips, then the setting goes on. The gap is however
+long it takes you to click it, so do it before announcing anything.
 
 No email address anywhere — not in `SECURITY.md`, `CONTRIBUTING.md`, or the
 package metadata (step 3 checks the last of these). A published address is
