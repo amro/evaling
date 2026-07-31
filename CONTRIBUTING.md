@@ -39,11 +39,12 @@ Every change runs Linux on Python 3.10–3.13 plus one Windows job. Windows is
 not decorative: it has already caught a real encoding bug that every POSIX job
 passed.
 
-macOS runs on a daily schedule instead of per change (`.github/workflows/
-macos.yml`), because GitHub bills it at ten times the Linux rate — it was
-about 85% of the cost of a push while agreeing with Linux essentially always.
-Run it on demand from the Actions tab before a release, when you want every
-platform green against the exact commit you publish.
+macOS runs weekly instead of per change (`.github/workflows/macos.yml`),
+because GitHub bills it at ten times the Linux rate — it was about 85% of the
+cost of a push, and daily would still have been 12% of the monthly allowance,
+for a platform that has yet to disagree with Linux about anything. Run it on
+demand from the Actions tab before a release, when you want every platform
+green against the exact commit you publish.
 
 A change touching only markdown gets `.github/workflows/docs.yml` instead of
 the full matrix: the same lint, format, and test run, on one runner. The docs

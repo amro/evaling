@@ -7,16 +7,24 @@ name: macOS
 # platform risk in this project is Windows (path separators, encodings, no
 # SIGPIPE), and that stays per-push at 2x.
 #
-# Daily is a fixed cost: about 12 billable minutes a day whether or not
-# anything was committed. That is cheaper than per-push once you push more
-# than once a day, and more expensive on a quiet week — worth revisiting if
-# the pattern changes.
+# Weekly, not daily. A schedule is a fixed cost whether or not anything was
+# committed, and at 10x this one is the largest recurring line in the budget:
+# daily would be ~360 billable minutes a month, 12% of the whole allowance,
+# for a platform that has yet to disagree with Linux about anything. Weekly is
+# ~48.
 #
-# workflow_dispatch so it can be run on demand: do that before a release,
-# where you want every platform green against the exact commit you publish.
+# The trade is latency — a macOS-specific break is found within a week rather
+# than within a day. That is acceptable because nothing here is macOS-shaped:
+# the platform risk this project actually has is Windows, which stays
+# per-change.
+#
+# workflow_dispatch is the answer for the case that matters. Run this from the
+# Actions tab before a release, against the exact commit you are publishing.
 on:
   schedule:
-    - cron: "0 5 * * *"
+    # Sunday, ahead of the Monday mutation run so a weekend of work is
+    # covered before the week starts.
+    - cron: "0 5 * * 0"
   workflow_dispatch:
 
 jobs:
