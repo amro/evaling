@@ -55,7 +55,7 @@ source system, and outlive the run. No-look produces only numbers, which is
 what you wanted to share anyway.
 
 **If you are allowed to read your eval data, don't use this.** It costs you the
-cache (every run pays full price), direct inspection of failures, resume,
+cache (every run pays full price), direct inspection of failures,
 `--log-requests`, and the MCP `render_prompt` tool — rendering a case is
 reading it, so there is nothing that tool could usefully return.
 Worthwhile only when the constraint is real.
@@ -147,10 +147,15 @@ too — it is an exception message from a scorer that had the output in hand.
 
 ### Nothing is written and then deleted
 
-Case data is never written to disk in the first place. evaling uses no
-temporary files, in any mode, so there is no window in which case content
-exists on disk and no cleanup step whose failure would matter — which is the
-step a killed process cannot perform.
+Case data is never written to disk in the first place. Redaction happens the
+moment a cell finishes scoring, before the record reaches storage — so there
+is no window in which case content exists on disk, and no cleanup step whose
+failure would matter, which is the step a killed process cannot perform.
+
+evaling does use temporary files, for a different purpose: `run.json` and
+artifacts are written temp-then-rename so a reader never sees a half-written
+file. Under no-look those files carry no case content — the records are
+already redacted, and `artifacts/` is never populated at all.
 
 Three limits this does not cover, none of which evaling can close: the OS may
 page memory to swap; the `command` provider hands case data to a subprocess
@@ -169,12 +174,16 @@ The cache stores prompts and completions verbatim on disk — precisely what
 no-look prevents. It is turned off for the whole run, so re-running costs full
 price. Combine with `limit` and `--max-cost`.
 
-### Resume is not available
+### Resume works, unless the cases come from a source
+
+No-look does not affect resume: a no-look run over inline or file-backed cases
+resumes like any other, matching stored records by their hashed ids.
 
 Source-backed runs cannot be resumed, for reasons that are about the source
 rather than about privacy — see
-[why resume is refused](large-datasets.md#why-resume-is-refused). Bound runs
-with `limit` and `--max-cost` instead.
+[why resume is refused](large-datasets.md#why-resume-is-refused). Since no-look
+is usually paired with a source, that is the combination you are most likely to
+meet. Bound those runs with `limit` and `--max-cost` instead.
 
 ### LLM judges are allowed — and are your call
 

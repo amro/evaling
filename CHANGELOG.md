@@ -38,6 +38,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the size is unknown even to whoever wrote the source. At a terminal it
   now just runs.
 
+- **A relative `output_dir`/`cache_dir` now resolves against the eval config's
+  directory**, not the working directory. Previously
+  `evaling -c projects/foo/eval.yaml run` wrote to `./.evaling/runs`, so
+  `cd projects/foo && evaling list` found nothing — the runs were somewhere
+  else entirely, and nothing said so. Every other relative path in a config
+  (prompts, datasets, attachments) already resolved against the config's
+  directory; this was the exception. Defaults are included, so a config with
+  no `settings:` block keeps its runs beside itself too.
+
+  `--output-dir`, `--cache-dir`, and the `EVALING_*` variables are unchanged
+  and still resolve against the working directory: you type those where you
+  are standing. Absolute paths are never rewritten. **This moves where runs
+  land for anyone who passes `-c` with a path outside their working
+  directory**; pass `--output-dir` to keep the old location.
+
+- The engine no longer materializes the matrix. Cells stream through a fixed
+  worker pool, so in-flight tasks are bounded by `concurrency` rather than by
+  the number of cells, and aggregates are accumulated per record instead of
+  computed from a retained list. Measured over a 30,000-cell run, live memory
+  at the end is identical to before the run started.
+- `RunResult.records` is empty for runs above `MAX_RETAINED_RECORDS` (10,000
+  cells), with the new `records_truncated` flag set. Use the new
+  `RunResult.iter_records()` to stream results from disk at any size. Empty
+  rather than partial is deliberate: a partial list would silently produce
+  wrong answers. **This is a behavior change for anyone reading `.records`
+  from a very large run.**
+- HTML reports degrade above 2,000 cells: aggregates and the gate stay
+  complete, the per-case drill-down is limited to failing cases, and a notice
+  says what was omitted and how to get it. A 50,000-cell report went from
+  75 MB — large enough that a browser will not open it — to 5.5 KB.
+- Prompt templates compile once per distinct source instead of once per cell.
+  `Environment.from_string` recompiles on every call, so a 30,000-cell run was
+  compiling the same template 30,000 times and keeping every result alive.
+  Throughput improved ~21% (1,030 → 1,250 cells/sec against the mock provider).
+
 ### Added
 
 - **Copy-pasteable MCP client configuration** per client (Claude Code, Claude
@@ -227,45 +262,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `evaling.scoring.Aggregator` for incremental aggregation. `aggregate()` is
   now implemented on top of it, so there is one implementation of the
   arithmetic rather than two that can drift.
-
-### Changed
-
-- **A relative `output_dir`/`cache_dir` now resolves against the eval config's
-  directory**, not the working directory. Previously
-  `evaling -c projects/foo/eval.yaml run` wrote to `./.evaling/runs`, so
-  `cd projects/foo && evaling list` found nothing — the runs were somewhere
-  else entirely, and nothing said so. Every other relative path in a config
-  (prompts, datasets, attachments) already resolved against the config's
-  directory; this was the exception. Defaults are included, so a config with
-  no `settings:` block keeps its runs beside itself too.
-
-  `--output-dir`, `--cache-dir`, and the `EVALING_*` variables are unchanged
-  and still resolve against the working directory: you type those where you
-  are standing. Absolute paths are never rewritten. **This moves where runs
-  land for anyone who passes `-c` with a path outside their working
-  directory**; pass `--output-dir` to keep the old location.
-
-- The engine no longer materializes the matrix. Cells stream through a fixed
-  worker pool, so in-flight tasks are bounded by `concurrency` rather than by
-  the number of cells, and aggregates are accumulated per record instead of
-  computed from a retained list. Measured over a 30,000-cell run, live memory
-  at the end is identical to before the run started.
-- `RunResult.records` is empty for runs above `MAX_RETAINED_RECORDS` (10,000
-  cells), with the new `records_truncated` flag set. Use the new
-  `RunResult.iter_records()` to stream results from disk at any size. Empty
-  rather than partial is deliberate: a partial list would silently produce
-  wrong answers. **This is a behavior change for anyone reading `.records`
-  from a very large run.**
-- HTML reports degrade above 2,000 cells: aggregates and the gate stay
-  complete, the per-case drill-down is limited to failing cases, and a notice
-  says what was omitted and how to get it. A 50,000-cell report went from
-  75 MB — large enough that a browser will not open it — to 5.5 KB.
-- Prompt templates compile once per distinct source instead of once per cell.
-  `Environment.from_string` recompiles on every call, so a 30,000-cell run was
-  compiling the same template 30,000 times and keeping every result alive.
-  Throughput improved ~21% (1,030 → 1,250 cells/sec against the mock provider).
-
-### Added
 
 - **Mutation testing** (`[tool.mutmut]` in `pyproject.toml`, weekly CI job).
   It changes the source and checks whether a test notices — which is the

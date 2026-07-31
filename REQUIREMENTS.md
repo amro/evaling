@@ -190,7 +190,7 @@ scorers, and a documented recipe/example in the repo.
     repeatable, to run any sub-matrix.
   - `--dry-run` — validate config, render all prompts, print request count and
     cost estimate; makes no model calls. (Doubles as a CI lint for eval configs.)
-  - `--max-cost USD` and `-y/--yes` (skip the large-matrix confirmation).
+  - `--max-cost USD`.
   - `--no-cache` (bypass cache), `--resume RUN_ID` (continue an interrupted run).
   - `--baseline RUN_ID` (override the regression-gate baseline).
   - `--label NAME` — human-friendly run name.

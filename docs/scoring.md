@@ -129,7 +129,9 @@ thresholds:
 ```
 
 Both absolute checks and the baseline check can apply together; every check's
-outcome (with detail) is stored in `run.json` under `gate`. `baseline` accepts
+outcome (with detail) is stored in `run.json` under `gate`. `gate` is `null`
+when there was no verdict to give — no thresholds configured, or no cell ran
+(a run that evaluated nothing still exits non-zero; see [ci.md](ci.md)). `baseline` accepts
 `regression` (compare against the pinned baseline run) or a specific run id.
 A run is "worse than baseline" if either its overall score or pass rate drops
 below the baseline's.

@@ -11,7 +11,8 @@ ship built in; the interface is small, so adding more is contained work.
 | `command` | Any CLI or script | — |
 | `mock` | Built-in deterministic fake | — |
 
-API keys come from environment variables only — never from config files.
+API keys come from the environment or a gitignored secrets file — never from
+config files. See [secrets.md](secrets.md).
 
 ## `anthropic`
 
@@ -47,8 +48,10 @@ compatibility.
 ## `openai-compatible`
 
 The same wire format as `openai`, pointed anywhere. This one adapter covers
-most of the ecosystem — Ollama, vLLM, LM Studio, llama.cpp's server,
-OpenRouter, and Google's Gemini OpenAI-compatibility endpoint.
+most of the ecosystem — Google's Gemini and Gemma through their
+OpenAI-compatibility endpoint, Hugging Face's inference router and dedicated
+endpoints, OpenRouter, and locally Ollama, vLLM, LM Studio, and llama.cpp's
+server.
 
 ```yaml
 models:
@@ -105,10 +108,27 @@ stdout is used verbatim as the response — unless it's a JSON object with a
 ```
 
 `input_tokens` and `output_tokens` must be whole numbers and `cost_usd` a
-number (numeric strings are accepted); anything else fails that cell with a clear error rather
-than corrupting the run's totals. A non-zero exit becomes a retryable error
+number (numeric strings are accepted); anything else fails that cell with a
+clear error rather than corrupting the run's totals. A non-zero exit becomes a retryable error
 carrying stderr. Every media kind is allowed, since only your script knows what
 it can handle.
+
+### Working directory
+
+The script runs in the directory containing the config, so relative paths in
+`command:` mean the same thing as relative paths everywhere else in that
+config:
+
+```yaml
+models:
+  - id: my-agent
+    provider: command
+    command: python3 agents/run.py      # relative to eval.yaml, not to your shell
+```
+
+Secrets reach the script through its environment — a wrapper around a real API
+usually needs the same key evaling would have used. See
+[secrets.md](secrets.md).
 
 ## `mock`
 
@@ -177,23 +197,6 @@ API keys are redacted from error messages before they reach the terminal or
 
 Either way the failure is isolated to its cell: the run continues and reports
 the error in the summary.
-
-### Working directory
-
-The script runs in the directory containing the config, so relative paths in
-`command:` mean the same thing as relative paths everywhere else in that
-config:
-
-```yaml
-models:
-  - id: my-agent
-    provider: command
-    command: python3 agents/run.py      # relative to eval.yaml, not to your shell
-```
-
-Secrets reach the script through its environment — a wrapper around a real API
-usually needs the same key evaling would have used. See
-[secrets.md](secrets.md).
 
 ## Adding a provider
 

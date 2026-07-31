@@ -25,7 +25,7 @@ created in the same millisecond still order correctly.
 
 ```json
 {
-  "id": "20260724T141530-9f2a",
+  "id": "20260724T141530042-9f2a",
   "label": "tightened-rubric",
   "status": "complete",
   "started_at": "2026-07-24T14:15:30Z",

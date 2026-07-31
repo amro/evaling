@@ -103,6 +103,12 @@ Per-model options (all optional):
 - `max_concurrency` — cap on in-flight requests **for this model**.
 - `requests_per_minute` — sliding-window rate limit for this model.
 
+Two entries under `params` are read by evaling rather than forwarded:
+`params.model` (the API's name for the model, when it differs from `id`) and
+`params.pricing` (`{input, output}` in USD per million tokens, which is what
+makes cost tracking and `--max-cost` work for a model evaling has no rate for).
+Both are documented in [providers.md](providers.md#per-model-options).
+
 The last two exist because one global `--concurrency` is the wrong control as
 soon as a matrix mixes a local model with a rate-limited hosted one. They
 compose with the global setting: a call must satisfy the global semaphore,

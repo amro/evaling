@@ -169,6 +169,9 @@ With neither, validates the entire config and reports any render errors. Either
 way no model is called, which makes it the cheap way to check an edit before
 spending anything.
 
+Refused under [no-look mode](no-look.md): rendering a case is reading it, so
+there is nothing this tool could usefully return.
+
 ## Argument names must match exactly
 
 An argument a tool doesn't declare is refused, and the error names what it does
@@ -176,7 +179,8 @@ take:
 
 ```
 unknown argument(s) for run_eval: config. This tool takes: cases, config_path,
-label, max_cost_usd, models, no_cache, variants.
+fail_fast, label, max_cost_usd, models, no_cache, sample, sample_seed,
+variants.
 ```
 
 That matters most for `run_eval`, which spends money: without the check a

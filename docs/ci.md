@@ -79,7 +79,7 @@ pass an explicit run with `evaling run --baseline <run-id>`.
 
   ```yaml
   - run: evaling run --html eval-report.html
-  - uses: actions/upload-artifact@v4
+  - uses: actions/upload-artifact@v7
     if: always()          # publish the report even when the gate fails
     with: {name: eval-report, path: eval-report.html}
   ```
@@ -116,7 +116,7 @@ pass an explicit run with `evaling run --baseline <run-id>`.
 ## Gating on production data
 
 To gate against real traffic that CI's logs must not contain, combine a
-[case source](no-look.md) with no-look mode:
+[case source](large-datasets.md) with no-look mode:
 
 ```yaml
 cases:
@@ -136,7 +136,7 @@ thresholds:
 - run: evaling run --max-cost 5.00 --html report.html
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-- uses: actions/upload-artifact@v4
+- uses: actions/upload-artifact@v7
   if: always()
   with: {name: eval-report, path: report.html}
 ```

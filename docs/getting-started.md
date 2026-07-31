@@ -53,7 +53,8 @@ models:
     base_url: http://localhost:11434/v1
 ```
 
-Keys come from environment variables only. See
+Keys come from the environment or a gitignored secrets file — never from
+`eval.yaml`. See [secrets.md](secrets.md) for the lookup order, and
 [providers.md](providers.md) for every provider, including running local
 models and evaluating your own scripts. Before spending money, preview what a
 run will do:

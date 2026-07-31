@@ -12,9 +12,13 @@ plus a file of your ratings:
 ```sh
 evaling run --label to-rate                  # produce answers to rate
 # ...rate them: a CSV of case_id,human_label
-evaling calibrate --from-run to-rate --labels ratings.csv
+evaling calibrate --from-run to-rate --labels ratings.csv --variant concise
 cd calibration && evaling validate && evaling run
 ```
+
+`--variant` picks which variant's outputs your ratings refer to. It is
+required whenever the run has more than one, which is the usual case — you
+rated one set of answers, and evaling will not guess which.
 
 That gives you the config below, filled in — your rated answers as cases and
 two rubric phrasings to compare. It calls nothing and spends nothing; edit the
@@ -87,4 +91,9 @@ reference from your real evals' `judges:` block.
   lines of pandas/scipy — a built-in aggregate may come later.
 - **Keep the calibration set honest**: sample real outputs (good, bad, and
   weird), not synthetic ones; 30-50 labeled examples is usually enough to
-  separate rubric candidates.
+  separate rubric candidates. That is a smaller number than
+  [the margin-of-error table](large-datasets.md#how-many-cases-do-you-need)
+  might suggest, because comparing rubrics over the *same* labeled set is a
+  paired comparison: what matters is the cases where the rubrics disagree,
+  not the total. Judging a single rubric's absolute agreement rate needs the
+  larger sample.

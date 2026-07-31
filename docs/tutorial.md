@@ -249,9 +249,22 @@ The `id` is the provider's model name and doubles as the label in reports.
 ### Find out what it costs before you pay for it
 
 ```sh
-evaling validate                 # how many requests would this make?
+evaling validate                 # how many requests, and roughly what it costs
 evaling run --max-cost 1.00      # hard ceiling: stop issuing calls at $1
 ```
+
+`validate`, `run --dry-run`, and `run` itself all print an estimate before
+any call goes out, where the models are ones evaling has rates for:
+
+```
+12 requests would be made; no model was called.
+  estimated ~$0.38
+```
+
+Deliberately hedged. Token counts are approximated from the rendered prompts,
+retries bill again, and the built-in price table is a convenience rather than
+an invoice — so treat it as an order of magnitude. `--max-cost` is what
+actually holds.
 
 `--max-cost` is admission control, not a post-hoc check: evaling stops
 *issuing* calls once accumulated spend reaches the ceiling, and reports how
@@ -289,7 +302,7 @@ models:
 
   - id: gemini-2.5-pro
     provider: openai-compatible
-    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
     api_key_env: GEMINI_API_KEY
 ```
 
@@ -534,7 +547,7 @@ A minimal GitHub Actions job:
 - run: evaling run --max-cost 5.00 --html report.html
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-- uses: actions/upload-artifact@v4
+- uses: actions/upload-artifact@v7
   if: always()
   with: {name: eval-report, path: report.html}
 ```

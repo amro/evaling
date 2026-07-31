@@ -105,7 +105,7 @@ a matrix hits two endpoints that both speak the OpenAI protocol:
 models:
   - id: gemini-2.5-pro
     provider: openai-compatible
-    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
     api_key_env: GEMINI_API_KEY
 
   - id: llama3.1:8b

@@ -212,7 +212,7 @@ audit have one implementation. See [architecture.md](docs/architecture.md).
 ## Adding a case source
 
 You don't need to contribute one — a source is your code, loaded by path (see
-[no-look.md](docs/no-look.md)). If you're changing the source machinery
+[large-datasets.md](docs/large-datasets.md)). If you're changing the source machinery
 itself, note that `iter_source_cases` must never hold more than one page, and
 that a source returning a repeated cursor has to raise rather than loop.
 
@@ -242,7 +242,13 @@ release.
 
 ## Security
 
-Don't open a public issue for a vulnerability. Email the maintainer instead.
+Don't open a public issue for a vulnerability. Use GitHub's **private
+vulnerability reporting** — the *Report a vulnerability* button under the
+repository's Security tab. It reaches the maintainer directly and stays
+private until an advisory is published.
+
+If you can't use it, open an issue saying you have a security report and
+asking how to send it — without the details.
 
 Secrets are never read from config files, never written to `os.environ`, and
 redacted from output — if you find a path where a key can leak, that's a

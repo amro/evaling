@@ -114,4 +114,9 @@ mappings, so in CSV always use the `file://` prefix on individual columns.
 
 Path resolution: attachment paths in a dataset resolve relative to the dataset
 file; attachment paths in inline cases resolve relative to the config file.
+
+A relative path must also stay *under* the file that declared it. Datasets
+arrive from elsewhere, and evaling reads every attachment, sends it to a model
+API, and archives it — so `file://../../secrets.pdf` in a CSV is refused. Use
+an absolute path when reaching outside is deliberate.
 Cases without an `id` get `case-<position>` (1-based).

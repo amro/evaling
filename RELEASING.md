@@ -61,6 +61,10 @@ print('author:', author, '| contains @:', any('@' in line for line in author))
 
 ## 4. Publish
 
+- **Run the macOS workflow first.** It is on a weekly schedule (see step 6), so
+  the commit you are about to publish may never have been tested there. Actions
+  → macOS → Run workflow, against the release commit. Windows and Linux ran on
+  the commit itself.
 - Reserve the name by publishing. `evaling` was unclaimed as of 2026-07-26,
   and publishing is what claims it — the window between announcing and
   publishing is when someone else can take it.
@@ -76,10 +80,14 @@ cd $(mktemp -d) && /tmp/check/bin/evaling init && /tmp/check/bin/evaling run
 
 ## 5. Security contact
 
-`CONTRIBUTING.md` tells people to email the maintainer about vulnerabilities
-but gives no address. Add `SECURITY.md` with a real contact before the repo is
-public, and use an address chosen for the purpose rather than a personal one —
-the package metadata deliberately carries no email.
+Enable **private vulnerability reporting** (Settings → Security) *before*
+flipping visibility, so the channel exists the moment anyone can read the code.
+Add `SECURITY.md` pointing at it.
+
+No email address anywhere — not in `SECURITY.md`, `CONTRIBUTING.md`, or the
+package metadata (step 3 checks the last of these). A published address is
+scraped within days and cannot be unpublished, and private reporting is a
+complete channel without one.
 
 ## 6. Repo
 
@@ -87,6 +95,16 @@ the package metadata deliberately carries no email.
 - Topics are already set (`llm`, `evaluation`, `evals`, `gemini`, …); add
   `ollama` if local models should be part of the pitch.
 - Set the homepage field once there is a docs URL or a PyPI page.
+- **Restore macOS to every commit.** Actions is free for public repositories on
+  standard runners, so the reason it was moved to a weekly schedule disappears
+  the moment visibility flips. Delete `.github/workflows/macos.yml`, re-add
+  `- os: macos-latest / python-version: "3.12"` to the `include` block in
+  `ci.yml`, and update the three places that say macOS runs weekly:
+  `README.md`, `CONTRIBUTING.md`, and `REQUIREMENTS.md` (§ "As built").
+
+  Keep `docs.yml` as it is. Its value is not only cost — a markdown-only change
+  getting one job instead of eight is faster feedback, which is still worth
+  having when the minutes are free.
 
 ## Order
 
