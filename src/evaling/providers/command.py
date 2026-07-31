@@ -24,6 +24,27 @@ from evaling.storage import serialize_messages
 DEFAULT_TIMEOUT_S = 300.0
 
 
+def _release(process: "asyncio.subprocess.Process") -> None:
+    """Close the subprocess transport while its event loop still exists.
+
+    asyncio closes a subprocess transport only in its finalizer, so the pipes
+    are released whenever the garbage collector happens to reach them. If that
+    is after the loop has closed — which it is for anything that runs a loop
+    per call — closing a pipe calls `loop.call_soon` on a dead loop and raises
+    `RuntimeError: Event loop is closed` from inside `__del__`, where it can
+    only become an unraisable exception. It is harmless to the run and
+    invisible in normal use, but it turns up as noise in any test runner that
+    reports unraisables, attributed to whichever test GC interrupted.
+
+    `_transport` is private, hence the guard, but it is the only handle on the
+    transport a `Process` offers and it has been there unchanged since 3.8.
+    """
+    transport = getattr(process, "_transport", None)
+    if transport is not None:
+        with contextlib.suppress(Exception):
+            transport.close()
+
+
 class CommandProvider(Provider):
     """Shell out to ``command``: request JSON on stdin, response on stdout."""
 
@@ -110,6 +131,8 @@ class CommandProvider(Provider):
                 process.kill()
             await process.wait()
             raise
+        finally:
+            _release(process)
         return out.decode(errors="replace"), err.decode(errors="replace"), process.returncode
 
     def _completion(self, stdout: str) -> Completion:
