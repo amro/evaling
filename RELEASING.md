@@ -11,6 +11,16 @@ PyPI over OIDC. There is no token to manage and nothing to upload by hand.
 version = "0.2.0"
 ```
 
+```python
+# src/evaling/__init__.py
+__version__ = "0.2.0"
+```
+
+Both, and they must agree — `pyproject` is what PyPI publishes under, while
+`__version__` is what `evaling --version` and `doctor` report. A test compares
+them, so forgetting one fails CI rather than shipping a package that
+misreports itself.
+
 In `CHANGELOG.md`, retitle `## [Unreleased]` as `## [0.2.0] - YYYY-MM-DD` and
 leave a fresh empty `## [Unreleased]` above it.
 

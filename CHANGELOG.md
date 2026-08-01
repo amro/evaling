@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-01
+
+### Added
+
+- **`-v` prints each cell's prompt, response, and scores as it finishes.** It
+  previously printed one line per cell — the response, flattened and cut at 60
+  characters, with no indication of whether the cell passed. The rendered
+  prompt had no human-readable surface anywhere: it is stored on every record
+  and was reachable only through `export --format json`, which is a strange
+  place to send someone debugging a template. `evaling show <run> --case <id>
+  -v` prints the same block from storage.
+
+  Bounded at 20 lines per prompt message and 200 lines of response, with a
+  character backstop, since a response with no newlines is one line however
+  long it is. The prompt is capped tighter because it repeats on every cell,
+  while the response is the reason to turn the flag on. Nothing prints under
+  `--quiet` or `--json`. Under [no-look](docs/no-look.md) there is nothing to
+  print and the block says so.
+
+### Changed
+
+- **`evaling init` scaffolds one eval instead of three demos.** The cases were
+  three unrelated tasks whose `expected` values were words lifted from their
+  own questions — "What is the capital of France?" expected "France", where
+  the answer is Paris. That passed, and taught the reader that `expected` need
+  not be the answer. It is now one task, triaging flagged card transactions,
+  and the criterion is whether the model cited the detail that should decide
+  the case. Each `expected` is quoted from its own transaction and appears in
+  no other, so swapping two of them drops the run from 100% to 33%; the old
+  cases stayed at 100% no matter what `expected` said.
+
+  Case ids changed (`midnight-watch`, `weekly-grocery`, `retry-burst`), and
+  the case variable is now `transaction` rather than `question`. This affects
+  newly scaffolded projects only.
+
+- **The price table matches Anthropic's published rate card**, which added
+  Opus 4.5, Sonnet 4.5, and the deprecated and retired models — still callable
+  on the cloud platforms, and a model missing from the table reports an
+  unknown cost rather than a stale one. Sonnet 5 carries its standard rate
+  rather than the introductory pricing ending 2026-08-31, so its estimate
+  reads high until then; the newest models tokenize to roughly 30% more tokens
+  than the estimator's four-characters-per-token assumption, so their input
+  half reads low. Both are documented, and `params.pricing` overrides either.
+
+- **`--sample` is documented as drawing cases, not cells.** The tutorial said
+  it "runs a random subset instead of the whole matrix", which reads as a cap
+  on cells; the whole matrix still runs over each case drawn, so `--sample 20`
+  against two variants and two models is 80 calls. That it takes all cases
+  when asked for more than exist was documented nowhere.
+
+### Fixed
+
+- **LLM judge calls now use the response cache.** They went straight to the
+  provider, which made the cache's promise backwards: rerunning a plain eval
+  was free, while rerunning a *judged* one — at two or three calls per cell —
+  still paid in full for every judgment. A judge sees the output and the
+  rubric, both covered by the key, so an edited rubric still misses. Cached
+  judgments add nothing to `judge_cost_usd`.
+
+- **A credential in a judge's reply could reach the cache on disk.** Judge
+  completions were not scrubbed before being returned, and the cache stores
+  the completion, so redacting what a record carries happens too late. The
+  cell path had this right and the judge path had not inherited it.
+
+- **A run that used the cache says so.** "My second run finishes immediately"
+  was reported as a bug; it was the cache working, but the only sign of it was
+  one word inside a dense totals line on a run that was over before anyone
+  read it. A fully cached run now says no model was called, and names
+  `--no-cache`.
+
 ## [0.1.0] - 2026-07-31
 
 First release. The entries below are the development history leading to it —
