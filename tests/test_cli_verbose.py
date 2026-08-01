@@ -97,11 +97,19 @@ class TestAVerboseRun:
         assert "output │" not in text
 
     def test_a_cached_cell_is_labelled_cached(self, tmp_path):
-        """The whole complaint about the cache is that reuse is invisible."""
+        """The whole complaint about the cache is that reuse is invisible.
+
+        Asserted against the cell header, not the word: "cached" also appears
+        in the totals line of every run, so `"cached" in output` passes with
+        the marker removed.
+        """
         assert invoke(tmp_path, "run").exit_code == 0
         again = invoke(tmp_path, "-v", "run")
         assert again.exit_code == 0, again.output
-        assert "cached" in flat(again.output)
+        # Two cases, one variant, one model — so both cells, and no latency:
+        # a cached cell made no call, so there is no call to have timed.
+        assert flat(again.output).count("PASS 1.000 · cached") == 2
+        assert "ms" not in flat(again.output)
 
 
 class TestUntrustedOutput:

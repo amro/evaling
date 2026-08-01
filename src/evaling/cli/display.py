@@ -124,9 +124,12 @@ def cell_block(record: ResultRecord) -> Group:
         row("error", *_clip(record.error, OUTPUT_LINES, OUTPUT_CHARS), style="red")
     elif record.output is not None:
         row("output", *_clip(record.output, OUTPUT_LINES, OUTPUT_CHARS))
-    else:
-        # no-look strips messages and output before the record reaches any
-        # display, so there is nothing to withhold here — say why it is empty.
+    elif not record.messages:
+        # Both gone and no error: no-look stripped them before the record
+        # reached any display. Said, rather than rendered as a blank block.
+        # Conditioned on the prompt being absent too, so a cell that somehow
+        # lost only its output is not labelled with a privacy mode nobody
+        # turned on.
         grid.add_row("│", Text("prompt and output withheld (no-look)", style="dim"))
 
     for name, entry in record.scores.items():
