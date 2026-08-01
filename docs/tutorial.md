@@ -486,9 +486,10 @@ You get per-cell score deltas and the pass-rate change, so you can see not
 just *whether* it improved but *which cases moved* — including the ones your
 change quietly broke while the average went up.
 
-While a prompt is still moving, `--sample N` runs a random subset instead of
-the whole matrix. Both runs need the same draw to be comparable, so pass the
-seed the first one reports:
+While a prompt is still moving, `--sample N` draws a random N of your *cases*
+and runs the whole matrix over those — every variant against every model, on
+fewer cases. Both runs need the same draw to be comparable, so pass the seed
+the first one reports:
 
 ```sh
 evaling run --sample 20 --label before

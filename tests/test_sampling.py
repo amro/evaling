@@ -104,6 +104,31 @@ class TestThroughTheCli:
         run_id = RunStore(project / "runs").list_runs()[0]["id"]
         assert len(case_ids(project, run_id)) == 6
 
+    def test_the_sample_bounds_cases_not_cells(self, tmp_path):
+        """`--sample N` draws N cases; the whole matrix still runs over each.
+
+        Documented in cli.md, because reading it as a cap on *cells* is the
+        natural misreading and gets the bill wrong by the size of the matrix.
+        """
+        config = (
+            "models: [{id: m1, provider: mock}, {id: m2, provider: mock}]\n"
+            "variants:\n"
+            '  - {name: v1, prompt: [{role: user, content: "{{ q }}"}]}\n'
+            '  - {name: v2, prompt: [{role: user, content: "{{ q }}!"}]}\n'
+            "cases: [" + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(20)) + "]\n"
+            "scorecard: [{criterion: acc, scorer: {type: contains, value: ''}}]\n"
+        )
+        (tmp_path / "eval.yaml").write_text(config, encoding="utf-8")
+        result = invoke(tmp_path, "run", "--sample", "5")
+        assert result.exit_code == 0, result.output
+        assert "20 requests" in result.output  # 2 variants × 2 models × 5 cases
+
+        run_id = RunStore(tmp_path / "runs").list_runs()[0]["id"]
+        drawn = case_ids(tmp_path, run_id)
+        assert len(drawn) == 20
+        # The same five cases in every cell, or the cells are not comparable.
+        assert len(set(drawn)) == 5
+
     def test_the_seed_is_reported_so_the_draw_can_be_repeated(self, project):
         first = invoke(project, "run", "--sample", "6")
         assert "repeat this draw with" in first.output

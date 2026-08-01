@@ -56,7 +56,7 @@ errors.
 | Flag | Effect |
 |---|---|
 | `--model NAME` / `--variant NAME` / `--case ID` | Run a sub-matrix (each repeatable) |
-| `--sample N` | Evaluate a random N of the selected cases (see below) |
+| `--sample N` | Evaluate a random subset of up to N cases (see below) |
 | `--sample-seed N` | Repeat an earlier draw; requires `--sample` |
 | `--dry-run` | Validate config, render every prompt, print the request count — no model calls. Exits 2 if anything fails to render. |
 | `--max-cost USD` | Stop the run once accumulated cost reaches the limit. Remaining cells are skipped rather than failed, the run is marked `incomplete` (resume it with a higher ceiling), and the exit code is 1. Under concurrency, overshoot is bounded to roughly one call's cost (one pilot call runs alone until per-call cost is known). |
@@ -169,6 +169,15 @@ prompt is still moving, instead of listing `--case` ids by hand:
 ```sh
 evaling run --sample 20        # 20 random cases instead of all 2,000
 ```
+
+It draws **cases, not cells**. The full matrix still runs over each case
+drawn, so `--sample 20` against two variants and two models is 80 calls, not
+20 — and every cell sees the same 20 cases, which is what keeps the
+comparison a comparison.
+
+N is an upper bound: asking for more cases than exist runs all of them rather
+than failing, since the flag means "no more than this many" and a dataset that
+shrank shouldn't break the command that reads it. `--sample 0` is refused.
 
 `validate` and `--dry-run` sample too, but their draw is illustrative — no
 seed is reported, since nothing was spent and nothing was stored. Pass
