@@ -2,8 +2,10 @@
 
 from typing import Any
 
+from rich.console import Group
 from rich.markup import escape as markup_escape
 from rich.table import Table
+from rich.text import Text
 
 from evaling.scoring import cell_summary, filter_failures
 from evaling.storage import ResultRecord
@@ -35,6 +37,109 @@ def snip(text: str | None, width: int = 60) -> str:
 def safe(value: Any) -> str:
     """Escape a config-supplied value (variant/model/case name, label)."""
     return markup_escape("" if value is None else str(value))
+
+
+#: Lines kept per prompt message in a verbose cell block. The prompt is nearly
+#: identical on every cell of a variant, so past a screenful it is repetition.
+PROMPT_LINES = 20
+
+#: Lines kept from the response. Generous, because reading the response is what
+#: verbose is for; the cap is here for a runaway generation, not for prose.
+OUTPUT_LINES = 200
+
+#: Character backstop per part. A response with no newlines counts as one line
+#: however long it is, so a line cap alone does not bound the screen.
+PROMPT_CHARS = PROMPT_LINES * 100
+OUTPUT_CHARS = OUTPUT_LINES * 100
+
+
+def _clip(text: str, max_lines: int, max_chars: int) -> tuple[str, str | None]:
+    """Text bounded by both line count and length, plus a note on what was cut."""
+    lines = text.splitlines() or [""]
+    dropped = len(lines) - max_lines
+    if dropped > 0:
+        lines = lines[:max_lines]
+    body = "\n".join(lines)
+    if len(body) > max_chars:
+        return body[:max_chars], f"… truncated at {max_chars} characters"
+    return body, f"… {dropped} more lines" if dropped > 0 else None
+
+
+def _part_text(part: dict[str, Any]) -> str:
+    """One serialized message part as text. Media is described, never inlined."""
+    if part.get("type") == "text":
+        return str(part.get("text", ""))
+    digest = str(part.get("sha256", ""))[:12]
+    return f"[{part.get('type')} {part.get('media_type', '?')} sha256:{digest}]"
+
+
+def _cell_header(record: ResultRecord) -> str:
+    score, passed = cell_summary(record)
+    if record.error:
+        verdict = "[red]ERROR[/red]"
+    elif passed:
+        verdict = f"[green]PASS[/green] {score3(score)}"
+    else:
+        verdict = f"[red]FAIL[/red] {score3(score)}"
+    facts = []
+    if record.cached:
+        # Said plainly: an instant run with no explanation reads as a no-op.
+        facts.append("cached")
+    elif record.latency_ms is not None:
+        facts.append(f"{record.latency_ms:.0f}ms")
+    if record.cost_usd:
+        facts.append(f"${record.cost_usd:.4f}")
+    title = f"{safe(record.variant)} × {safe(record.model)} × {safe(record.case_id)}"
+    trailer = f" [dim]· {' · '.join(facts)}[/dim]" if facts else ""
+    return f"[bold]{title}[/bold]  {verdict}{trailer}"
+
+
+def cell_block(record: ResultRecord) -> Group:
+    """One cell in full: what was sent, what came back, and how it scored.
+
+    A single renderable, so the caller prints it in one call. Under concurrency
+    rich holds its lock for the duration of a print, so a block emitted this
+    way is never interleaved with another cell's — two prints per cell would
+    be.
+
+    Every untrusted string — model output, provider errors, prompt text — is
+    passed as a ``Text`` object rather than a markup string, so there is no
+    parse step for it to break. Markup in model output has previously both
+    crashed the command and restyled the terminal.
+    """
+    grid = Table.grid(padding=(0, 1))
+    grid.add_column(style="dim", justify="right", no_wrap=True)
+    grid.add_column(overflow="fold")
+
+    def row(label: str, body: str, note: str | None = None, style: str | None = None) -> None:
+        grid.add_row(f"{label} │", Text(body, style=style or ""))
+        if note:
+            grid.add_row("│", Text(note, style="dim"))
+
+    for message in record.messages:
+        text = "\n\n".join(_part_text(part) for part in message.get("parts", []))
+        row(str(message.get("role", "?")), *_clip(text, PROMPT_LINES, PROMPT_CHARS))
+
+    if record.error:
+        row("error", *_clip(record.error, OUTPUT_LINES, OUTPUT_CHARS), style="red")
+    elif record.output is not None:
+        row("output", *_clip(record.output, OUTPUT_LINES, OUTPUT_CHARS))
+    else:
+        # no-look strips messages and output before the record reaches any
+        # display, so there is nothing to withhold here — say why it is empty.
+        grid.add_row("│", Text("prompt and output withheld (no-look)", style="dim"))
+
+    for name, entry in record.scores.items():
+        mark = "pass" if entry.get("passed") else "fail"
+        summary = Text(f"{name} {score3(entry.get('score') or 0.0)} {mark}")
+        detail = entry.get("detail") or entry.get("error")
+        if detail:
+            summary.append(f" — {' '.join(str(detail).split())[:200]}", style="dim")
+        grid.add_row("scores │", summary)
+
+    # Trailing blank line: consecutive blocks otherwise run together into one
+    # wall, which is the failure mode of every verbose flag.
+    return Group(_cell_header(record), grid, Text(""))
 
 
 def matrix_table(aggregates: dict[str, Any]) -> Table:

@@ -13,7 +13,7 @@ evaling [GLOBAL FLAGS] COMMAND [ARGS]
 | `--cache-dir PATH` | Response cache location |
 | `--no-color` | Disable colors (the `NO_COLOR` env var also works) |
 | `-q, --quiet` | Errors and essential output only |
-| `-v, --verbose` | Per-cell detail during runs and in drill-downs |
+| `-v, --verbose` | Print each cell's prompt, response, and scores (see below) |
 | `--json` | Machine-readable JSON on stdout (for scripting) |
 
 Global flags come **before** the command: `evaling --json run`, not
@@ -160,6 +160,44 @@ Best paired with `--sample` for a smoke check before the real matrix:
 evaling run --sample 10 --fail-fast   # does anything work at all?
 evaling run --baseline regression     # the run that decides the build
 ```
+
+#### Watching a run
+
+`-v` prints every cell as it finishes — the prompt evaling actually sent, the
+response it got back, and how each criterion scored it:
+
+```sh
+evaling -v run --sample 3
+```
+
+```
+concise × claude-sonnet-5 × midnight-watch  PASS 1.000 · 1204ms · $0.0021
+system │ You review card transactions for fraud. Answer in one sentence: the
+       │ verdict, then the single detail that decided it, quoted from the
+       │ transaction.
+  user │ $2,480 at Luxe Watches Ltd, 03:14 local time, card not present, first
+       │ purchase from this merchant
+output │ Fraud — the charge is card not present at an unusual hour for a
+       │ first-time merchant.
+scores │ cites-the-signal 1.000 pass
+```
+
+This is the only place the **rendered prompt** is shown. It is stored on every
+record, but otherwise readable only as `export --format json` — so when a
+variant behaves unexpectedly, this is how you check what it actually said
+rather than what you think the template says.
+
+The header carries the verdict, then latency and cost — or `cached`, when the
+response came from the response cache rather than the provider.
+
+Bounded so a runaway generation can't fill the scrollback: 20 lines per prompt
+message and 200 lines of response, then a `… N more lines` note.
+`evaling show <run> --case <id> -v` prints the same block from storage, for
+reading afterwards rather than live.
+
+Under `--quiet` and `--json` it prints nothing — `--json` promises a single
+JSON document on stdout, and interleaving blocks into it would break every
+script that parses it.
 
 #### Sampling
 

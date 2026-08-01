@@ -180,19 +180,60 @@ class TestTheCanaryNeverEscapes:
         for fmt in ("json", "csv", "md", "html"):
             assert CANARY not in export_run(meta, records, fmt), f"{fmt} export leaked"
 
-        # 4. Nothing in any CLI output, including the verbose paths.
+        # 4. Nothing in any CLI output, including the verbose paths. `-v`
+        # prints the rendered prompt and the full response, so it is the
+        # surface with the most to leak; the drill-down takes the hashed id
+        # because that is the only id no-look leaves anyone to type.
         runner = CliRunner()
         base = ["-o", str(settings.output_dir), "--cache-dir", str(settings.cache_dir)]
+        hashed = records[0].case_id
         for args in (
             ["show", result.run_id],
             ["show", result.run_id, "--failures"],
             ["-v", "show", result.run_id],
+            ["-v", "show", result.run_id, "--case", hashed],
             ["export", result.run_id, "--format", "md"],
             ["export", result.run_id, "--format", "json"],
             ["list"],
         ):
             out = runner.invoke(main, base + args, env=ENV, catch_exceptions=False)
             assert CANARY not in out.output, f"CLI leaked via: {' '.join(args)}"
+
+    def test_a_verbose_run_prints_none_of_it(self, tmp_path):
+        """`-v` prints the prompt and the whole response, live, as cells finish.
+
+        The engine redacts a record before any callback sees it, so the verbose
+        display has nothing to print — but that is an invariant one refactor
+        away from being false, and this is the surface where breaking it is
+        loudest: the data would go to the terminal of the person who ran the
+        command precisely to avoid reading it.
+        """
+        config = {
+            "models": [{"id": "mock", "provider": "mock"}],
+            "variants": [
+                {"name": "v1", "prompt": [{"role": "user", "content": "Summarize: {{ note }}"}]}
+            ],
+            "cases": [{"id": f"{CANARY}-c1", "vars": {"note": f"{CANARY} record"}}],
+            "scorecard": [{"criterion": "acc", "scorer": {"type": "contains", "value": CANARY}}],
+        }
+        (tmp_path / "eval.yaml").write_text(json.dumps(config), encoding="utf-8")
+        result = CliRunner().invoke(
+            main,
+            [
+                "-c",
+                str(tmp_path / "eval.yaml"),
+                "-o",
+                str(tmp_path / "runs"),
+                "-v",
+                "run",
+                "--no-look",
+            ],
+            env=ENV,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        assert CANARY not in result.output
+        assert "withheld (no-look)" in result.output
 
     def test_without_no_look_the_canary_is_present(self, tmp_path):
         """Proves the canary test can fail — otherwise it proves nothing."""

@@ -334,15 +334,10 @@ def run(
                 description="evaluating" + (f" · {' · '.join(label_bits)}" if label_bits else ""),
             )
             if app.verbose:
-                status = (
-                    f"[red]{display.snip(record.error)}[/red]"
-                    if record.error
-                    else display.snip(record.output)
-                )
-                progress.console.print(
-                    f"  {display.safe(record.variant)} × {display.safe(record.model)} × "
-                    f"{display.safe(record.case_id)}: {status}"
-                )
+                # One print, not several: rich holds its lock for the duration
+                # of a call, so a block emitted whole is never interleaved with
+                # another cell's under concurrency.
+                progress.console.print(display.cell_block(record))
 
     else:
         on_result = None
@@ -631,13 +626,12 @@ def show(app, ref, failures, case_id):
         app.console.print(f"[bold]case {case_id}[/bold] in run {run_id}")
         app.console.print(display.case_table(subset))
         if app.verbose:
+            # The same block a verbose run prints, so the live view and the
+            # drill-down agree — including the prompt, which the table has no
+            # room for and which is otherwise readable only as exported JSON.
+            app.console.print("")
             for record in subset:
-                app.console.print(
-                    f"\n[bold]{display.safe(record.variant)} × {display.safe(record.model)}[/bold]"
-                )
-                # Model output is the least trustworthy string here: markup in
-                # it either crashed the command or restyled the terminal.
-                app.console.print(display.safe(record.error or record.output or ""))
+                app.console.print(display.cell_block(record))
         return
 
     if failures:

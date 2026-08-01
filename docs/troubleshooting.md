@@ -223,8 +223,13 @@ Note that `--no-cache` bypasses both reads and writes for that run.
 Drill into a single case to see exactly what was sent and returned:
 
 ```sh
-evaling show latest --case retry-burst
+evaling -v show latest --case retry-burst
 ```
+
+Without `-v` this is the scores and the outputs; with it, the rendered prompt
+as well — which is where the answer usually is, since the prompt that went out
+is the one thing a template can get wrong without erroring. `evaling -v run`
+prints the same block live as each cell finishes.
 
 For a judge, the stored `rationale` tells you what the judge thought it was
 doing — usually the fastest way to spot a rubric that's grading something
