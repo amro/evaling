@@ -42,7 +42,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the case variable is now `transaction` rather than `question`. This affects
   newly scaffolded projects only.
 
-- **The price table matches Anthropic's published rate card**, which added
+- **Cost estimates now cover OpenAI and Gemini models, not just Claude ones.**
+  `evaling init --provider openai` scaffolds `gpt-5.2`, which had no price, so
+  a user who took evaling's own suggestion got no cost estimate at all — the
+  line is omitted entirely rather than showing `$0.00`. The table now carries
+  the published first-party text-model rates for Anthropic, OpenAI, and Google
+  Gemini, and a test covers every model a scaffold writes into a config.
+
+  Endpoints whose operator sets the rates — Ollama, vLLM, OpenRouter, an
+  internal gateway — still report no cost, because no table can know them.
+  `params.pricing` remains the answer there, and now also for Gemini Pro evals
+  whose prompts exceed the short-prompt tier the table carries.
+
+- **The Claude rates match Anthropic's published rate card**, which added
   Opus 4.5, Sonnet 4.5, and the deprecated and retired models — still callable
   on the cloud platforms, and a model missing from the table reports an
   unknown cost rather than a stale one. Sonnet 5 carries its standard rate

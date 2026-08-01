@@ -6,11 +6,16 @@ PyPI over OIDC. There is no token to manage and nothing to upload by hand.
 
 ## 1. Refresh the price table
 
-Compare `PRICES` in `src/evaling/providers/pricing.py` against the published
-rate card — [platform.claude.com/docs/en/about-claude/pricing][rates] — and
-update `PRICING_AS_OF` to the day you checked.
+Compare `PRICES` in `src/evaling/providers/pricing.py` against all three
+published rate cards, and update `PRICING_AS_OF` to the day you checked:
 
-[rates]: https://platform.claude.com/docs/en/about-claude/pricing
+- [Anthropic][anthropic-rates]
+- [OpenAI][openai-rates]
+- [Google Gemini][gemini-rates]
+
+[anthropic-rates]: https://platform.claude.com/docs/en/about-claude/pricing
+[openai-rates]: https://developers.openai.com/api/docs/pricing
+[gemini-rates]: https://ai.google.dev/gemini-api/docs/pricing
 
 This is in the runbook because no test can do it. A stale price is wrong only
 relative to a page on the internet, and the suite is forbidden from reaching
@@ -31,7 +36,12 @@ What to look for, in order of how much it costs to miss:
 
 The table is standard first-party rates only — not batch, not cached input,
 not fast mode, and not the partner platforms' own pricing. Those belong in a
-config's `params.pricing`, not here.
+config's `params.pricing`, not here. It carries text models, since those are
+the ones evaling can call; a new image or embedding model is not an omission.
+
+Where a model's rate depends on something evaling doesn't know at estimate
+time — Gemini's Pro models charge more above ~200k input tokens — the table
+takes the tier ordinary evals fall in and names the other in a comment.
 
 Then check `docs/cli.md`'s estimate caveats. They name specific biases, and a
 bias that has expired is a stale claim like any other.

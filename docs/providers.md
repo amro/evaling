@@ -160,18 +160,33 @@ instance, is not accepted by every current Claude model.
 
 ## Cost tracking
 
-evaling ships published per-model rates for Anthropic models and computes cost
-from reported token usage. Anything else — OpenAI models, local servers,
-arbitrary endpoints — reports **no cost** rather than a guess, because the
-operator sets those rates. Supply your own to get cost tracking anywhere:
+evaling ships published per-model rates for **Anthropic, OpenAI, and Google
+Gemini** text models, and computes cost from reported token usage. Anything
+else — a local server, a broker, an internal gateway — reports **no cost**
+rather than a guess, because the operator sets those rates. Supply your own to
+get cost tracking anywhere:
 
 ```yaml
 models:
-  - id: gpt-5.2
-    provider: openai
+  - id: llama3.1:8b
+    provider: openai-compatible
+    base_url: http://localhost:11434/v1
     params:
-      pricing: {input: 1.25, output: 10.0}   # USD per million tokens
+      pricing: {input: 0.0, output: 0.0}   # USD per million tokens
 ```
+
+Three things the built-in rates deliberately do not know:
+
+- **Discounted rates.** They are standard, first-party, non-batch, non-cached
+  rates. Batch processing, cached input, and the cloud platforms' own pricing
+  are all cheaper or different, and none of them are visible to evaling.
+- **Rates that depend on the request.** Gemini's Pro models cost more above
+  roughly 200k input tokens; the table carries the tier ordinary evals fall
+  in. If your prompts are longer than that, set `pricing`.
+- **Who is actually serving a model id.** Lookup is by id alone, so an
+  endpoint serving something under a published name — a local model you called
+  `gemini-2.5-pro`, a broker reselling one — is priced as though it were that
+  model. Set `pricing` on those.
 
 A config `pricing` block always wins over the built-in table, so you can
 correct a stale rate without waiting for a release. Rates must be non-negative

@@ -193,7 +193,21 @@ class TestOpenAI:
         ]
         assert completion.text == "the answer"
         assert completion.input_tokens == 100
-        assert completion.cost_usd is None  # no built-in pricing for this model
+        # Priced from reported usage against the built-in table, which covers
+        # OpenAI models as of 0.1.1 — this asserted None when it did not.
+        assert completion.cost_usd == pytest.approx(100 * 1.75e-6 + 50 * 14e-6)
+
+    def test_an_unknown_model_reports_no_cost(self, tmp_path):
+        """An id the table doesn't carry gets no cost, not a guess of zero."""
+        provider = build(
+            OpenAIProvider,
+            {"id": "some-private-finetune", "provider": "openai"},
+            env={"OPENAI_API_KEY": "sk-openai"},
+        )
+        install(provider, json_response(OPENAI_OK))
+        completion = run(provider, make_request(provider.spec, tmp_path=tmp_path))
+        assert completion.input_tokens == 100
+        assert completion.cost_usd is None
 
     def test_pricing_from_config(self, tmp_path):
         provider = build(

@@ -1,9 +1,11 @@
 """Token pricing for cost estimates.
 
-Rates are USD per million tokens. The built-in table covers models whose
-published pricing we track; anything else (including every OpenAI-compatible
-endpoint, where the operator sets their own rates) reports no cost unless the
-model config supplies its own ``pricing``:
+Rates are USD per million tokens. The built-in table covers the published
+first-party rates for Anthropic, OpenAI, and Google Gemini models. Anything
+else reports no cost unless the model config supplies its own ``pricing`` —
+notably a self-hosted or brokered endpoint (Ollama, vLLM, OpenRouter, an
+internal gateway), where the operator sets the rates and no table can know
+them:
 
     models:
       - id: gpt-5.2
@@ -18,6 +20,11 @@ The table is the standard first-party rate: not batch (half), not cached
 input (a tenth), not fast mode, and not the regional multipliers or the
 partner platforms' own rates. Anything paying one of those should say so with
 ``params.pricing`` rather than expect the table to guess which.
+
+Lookup is by model id alone, so an endpoint serving something under a
+published id — a local model you named ``gemini-2.5-pro``, a broker
+reselling one — is priced as though it were that model. Set ``pricing`` on
+those, and see ``docs/providers.md``.
 """
 
 from dataclasses import dataclass
@@ -35,16 +42,23 @@ class Price:
     output: float
 
 
-# Anthropic's published first-party rate card, standard (non-batch,
-# non-cached) rates in USD per million tokens. Mirroring the published table
-# rather than curating it keeps "is this current?" a question anyone can
-# answer by comparing two lists.
+# Published first-party rate cards, standard (non-batch, non-cached) rates in
+# USD per million tokens. Mirroring the published tables rather than curating
+# them keeps "is this current?" a question anyone can answer by comparing two
+# lists; RELEASING.md step 1 is where that comparison happens.
 #
-# Deprecated and retired models are kept: they are still callable on the cloud
-# platforms, and a model that vanishes from this table starts reporting an
-# unknown cost, which is a worse answer than a slightly stale one. Those
-# platforms bill their own rates, so the figure is the first-party one.
+# Text models only, because those are the ones evaling can call. Base
+# completion models (davinci-002, babbage-002, gpt-3.5-turbo-instruct) and the
+# image, video, speech, and embedding models are left out for the same reason.
+#
+# Deprecated and retired models are kept where they are still reachable — the
+# Claude ones remain callable on the cloud platforms — because a model that
+# vanishes from this table starts reporting an *unknown* cost, which is a
+# worse answer than a slightly stale one. Models that have actually shut down
+# are dropped, since nothing can call them.
 PRICES: dict[str, Price] = {
+    # -- Anthropic --------------------------------------------------------
+    # Cloud platforms bill their own rates; the figure here is first-party.
     "claude-fable-5": Price(10.00, 50.00),
     "claude-mythos-5": Price(10.00, 50.00),
     "claude-opus-5": Price(5.00, 25.00),
@@ -64,6 +78,59 @@ PRICES: dict[str, Price] = {
     "claude-sonnet-4": Price(3.00, 15.00),
     "claude-haiku-4-5": Price(1.00, 5.00),
     "claude-haiku-3-5": Price(0.80, 4.00),
+    # -- OpenAI -----------------------------------------------------------
+    "gpt-5.6-sol": Price(5.00, 30.00),
+    "gpt-5.6-terra": Price(2.00, 12.00),
+    "gpt-5.6-luna": Price(0.20, 1.20),
+    "gpt-5.5": Price(5.00, 30.00),
+    "gpt-5.5-pro": Price(30.00, 180.00),
+    "gpt-5.4": Price(2.50, 15.00),
+    "gpt-5.4-mini": Price(0.75, 4.50),
+    "gpt-5.4-nano": Price(0.20, 1.25),
+    "gpt-5.4-pro": Price(30.00, 180.00),
+    "gpt-5.2": Price(1.75, 14.00),
+    "gpt-5.2-pro": Price(21.00, 168.00),
+    "gpt-5.1": Price(1.25, 10.00),
+    "gpt-5": Price(1.25, 10.00),
+    "gpt-5-mini": Price(0.25, 2.00),
+    "gpt-5-nano": Price(0.05, 0.40),
+    "gpt-5-pro": Price(15.00, 120.00),
+    "gpt-4.1": Price(2.00, 8.00),
+    "gpt-4.1-mini": Price(0.40, 1.60),
+    "gpt-4.1-nano": Price(0.10, 0.40),
+    "gpt-4o": Price(2.50, 10.00),
+    # Priced above its own base id, so it is listed rather than assumed.
+    "gpt-4o-2024-05-13": Price(5.00, 15.00),
+    "gpt-4o-mini": Price(0.15, 0.60),
+    "gpt-4-turbo-2024-04-09": Price(10.00, 30.00),
+    "gpt-4-0613": Price(30.00, 60.00),
+    "gpt-3.5-turbo": Price(0.50, 1.50),
+    "gpt-3.5-turbo-0125": Price(0.50, 1.50),
+    "gpt-3.5-turbo-1106": Price(1.00, 2.00),
+    "o1": Price(15.00, 60.00),
+    "o1-pro": Price(150.00, 600.00),
+    "o3": Price(2.00, 8.00),
+    "o3-pro": Price(20.00, 80.00),
+    "o3-mini": Price(1.10, 4.40),
+    "o4-mini": Price(1.10, 4.40),
+    # -- Google Gemini ----------------------------------------------------
+    # Reached through the `openai-compatible` provider, which prices by model
+    # id like everything else here.
+    #
+    # Two Pro models are tiered by prompt length. The figure below is the
+    # short-prompt tier, which every ordinary eval falls in: doubling the
+    # estimate for a threshold almost nobody crosses would make the number
+    # useless for the runs people actually have. Past ~200k input tokens per
+    # call, set `params.pricing` to the long-prompt tier.
+    "gemini-3.6-flash": Price(1.50, 7.50),
+    "gemini-3.5-flash": Price(1.50, 9.00),
+    "gemini-3.5-flash-lite": Price(0.30, 2.50),
+    # Text input; audio in costs $0.50.
+    "gemini-3.1-flash-lite": Price(0.25, 1.50),
+    "gemini-3.1-pro-preview": Price(2.00, 12.00),  # >200k: $4.00 / $18.00
+    "gemini-2.5-pro": Price(1.25, 10.00),  # >200k: $2.50 / $15.00
+    "gemini-2.5-flash": Price(0.30, 2.50),
+    "gemini-2.5-flash-lite": Price(0.10, 0.40),
 }
 
 

@@ -64,13 +64,29 @@ def test_table_entries_are_positive():
         assert price.output >= price.input, model  # output always costs at least input
 
 
+#: Scaffolds whose model is deliberately unpriced. `mock` costs nothing;
+#: `openai-compatible` points at an endpoint whose operator sets the rates,
+#: which no table can know.
+UNPRICED_SCAFFOLDS = {"mock", "openai-compatible"}
+
+
 def test_every_model_evaling_itself_suggests_is_priced():
-    """`init --provider anthropic` scaffolds a model id; an unpriced one makes
-    the very first real run report an unknown cost."""
-    suggested = re.findall(r"id:\s*(claude-[\w.-]+)", "\n".join(MODEL_BLOCKS.values()))
-    assert suggested
-    for model in suggested:
-        assert model in PRICES, f"{model} is scaffolded but has no price"
+    """`init --provider X` writes a model id into the user's config. An
+    unpriced one means their very first real run reports no cost at all — the
+    estimate line is omitted entirely rather than showing $0.00.
+
+    Scoped by provider rather than by an id pattern: the first version of this
+    matched `claude-*` only, so it passed while `init --provider openai`
+    scaffolded a `gpt-5.2` that had no price.
+    """
+    checked = 0
+    for provider, block in MODEL_BLOCKS.items():
+        if provider in UNPRICED_SCAFFOLDS:
+            continue
+        for model in re.findall(r"id:\s*([\w.:-]+)", block):
+            assert model in PRICES, f"`init --provider {provider}` scaffolds unpriced {model}"
+            checked += 1
+    assert checked, "no scaffolded models were checked"
 
 
 def test_the_table_is_dated():
