@@ -223,7 +223,7 @@ Note that `--no-cache` bypasses both reads and writes for that run.
 Drill into a single case to see exactly what was sent and returned:
 
 ```sh
-evaling show latest --case sky
+evaling show latest --case retry-burst
 ```
 
 For a judge, the stored `rationale` tells you what the judge thought it was

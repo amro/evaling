@@ -80,7 +80,7 @@ answer to "why isn't it using what I told it to use".
 evaling list                     # all stored runs
 evaling show latest              # summary matrix
 evaling show latest --failures   # what went wrong, and why
-evaling show latest --case sky   # one case, side by side across variants/models
+evaling show latest --case retry-burst   # one case, across variants/models
 evaling compare <run-a> latest   # did my prompt change help?
 evaling export latest --format md   # paste-ready summary
 ```

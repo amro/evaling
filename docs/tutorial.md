@@ -98,7 +98,7 @@ cases:
   file: cases.jsonl
 
 scorecard:
-  - criterion: accuracy
+  - criterion: cites-the-signal
     scorer: {type: contains}       # output must contain the case's `expected`
 
 thresholds:
@@ -110,18 +110,29 @@ A prompt is a list of messages, in its own file or inline:
 ```yaml
 # prompts/concise.yaml
 - role: system
-  content: Answer in one short sentence.
+  content: >-
+    You review card transactions for fraud. Answer in one sentence: the verdict,
+    then the single detail that decided it, quoted from the transaction.
 - role: user
-  content: "{{ question }}"
+  content: "{{ transaction }}"
 ```
 
 And a case supplies the variables that template refers to. In a `.jsonl`
 dataset, each line is one case with its variables at the top level:
 
 ```jsonl
-{"id": "sky", "question": "What color is the sky on a clear day?", "expected": "sky"}
-{"id": "capital", "question": "What is the capital of France?", "expected": "France"}
+{"id": "midnight-watch", "transaction": "$2,480 at Luxe Watches Ltd, 03:14 local time, card not present, first purchase from this merchant", "expected": "card not present"}
+{"id": "weekly-grocery", "transaction": "$63.19 at Fairview Grocery, 18:22 local time, chip read, same store weekly for two years", "expected": "chip read"}
 ```
+
+The scaffold grades whether the model *cited the right signal*, not whether it
+guessed the right label. Each `expected` is quoted from its own transaction
+and appears in no other, so an output that names the wrong detail fails — swap
+two of them and the run drops to 33%.
+
+That is also what makes the scaffold work offline. The mock provider echoes
+the prompt instead of answering it, and the deciding detail is in the prompt,
+so the same cases pass before and after you wire up a real model.
 
 Together these define a **matrix**: every variant × every model × every case
 is one *cell*. Two variants, one model, three cases is six cells, and evaling
@@ -158,7 +169,7 @@ evaling run
 ├──────────┼───────┼───────┼───────────┼───────┼────────┤
 │ overall  │       │ 1.000 │    100.0% │     6 │      0 │
 └──────────┴───────┴───────┴───────────┴───────┴────────┘
-6/6 succeeded, 0 failed, 0 cached — 103 in / 58 out tokens, $0.0000
+6/6 succeeded, 0 failed, 0 cached — 379 in / 241 out tokens, $0.0000
 gate passed
   ✓ min_pass_rate: pass rate 100.00% vs required 50.00%
 run 20260724T215201475-b6f0 stored in .evaling/runs/20260724T215201475-b6f0
@@ -173,7 +184,7 @@ forever — you never have to re-run to look at something again.
 evaling list                      # every stored run, newest first
 evaling show latest               # the summary matrix again
 evaling show latest --failures    # only the cells that failed, with reasons
-evaling show latest --case sky    # one case, side by side across variants
+evaling show latest --case retry-burst   # one case, across variants
 ```
 
 `--failures` is the one you'll use most. A passing aggregate hides the
@@ -271,7 +282,7 @@ many cells it skipped. Start with a small number.
 While iterating, cut the matrix down instead of running all of it:
 
 ```sh
-evaling run --variant concise --case sky     # one cell
+evaling run --variant concise --case retry-burst   # one cell
 evaling run --model gpt-5.2                  # one model
 ```
 

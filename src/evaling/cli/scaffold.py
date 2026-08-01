@@ -25,10 +25,15 @@ variants:
     prompt: prompts/detailed.yaml
 
 cases:
+  # Three flagged card transactions. Each case's `expected` is the detail that
+  # should decide it, quoted from that transaction — so the scorecard measures
+  # whether the model cited the right signal, not just whether it guessed the
+  # right label. It also runs offline: the mock provider echoes the prompt back
+  # instead of answering, and the detail is in the prompt.
   file: cases.jsonl
 
 scorecard:
-  - criterion: accuracy
+  - criterion: cites-the-signal
     scorer: {type: contains}       # output must contain the case's `expected`
 
 thresholds:
@@ -37,23 +42,39 @@ thresholds:
 
 CONCISE_YAML = """\
 - role: system
-  content: Answer in one short sentence.
+  content: >-
+    You review card transactions for fraud. Answer in one sentence: the verdict,
+    then the single detail that decided it, quoted from the transaction.
 - role: user
-  content: "{{ question }}"
+  content: "{{ transaction }}"
 """
 
 DETAILED_YAML = """\
 - role: system
-  content: Answer thoroughly, step by step.
+  content: You review card transactions for fraud.
 - role: user
   content: |
-    Please answer in detail: {{ question }}
+    Is this transaction fraud or legitimate? Work through the signals one at a
+    time, then finish by quoting the single detail that decided it.
+
+    {{ transaction }}
 """
 
+#: One case per line: `id` names the case, `expected` is what the scorecard's
+#: `contains` scorer looks for, and everything else is a template variable.
+#:
+#: One task over three cases, which is the shape of a real eval. Each
+#: `expected` is quoted from its own transaction and appears in no other, so a
+#: model that cites the wrong signal fails — the scorecard is not satisfied by
+#: guessing a label. That it also passes offline is a consequence: the mock
+#: provider echoes the prompt, and the deciding detail is in the prompt.
 CASES_JSONL = """\
-{"id": "sky", "question": "What color is the sky on a clear day?", "expected": "sky"}
-{"id": "capital", "question": "What is the capital of France?", "expected": "France"}
-{"id": "arithmetic", "question": "What is 2 + 2?", "expected": "2"}
+{"id": "midnight-watch", "transaction": "$2,480 at Luxe Watches Ltd, 03:14 local time, \
+card not present, first purchase from this merchant", "expected": "card not present"}
+{"id": "weekly-grocery", "transaction": "$63.19 at Fairview Grocery, 18:22 local time, \
+chip read, same store weekly for two years", "expected": "chip read"}
+{"id": "retry-burst", "transaction": "$1,204 at Nova Electronics, 02:41 local time, \
+six declined attempts in the previous minute", "expected": "six declined attempts"}
 """
 
 GITIGNORE = """\
