@@ -1,10 +1,42 @@
 # Releasing
 
-Cutting a release is four steps. Publishing is automated: a **published GitHub
+Cutting a release is five steps. Publishing is automated: a **published GitHub
 Release** triggers `.github/workflows/publish.yml`, which builds and uploads to
 PyPI over OIDC. There is no token to manage and nothing to upload by hand.
 
-## 1. Version and changelog
+## 1. Refresh the price table
+
+Compare `PRICES` in `src/evaling/providers/pricing.py` against the published
+rate card — [platform.claude.com/docs/en/about-claude/pricing][rates] — and
+update `PRICING_AS_OF` to the day you checked.
+
+[rates]: https://platform.claude.com/docs/en/about-claude/pricing
+
+This is in the runbook because no test can do it. A stale price is wrong only
+relative to a page on the internet, and the suite is forbidden from reaching
+one. `test_the_table_is_dated` checks the date's *shape*, not its truth.
+
+What to look for, in order of how much it costs to miss:
+
+- **Models absent from the table**, which report an unknown cost rather than a
+  stale one — the worse answer of the two. Mirror the published card entry for
+  entry, including deprecated and retired models: they are still callable on
+  the cloud platforms.
+- **Changed rates.** These are silent: an estimate stays plausible while being
+  wrong.
+- **Promotional pricing, which the table deliberately does not follow.** It
+  carries standard rates, so an estimate reads high while a promotion runs
+  rather than low after it ends. Record the promotion and its end date in a
+  comment beside the entry, so the number does not later look like a mistake.
+
+The table is standard first-party rates only — not batch, not cached input,
+not fast mode, and not the partner platforms' own pricing. Those belong in a
+config's `params.pricing`, not here.
+
+Then check `docs/cli.md`'s estimate caveats. They name specific biases, and a
+bias that has expired is a stale claim like any other.
+
+## 2. Version and changelog
 
 ```toml
 # pyproject.toml
@@ -28,7 +60,7 @@ The version and the tag must match — `publish.yml` refuses the release if they
 disagree, because the tag is what a human typed and the version is what
 actually ships. Merge this, and wait for CI to go green on `main`.
 
-## 2. Tag
+## 3. Tag
 
 ```sh
 git tag v0.2.0
@@ -38,7 +70,7 @@ git push origin v0.2.0
 A tag on its own publishes nothing. That is deliberate: an accidental tag push
 should not be able to ship a package.
 
-## 3. Release
+## 4. Release
 
 ```sh
 gh release create v0.2.0 --title "v0.2.0" --notes "See CHANGELOG.md."
@@ -55,7 +87,7 @@ If it fails, nothing was published and the version number is still free. If it
 succeeds, that version is permanent — PyPI lets you yank a release but never
 reuse the number.
 
-## 4. Smoke test what you actually published
+## 5. Smoke test what you actually published
 
 ```sh
 uv venv /tmp/check && uv pip install --python /tmp/check/bin/python evaling
