@@ -270,3 +270,39 @@ class TestAReservedLabelIsRefusedBeforeTheRunStarts:
     def test_an_ordinary_label_still_runs(self, tmp_path):
         result = invoke(tmp_path, *run_args(tmp_path, "--label", "nightly"))
         assert result.exit_code == 0, result.output
+
+
+class TestCacheReuseIsVisible:
+    """ "My second run finishes immediately" is the cache working correctly.
+
+    Nothing said so. The word "cached" appeared inside a dense totals line on
+    a run that was over before anyone read it, which is how correct behaviour
+    came to be reported as a bug.
+    """
+
+    def test_a_fully_cached_run_says_no_model_was_called(self, tmp_path):
+        assert invoke(tmp_path, *run_args(tmp_path)).exit_code == 0
+        again = invoke(tmp_path, *run_args(tmp_path))
+        assert again.exit_code == 0, again.output
+        assert "every cell came from the response cache" in again.output
+        assert "--no-cache" in again.output
+
+    def test_a_partly_cached_run_counts_them(self, tmp_path):
+        assert invoke(tmp_path, *run_args(tmp_path)).exit_code == 0
+        config = CONFIG.replace(
+            "  - {id: c2, vars: {q: beta}, expected: beta}\n",
+            "  - {id: c2, vars: {q: beta}, expected: beta}\n"
+            "  - {id: c3, vars: {q: gamma}, expected: gamma}\n",
+        )
+        again = invoke(tmp_path, *run_args(tmp_path), config=config)
+        assert again.exit_code == 0, again.output
+        assert "2 of 3 cells came from the response cache" in again.output
+
+    def test_a_first_run_says_nothing(self, tmp_path):
+        result = invoke(tmp_path, *run_args(tmp_path))
+        assert "response cache" not in result.output
+
+    def test_no_cache_says_nothing(self, tmp_path):
+        assert invoke(tmp_path, *run_args(tmp_path)).exit_code == 0
+        again = invoke(tmp_path, *run_args(tmp_path, "--no-cache"))
+        assert "response cache" not in again.output

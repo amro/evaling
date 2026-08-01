@@ -205,6 +205,29 @@ Resuming a run that already finished is likewise an error
 carry the HTTP status and the provider's message (with secrets redacted).
 Scorer errors name the criterion that raised.
 
+### My second run finished instantly
+
+It was served from the response cache, and the run says so:
+
+```
+every cell came from the response cache — no model was called (--no-cache to force fresh calls)
+```
+
+This is the cache doing its job — an identical request has an identical
+answer, so evaling doesn't buy it twice. Two things people expect to
+invalidate it and are right to:
+
+- **Editing a prompt or a case invalidates it**, because the key covers the
+  rendered messages. Only the cells whose request changed re-run.
+- **Changing a sample size does not**, on its own. A different draw of the
+  same cases is the same requests, so a run that overlaps an earlier one
+  reuses whatever it already paid for.
+
+To force real calls, use `--no-cache` for one run, or `evaling cache clear` to
+drop the stored responses. Sampling at a non-zero temperature is the case
+where this matters most: rerunning gives you the *same* response, not a second
+sample, until you say otherwise.
+
 ### The cache isn't hitting when I expect it to
 
 The key covers only what changes the answer: provider, model, base URL,

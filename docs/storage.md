@@ -108,6 +108,10 @@ after an interruption costs nothing for already-answered cells.
   degrade to misses, never errors.
 - Identical requests in the same run are single-flighted: duplicates wait for
   the first call and reuse its cached response instead of paying again.
+- **LLM judge calls are cached too.** A judge sees the output and the rubric,
+  both of which the key covers, so the same judgment is not bought twice —
+  editing the rubric misses, as it should. Cached judgments add nothing to
+  `judge_cost_usd`.
 
 ## Programmatic access
 

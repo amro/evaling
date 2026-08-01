@@ -404,6 +404,7 @@ def run(
             app.err.print(f"[yellow]warning:[/yellow] {markup_escape(warning)}")
         app.show(display.matrix_table(result.aggregates))
         _say_totals(app, result.counts, result.totals)
+        _say_cache_reuse(app, result.counts)
         if gate:
             for line in display.gate_lines(gate):
                 app.show(line)
@@ -469,6 +470,26 @@ def _say_totals(app, counts, totals):
         f"{counts['failed']} failed, {counts['cached']} cached — "
         f"{totals['input_tokens']} in / {totals['output_tokens']} out tokens, ${cost:.4f}"
     )
+
+
+def _say_cache_reuse(app, counts) -> None:
+    """Say when responses were reused, and how to stop reusing them.
+
+    The report this answers is "my second run finishes immediately" — which is
+    the cache working correctly, but the only sign of it was one word inside a
+    dense totals line, on a run that was over before anyone read it. A run that
+    called nothing should say so in those words.
+    """
+    cached, total = counts["cached"], counts["total"]
+    if not cached:
+        return
+    if cached == total:
+        app.say(
+            "every cell came from the response cache — no model was called "
+            "([bold]--no-cache[/bold] to force fresh calls)"
+        )
+    else:
+        app.say(f"{cached} of {total} cells came from the response cache")
 
 
 def _require_path(value: str, flag: str) -> None:

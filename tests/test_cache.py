@@ -1,7 +1,11 @@
+import pytest
+
 from evaling.cache import ResponseCache
-from evaling.config import Case, Message, ModelSpec
+from evaling.config import Case, EvalConfig, Message, ModelSpec
+from evaling.engine import run_eval
 from evaling.providers.base import Completion
 from evaling.render import render_messages
+from helpers import make_settings
 
 
 def rendered(text="hello", tmp_path=None, files=None, content=None):
@@ -94,3 +98,82 @@ def test_entries_sharded_by_key_prefix(tmp_path):
     key = cache.key_for(spec(), rendered(tmp_path=tmp_path))
     cache.put(key, Completion(text="ok"))
     assert (tmp_path / key[:2] / f"{key}.json").is_file()
+
+
+class TestJudgeCallsAreCachedToo:
+    """A judge is a model call, so it belongs in the cache like any other.
+
+    It was not, which made the cache's promise backwards: a rerun of a plain
+    eval was free, while a rerun of a *judged* eval — the expensive kind, at
+    two or three calls per cell — still paid in full for every judgment.
+    """
+
+    def config(self, tmp_path, rubric="Grade 0-1. Answer JSON.", cost=0.01):
+        cfg = EvalConfig.model_validate(
+            {
+                "models": [
+                    {"id": "main", "provider": "mock"},
+                    {
+                        "id": "judge-model",
+                        "provider": "mock",
+                        "role": "judge",
+                        "params": {"response": '{"score": 1, "passed": true}', "cost": cost},
+                    },
+                ],
+                "variants": [{"name": "v1", "prompt": [{"role": "user", "content": "{{ q }}"}]}],
+                "cases": [{"id": "c1", "vars": {"q": "alpha"}}],
+                "scorecard": [
+                    {"criterion": "quality", "scorer": {"type": "llm-judge", "judge": "grader"}}
+                ],
+                "judges": {
+                    "grader": {
+                        "model": "judge-model",
+                        "rubric": [
+                            {"role": "system", "content": rubric},
+                            {"role": "user", "content": "Grade: {{ output }}"},
+                        ],
+                    }
+                },
+            }
+        )
+        cfg._base_dir = tmp_path  # noqa: SLF001 - test fixture
+        return cfg
+
+    def test_a_rerun_pays_nothing_for_the_same_judgment(self, tmp_path):
+        settings = make_settings(tmp_path, cache=True)
+        first = run_eval(self.config(tmp_path), settings)
+        assert first.totals["judge_cost_usd"] == pytest.approx(0.01)
+
+        second = run_eval(self.config(tmp_path), settings)
+        assert second.totals["judge_cost_usd"] == 0.0
+        assert second.aggregates["overall"]["score"] == first.aggregates["overall"]["score"]
+
+    def test_a_changed_rubric_is_a_miss(self, tmp_path):
+        """Otherwise an edited rubric would be graded by the old one."""
+        settings = make_settings(tmp_path, cache=True)
+        run_eval(self.config(tmp_path), settings)
+        second = run_eval(self.config(tmp_path, rubric="Grade harshly. Answer JSON."), settings)
+        assert second.totals["judge_cost_usd"] == pytest.approx(0.01)
+
+    def test_no_cache_still_pays(self, tmp_path):
+        settings = make_settings(tmp_path, cache=False)
+        run_eval(self.config(tmp_path), settings)
+        second = run_eval(self.config(tmp_path), settings)
+        assert second.totals["judge_cost_usd"] == pytest.approx(0.01)
+
+    def test_a_credential_in_a_judgment_is_redacted_first(self, tmp_path, monkeypatch):
+        """The cache stores the completion, so redacting the record is too late.
+
+        A judge quotes the output it graded; if that output carried a
+        credential, the verdict carries it into a file that outlives the run.
+        """
+        secret = "sk-judge-canary-4417"
+        monkeypatch.setenv("JUDGE_KEY", secret)
+        config = self.config(tmp_path)
+        config.models[1].params["response"] = f'{{"score": 1, "passed": true, "why": "{secret}"}}'
+        config.models[1].api_key_env = "JUDGE_KEY"
+        settings = make_settings(tmp_path, cache=True)
+        run_eval(config, settings)
+
+        for path in (tmp_path / "cache").rglob("*.json"):
+            assert secret not in path.read_text(encoding="utf-8"), path

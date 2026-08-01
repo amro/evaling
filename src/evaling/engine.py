@@ -347,6 +347,25 @@ async def _run_eval_impl(
     async def _governed_call(model: ModelSpec, rendered) -> Completion:
         """A model call from outside the matrix — currently an LLM judge.
 
+        Cached like any other call. A judge sees the model's output and the
+        rubric, both of which the key covers, so an identical judgment has an
+        identical answer — and without this a rerun that served every cell
+        from disk still paid for every judgment, which made "the second run is
+        free" true of exactly the runs that cost the least.
+        """
+        if cache is None:
+            return await _billed_call(model, rendered)
+        key = cache.key_for(model, rendered)
+        async with single_flight(key):
+            completion = await asyncio.to_thread(cache.get, key)
+            if completion is None:
+                completion = await _billed_call(model, rendered)
+                await asyncio.to_thread(cache.put, key, completion)
+            return completion
+
+    async def _billed_call(model: ModelSpec, rendered) -> Completion:
+        """The paid half of a judge call.
+
         A judge is a real, billable model call. Calling the provider directly
         would put it outside the cost budget and outside that model's own
         concurrency and rate limits, so `--max-cost` would bound only half of
@@ -364,6 +383,12 @@ async def _run_eval_impl(
                 completion = await call_with_retries(
                     lambda: provider.complete(request), **retry_kwargs
                 )
+                # Before the caller caches it, for the reason given in
+                # _timed_call: the cache stores this object, so scrubbing only
+                # what a record carries leaves the credential on disk in the
+                # normal case. A judge quoting the output it graded is a
+                # plausible way for one to arrive here.
+                completion.text = redact(completion.text, secret_values)
                 return completion
             finally:
                 if completion is not None and completion.cost_usd:

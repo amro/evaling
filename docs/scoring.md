@@ -67,6 +67,11 @@ A judge call is billed like any other, so it counts against `--max-cost` and
 obeys the judge model's `max_concurrency` and `requests_per_minute`. Budget for
 it: a scorecard with one judge roughly doubles the calls a run makes.
 
+It is also **cached** like any other call, so re-running an unchanged eval
+does not pay to reach the same verdict twice. Editing the rubric changes the
+request and misses the cache, which is what you want; `--no-cache` forces a
+fresh judgment when you want one anyway.
+
 > **A judge sends your case data to another model.** That is a second
 > processor with its own terms and its own retention. Whether that is
 > acceptable for your data is your call, not evaling's, so it is permitted and
