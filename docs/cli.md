@@ -125,6 +125,14 @@ model sets `max_tokens`; the built-in price table is a convenience rather
 than an invoice; and retried calls bill again. Treat it as an order of
 magnitude for deciding, and `--max-cost` as the thing that actually holds.
 
+Two known biases, in opposite directions. The character approximation assumes
+roughly four characters per token, and the newest Claude models use a
+tokenizer that produces around 30% more tokens for the same text — so the
+input half reads low for those. Claude Sonnet 5 is priced at its standard
+rate, not its introductory one, so its estimate reads high until that
+introductory pricing ends. Set `params.pricing` on a model to override the
+table with the rate you are actually paying.
+
 LLM judges *are* counted — a judge is a billable call per cell, so a scorecard
 with two judged criteria makes three calls per cell.
 

@@ -1,6 +1,9 @@
+import re
+
 import pytest
 
-from evaling.providers.pricing import PRICES, estimate_cost, price_for
+from evaling.cli.scaffold import MODEL_BLOCKS
+from evaling.providers.pricing import PRICES, PRICING_AS_OF, estimate_cost, price_for
 
 
 def test_known_model_cost():
@@ -59,3 +62,17 @@ def test_table_entries_are_positive():
     for model, price in PRICES.items():
         assert price.input > 0 and price.output > 0, model
         assert price.output >= price.input, model  # output always costs at least input
+
+
+def test_every_model_evaling_itself_suggests_is_priced():
+    """`init --provider anthropic` scaffolds a model id; an unpriced one makes
+    the very first real run report an unknown cost."""
+    suggested = re.findall(r"id:\s*(claude-[\w.-]+)", "\n".join(MODEL_BLOCKS.values()))
+    assert suggested
+    for model in suggested:
+        assert model in PRICES, f"{model} is scaffolded but has no price"
+
+
+def test_the_table_is_dated():
+    """A rate card with no date cannot be checked against a published one."""
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", PRICING_AS_OF)

@@ -13,13 +13,18 @@ model config supplies its own ``pricing``:
 
 Published prices change. Treat built-in numbers as a convenience, not an
 invoice, and override them in config when accuracy matters.
+
+The table is the standard first-party rate: not batch (half), not cached
+input (a tenth), not fast mode, and not the regional multipliers or the
+partner platforms' own rates. Anything paying one of those should say so with
+``params.pricing`` rather than expect the table to guess which.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
 #: When the built-in table was last checked against published pricing.
-PRICING_AS_OF = "2026-06-24"
+PRICING_AS_OF = "2026-08-01"
 
 
 @dataclass(frozen=True)
@@ -30,7 +35,15 @@ class Price:
     output: float
 
 
-# Anthropic published rates (USD per million tokens).
+# Anthropic's published first-party rate card, standard (non-batch,
+# non-cached) rates in USD per million tokens. Mirroring the published table
+# rather than curating it keeps "is this current?" a question anyone can
+# answer by comparing two lists.
+#
+# Deprecated and retired models are kept: they are still callable on the cloud
+# platforms, and a model that vanishes from this table starts reporting an
+# unknown cost, which is a worse answer than a slightly stale one. Those
+# platforms bill their own rates, so the figure is the first-party one.
 PRICES: dict[str, Price] = {
     "claude-fable-5": Price(10.00, 50.00),
     "claude-mythos-5": Price(10.00, 50.00),
@@ -38,9 +51,19 @@ PRICES: dict[str, Price] = {
     "claude-opus-4-8": Price(5.00, 25.00),
     "claude-opus-4-7": Price(5.00, 25.00),
     "claude-opus-4-6": Price(5.00, 25.00),
+    "claude-opus-4-5": Price(5.00, 25.00),
+    "claude-opus-4-1": Price(15.00, 75.00),
+    "claude-opus-4": Price(15.00, 75.00),
+    # Sonnet 5 is $2/$10 under introductory pricing through 2026-08-31, then
+    # $3/$15. The standard rate is the one here: an estimate that is high for
+    # a few weeks beats one that silently under-counts every run after them,
+    # and nothing in evaling knows what day it is at estimate time.
     "claude-sonnet-5": Price(3.00, 15.00),
     "claude-sonnet-4-6": Price(3.00, 15.00),
+    "claude-sonnet-4-5": Price(3.00, 15.00),
+    "claude-sonnet-4": Price(3.00, 15.00),
     "claude-haiku-4-5": Price(1.00, 5.00),
+    "claude-haiku-3-5": Price(0.80, 4.00),
 }
 
 
