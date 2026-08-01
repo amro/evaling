@@ -54,15 +54,21 @@ OUTPUT_CHARS = OUTPUT_LINES * 100
 
 
 def _clip(text: str, max_lines: int, max_chars: int) -> tuple[str, str | None]:
-    """Text bounded by both line count and length, plus a note on what was cut."""
+    """Text bounded by both line count and length, plus a note on what was cut.
+
+    Both bounds can fire on the same text, and both are reported — saying only
+    that it was cut at a character count would hide how much else there was.
+    """
     lines = text.splitlines() or [""]
     dropped = len(lines) - max_lines
     if dropped > 0:
         lines = lines[:max_lines]
     body = "\n".join(lines)
+    notes = [f"{dropped} more lines"] if dropped > 0 else []
     if len(body) > max_chars:
-        return body[:max_chars], f"… truncated at {max_chars} characters"
-    return body, f"… {dropped} more lines" if dropped > 0 else None
+        body = body[:max_chars]
+        notes.append(f"truncated at {max_chars} characters")
+    return body, f"… {', '.join(notes)}" if notes else None
 
 
 def _part_text(part: dict[str, Any]) -> str:
@@ -84,11 +90,16 @@ def _cell_header(record: ResultRecord) -> str:
     facts = []
     if record.cached:
         # Said plainly: an instant run with no explanation reads as a no-op.
+        # Alone, with neither latency nor cost — a cached cell made no call,
+        # so it timed nothing and paid nothing. The record keeps the cost the
+        # original call had, which belongs in the run's tally but reads here
+        # as money spent on the line that just said nothing was spent.
         facts.append("cached")
-    elif record.latency_ms is not None:
-        facts.append(f"{record.latency_ms:.0f}ms")
-    if record.cost_usd:
-        facts.append(f"${record.cost_usd:.4f}")
+    else:
+        if record.latency_ms is not None:
+            facts.append(f"{record.latency_ms:.0f}ms")
+        if record.cost_usd:
+            facts.append(f"${record.cost_usd:.4f}")
     title = f"{safe(record.variant)} × {safe(record.model)} × {safe(record.case_id)}"
     trailer = f" [dim]· {' · '.join(facts)}[/dim]" if facts else ""
     return f"[bold]{title}[/bold]  {verdict}{trailer}"

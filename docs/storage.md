@@ -111,7 +111,9 @@ after an interruption costs nothing for already-answered cells.
 - **LLM judge calls are cached too.** A judge sees the output and the rubric,
   both of which the key covers, so the same judgment is not bought twice —
   editing the rubric misses, as it should. Cached judgments add nothing to
-  `judge_cost_usd`.
+  `judge_cost_usd`, and `judge_calls` in the same totals counts the judge
+  calls a run actually made: an unpriced judge model bills nothing and is
+  still a call, so cost alone cannot answer "did anything run".
 
 ## Programmatic access
 
@@ -133,6 +135,12 @@ for record in result.records:
 calls. `judge_cost_usd` breaks out the judge portion, so per-cell costs sum to
 `cost_usd - judge_cost_usd`. A judge is not a matrix cell, so its spend cannot
 be attributed to one.
+
+`judge_calls` counts the judge calls the run made, which cost cannot stand in
+for: an unpriced judge model bills nothing and is still a call. Both judge
+totals are cumulative across a `--resume`, since a resumed run continues the
+run rather than replacing it; a run stored before this field existed reports
+no value, which reads as zero.
 
 ## Large runs
 

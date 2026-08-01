@@ -75,7 +75,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was reported as a bug; it was the cache working, but the only sign of it was
   one word inside a dense totals line on a run that was over before anyone
   read it. A fully cached run now says no model was called, and names
-  `--no-cache`.
+  `--no-cache` — unless a judge ran anyway, which an edited rubric causes, in
+  which case it says only the judges were called rather than contradicting the
+  cost printed directly above it.
+
+  `totals` gains `judge_calls` to make that distinction possible: an unpriced
+  judge model bills nothing and is still a call, so `judge_cost_usd` cannot
+  answer "did anything run". Like `judge_cost_usd` it is cumulative across a
+  `--resume`.
 
 ## [0.1.0] - 2026-07-31
 

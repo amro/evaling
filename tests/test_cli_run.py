@@ -302,6 +302,35 @@ class TestCacheReuseIsVisible:
         result = invoke(tmp_path, *run_args(tmp_path))
         assert "response cache" not in result.output
 
+    def test_a_cached_run_whose_judges_ran_does_not_claim_silence(self, tmp_path):
+        """A cell hit with a judge miss is the ordinary state after a rubric
+        edit. Claiming nothing was called then contradicts the cost on the
+        line directly above it."""
+        judged = (
+            "models:\n"
+            "  - {id: mock, provider: mock}\n"
+            "  - id: grader\n"
+            "    provider: mock\n"
+            "    role: judge\n"
+            '    params: {response: \'{"score": 1, "passed": true}\', cost: 0.05}\n'
+            "variants:\n"
+            '  - {name: v1, prompt: [{role: user, content: "{{ q }}"}]}\n'
+            "cases: [{id: c1, vars: {q: alpha}}]\n"
+            "scorecard: [{criterion: j, scorer: {type: llm-judge, judge: g}}]\n"
+            "judges:\n"
+            "  g:\n"
+            "    model: grader\n"
+            '    rubric: [{role: user, content: "RUBRIC Grade {{ output }}"}]\n'
+        )
+        assert invoke(tmp_path, *run_args(tmp_path), config=judged).exit_code == 0
+        edited = judged.replace("RUBRIC Grade", "RUBRIC v2 Grade")
+        again = invoke(tmp_path, *run_args(tmp_path), config=edited)
+        assert again.exit_code == 0, again.output
+        assert "1 cached" in again.output  # the cell was reused
+        assert "$0.0500" in again.output  # the judge was not
+        assert "no model was called" not in again.output
+        assert "only the judges were called" in again.output
+
     def test_no_cache_says_nothing(self, tmp_path):
         assert invoke(tmp_path, *run_args(tmp_path)).exit_code == 0
         again = invoke(tmp_path, *run_args(tmp_path, "--no-cache"))

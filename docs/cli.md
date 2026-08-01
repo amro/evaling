@@ -195,8 +195,9 @@ record, but otherwise readable only as `export --format json` — so when a
 variant behaves unexpectedly, this is how you check what it actually said
 rather than what you think the template says.
 
-The header carries the verdict, then latency and cost — or `cached`, when the
-response came from the response cache rather than the provider.
+The header carries the verdict, then latency and cost — or `cached` alone,
+when the response came from the response cache rather than the provider. A
+cached cell made no call, so it has neither a duration nor a price this run.
 
 Bounded so a runaway generation can't fill the scrollback: 20 lines per prompt
 message and 200 lines of response, then a `… N more lines` note.

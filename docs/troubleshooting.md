@@ -213,6 +213,10 @@ It was served from the response cache, and the run says so:
 every cell came from the response cache — no model was called (--no-cache to force fresh calls)
 ```
 
+If a judge ran anyway — an edited rubric misses the cache while the cells
+still hit it — the line says `only the judges were called` instead, since the
+run did spend something.
+
 This is the cache doing its job — an identical request has an identical
 answer, so evaling doesn't buy it twice. Two things people expect to
 invalidate it and are right to:

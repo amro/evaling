@@ -342,7 +342,10 @@ async def _run_eval_impl(
     # Seeded from what the run has already spent on judges. finalize()
     # overwrites the total rather than adding to it, so starting from zero
     # made a resumed run report only its second half's judge cost.
-    judge_spend = [_prior_judge_cost(store, resume_run_id)]
+    judge_spend = [_prior_judge_total(store, resume_run_id, "judge_cost_usd")]
+    # Counted alongside the spend, and cumulative for the same reason: both
+    # describe the run, which a resume continues rather than replaces.
+    judge_calls = [int(_prior_judge_total(store, resume_run_id, "judge_calls"))]
 
     async def _governed_call(model: ModelSpec, rendered) -> Completion:
         """A model call from outside the matrix — currently an LLM judge.
@@ -374,6 +377,10 @@ async def _run_eval_impl(
         async with limiters[model.id]:
             await budget.acquire()
             completion = None
+            # Counted before the attempt, not after: a judge call that failed
+            # still reached the provider, and this exists to answer "was
+            # anything called", not "was anything billed".
+            judge_calls[0] += 1
             try:
                 request = CompletionRequest(model=model, messages=rendered)
                 retry_kwargs = (
@@ -599,6 +606,7 @@ async def _run_eval_impl(
     await consume_bounded(cell_stream, settings.concurrency, collect)
 
     tally.judge_cost_usd = judge_spend[0]
+    tally.judge_calls = judge_calls[0]
     counts, totals = tally.counts, tally.totals
     records = retained if retain else []
 
@@ -769,17 +777,18 @@ def _known_credentials(providers: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
 
 
-def _prior_judge_cost(store: RunStore, resume_run_id: str | None) -> float:
-    """Judge spend already recorded on the run being resumed.
+def _prior_judge_total(store: RunStore, resume_run_id: str | None, field: str) -> float:
+    """A judge total already recorded on the run being resumed.
 
     Judge calls are not cells, so they leave no record in results.jsonl —
     only the run's totals remember them, and finalize() replaces that total
-    rather than adding to it.
+    rather than adding to it. A run written before a field existed reports
+    nothing for it, which reads as zero.
     """
     if resume_run_id is None:
         return 0.0
     totals = store.load_meta(resume_run_id).get("totals") or {}
-    return float(totals.get("judge_cost_usd") or 0.0)
+    return float(totals.get(field) or 0.0)
 
 
 def _reported_case_id(case_id: str, privacy: "Privacy") -> str:
@@ -848,6 +857,11 @@ class _RunTally:
         self.input_tokens = self.output_tokens = 0
         self.cost_usd = 0.0
         self.judge_cost_usd = 0.0
+        #: Judge calls this run actually made. Not derivable from cost — an
+        #: unpriced judge model bills nothing and is still a call — and not
+        #: from the cell counts, since a judge is not a cell. It exists so a
+        #: caller can tell "nothing was called" from "the cells were cached".
+        self.judge_calls = 0
         self._aggregator = Aggregator()
 
     def add(self, record: ResultRecord) -> None:
@@ -883,6 +897,7 @@ class _RunTally:
             # to cost_usd - judge_cost_usd, because a judge is not a cell.
             "cost_usd": round(self.cost_usd + self.judge_cost_usd, 10),
             "judge_cost_usd": round(self.judge_cost_usd, 10),
+            "judge_calls": self.judge_calls,
         }
 
     @property

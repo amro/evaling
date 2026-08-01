@@ -12,6 +12,7 @@ import re
 
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 from evaling.cli import display, main
 from evaling.storage import ResultRecord
@@ -241,3 +242,49 @@ class TestTheCaseDrilldown:
         result = invoke(tmp_path, "show", "latest", "--case", "c1")
         assert result.exit_code == 0, result.output
         assert "You are terse." not in result.output
+
+
+class TestCachedCellsShowNoSpend:
+    """A cached cell made no call, so it timed nothing and paid nothing.
+
+    The record keeps the cost the original call had — the run's tally needs
+    it — but printing it here puts a dollar figure on the one line whose job
+    is to say this cell was free.
+    """
+
+    def test_neither_latency_nor_cost_is_shown(self):
+        record = ResultRecord(
+            variant="v",
+            model="m",
+            case_id="c",
+            output="hi",
+            cached=True,
+            cost_usd=0.0021,
+            latency_ms=1204.0,
+        )
+        console = Console(width=200, no_color=True, highlight=False)
+        with console.capture() as captured:
+            console.print(display.cell_block(record))
+        header = captured.get().splitlines()[0]
+        assert "cached" in header
+        assert "$" not in header
+        assert "ms" not in header
+
+    def test_an_uncached_cell_still_shows_both(self):
+        record = ResultRecord(
+            variant="v", model="m", case_id="c", output="hi", cost_usd=0.0021, latency_ms=1204.0
+        )
+        console = Console(width=200, no_color=True, highlight=False)
+        with console.capture() as captured:
+            console.print(display.cell_block(record))
+        header = captured.get().splitlines()[0]
+        assert "1204ms" in header
+        assert "$0.0021" in header
+
+
+def test_both_bounds_are_reported_when_both_fire():
+    """Reporting only the character cut would hide how much else there was."""
+    text = "\n".join("x" * 500 for _ in range(display.OUTPUT_LINES + 7))
+    _, note = display._clip(text, display.OUTPUT_LINES, display.OUTPUT_CHARS)
+    assert "7 more lines" in note
+    assert f"truncated at {display.OUTPUT_CHARS} characters" in note

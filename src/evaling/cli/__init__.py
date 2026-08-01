@@ -404,7 +404,7 @@ def run(
             app.err.print(f"[yellow]warning:[/yellow] {markup_escape(warning)}")
         app.show(display.matrix_table(result.aggregates))
         _say_totals(app, result.counts, result.totals)
-        _say_cache_reuse(app, result.counts)
+        _say_cache_reuse(app, result.counts, result.totals)
         if gate:
             for line in display.gate_lines(gate):
                 app.show(line)
@@ -472,24 +472,31 @@ def _say_totals(app, counts, totals):
     )
 
 
-def _say_cache_reuse(app, counts) -> None:
+def _say_cache_reuse(app, counts, totals) -> None:
     """Say when responses were reused, and how to stop reusing them.
 
     The report this answers is "my second run finishes immediately" — which is
     the cache working correctly, but the only sign of it was one word inside a
     dense totals line, on a run that was over before anyone read it. A run that
     called nothing should say so in those words.
+
+    "No model was called" is claimed only when no judge ran either. A cell hit
+    and a judge miss is the ordinary state after editing a rubric, and the
+    first version of this said nothing was called directly above a line
+    reporting what the judges cost.
     """
     cached, total = counts["cached"], counts["total"]
     if not cached:
         return
-    if cached == total:
+    if cached < total:
+        app.say(f"{cached} of {total} cells came from the response cache")
+    elif totals.get("judge_calls"):
+        app.say("every cell came from the response cache — only the judges were called")
+    else:
         app.say(
             "every cell came from the response cache — no model was called "
             "([bold]--no-cache[/bold] to force fresh calls)"
         )
-    else:
-        app.say(f"{cached} of {total} cells came from the response cache")
 
 
 def _require_path(value: str, flag: str) -> None:
