@@ -300,8 +300,8 @@ strips `<style>`. Open the file in a real browser.
 
 ### The HTML report says "Large run — showing partial detail"
 
-Above 2,000 cells the drill-down covers failing cases only. The summary matrix
-and gate still describe the whole run. A full drill-down is about 1.5 KB of
+Above 2,000 cells the drill-down covers the first 200 failing cases. The
+summary matrix and gate still describe the whole run. A full drill-down is about 1.5 KB of
 HTML per cell, so an unbounded report of a large run is a file a browser won't
 open. For complete data use `evaling export <run> --format csv`, or
 `evaling show <run> --case <id>` for a single case.

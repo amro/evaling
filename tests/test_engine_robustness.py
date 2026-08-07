@@ -284,6 +284,90 @@ class TestJudgeCallsAreGoverned:
         )
         assert result.counts["total"] < 20
 
+    def test_a_judge_stopped_by_the_ceiling_leaves_no_record(self, tmp_path, monkeypatch):
+        """The cell is owed, not failed — so it must not be written at all.
+
+        The ceiling can land between a cell's own call and its judge's. Scoring
+        that criterion 0 wrote a record, which counted a cell that was never
+        judged as a quality failure and marked it done, so a resume with a
+        higher ceiling skipped it and the judge never ran. Permanent, and it
+        gated the run.
+        """
+
+        class Priced(MockProvider):
+            async def complete(self, request):
+                await asyncio.sleep(0)
+                return Completion(text='{"score": 1.0}', cost_usd=0.01)
+
+        monkeypatch.setitem(_REGISTRY, "mock", Priced)
+        # Each cell costs 0.01 and its judge another 0.01, so the ceiling is
+        # crossed by a *judge* acquiring: two cells finish whole, the third
+        # has its own call land and is then refused a judge.
+        result = run_eval(
+            self.config(tmp_path, cases=4),
+            make_settings(tmp_path, concurrency=1),
+            model_filter=["m"],
+            max_cost_usd=0.05,
+        )
+        assert result.incomplete is True, "the ceiling was never reached"
+        records = [
+            record_from_dict(json.loads(line))
+            for line in (result.path / "results.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert records, "no cell completed, so nothing here is being tested"
+        poisoned = [
+            (record.case_id, name, entry.get("error"))
+            for record in records
+            for name, entry in (record.scores or {}).items()
+            if "max cost" in (entry.get("error") or "")
+        ]
+        assert not poisoned, f"cells recorded with a budget-skipped judge: {poisoned}"
+        assert all(record.scores for record in records), (
+            "a cell was recorded with no scores at all — the same bug in a different hat"
+        )
+
+    def test_a_resumed_run_counts_what_the_first_half_spent(self, tmp_path, monkeypatch):
+        """The ceiling covers the whole run, not each attempt at it.
+
+        The budget and the judge totals are seeded from the prior records on
+        resume. Without that seeding, `--max-cost 0.05` would allow $0.05 per
+        resume, so a run interrupted twice spends triple its ceiling — and the
+        reported judge total would describe only the final segment.
+        """
+
+        class Priced(MockProvider):
+            async def complete(self, request):
+                await asyncio.sleep(0)
+                return Completion(text='{"score": 1.0}', cost_usd=0.01)
+
+        monkeypatch.setitem(_REGISTRY, "mock", Priced)
+        config = self.config(tmp_path, cases=8)
+        settings = make_settings(tmp_path, concurrency=1)
+        first = run_eval(config, settings, model_filter=["m"], max_cost_usd=0.05)
+        assert first.incomplete is True, "the first pass was not stopped by the ceiling"
+        spent_first = first.totals["cost_usd"] + first.totals["judge_cost_usd"]
+        calls_first = first.totals["judge_calls"]
+        assert calls_first, "no judge ran, so there is no seeding to check"
+
+        # Resumed against the same ceiling it already reached: everything is
+        # already spent, so the resume must do nothing rather than start over.
+        second = run_eval(
+            config,
+            settings,
+            model_filter=["m"],
+            max_cost_usd=0.05,
+            resume_run_id=first.run_id,
+        )
+        spent_total = second.totals["cost_usd"] + second.totals["judge_cost_usd"]
+        assert spent_total == pytest.approx(spent_first), (
+            f"the resume spent {spent_total - spent_first:.4f} more against a ceiling "
+            "the run had already reached"
+        )
+        assert second.totals["judge_calls"] == calls_first, (
+            "the judge totals restarted from zero, so they describe the resume rather than the run"
+        )
+
     def test_judge_spend_is_reported(self, tmp_path, monkeypatch):
         """Enforcing it but not reporting it makes the run's own totals lie."""
 

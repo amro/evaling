@@ -81,7 +81,7 @@ try it:  evaling run
 `.gitignore` already excludes run output and the secrets file, so the
 directory is safe to commit as-is.
 
-Open `eval.yaml` — the whole format is four blocks:
+Open `eval.yaml` — the whole format is five blocks:
 
 ```yaml
 models:
@@ -282,7 +282,7 @@ many cells it skipped. Start with a small number.
 While iterating, cut the matrix down instead of running all of it:
 
 ```sh
-evaling run --variant concise --case retry-burst   # one cell
+evaling run --variant concise --case retry-burst   # one case, every model
 evaling run --model gpt-5.2                  # one model
 ```
 
@@ -670,8 +670,9 @@ and your class can know nothing about evaling.
 Cases stream a page at a time, so a run over a hundred thousand cases costs no
 more memory than a run over ten. Two things change: `--case` filtering can't
 work (evaling doesn't know the ids in advance — filter inside your source),
-and a source with no `limit` refuses to start unless you pass `--max-cost`. An
-source with no bound will run for as many cases as it returns.
+and a source with no `limit` refuses to start unless you pass `--max-cost` —
+when nothing is watching, at least. At a terminal it runs, since Ctrl-C is
+there. A source with no bound runs for as many cases as it returns.
 
 ```sh
 evaling validate     # fetches one page and renders it — no full walk

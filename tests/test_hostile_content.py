@@ -14,6 +14,7 @@ and no secret survives. A new command joins the list and is covered.
 """
 
 import json
+import re
 
 import pytest
 from click.testing import CliRunner
@@ -158,14 +159,20 @@ class TestNothingIsInterpreted:
                 assert value.lstrip()[:1] not in ("=", "+", "@"), f"{column} is a live formula"
 
     def test_markdown_cells_are_not_broken_out_of(self, hostile):
+        """Hostile markup, formulas, and unicode must not reshape the table.
+
+        A name carrying a literal `|` is the other way to break one, and this
+        fixture has none — `test_audit_tail.py` covers that case directly.
+        """
         path, result = hostile
         store = RunStore(path / "runs")
         text = export_run(store.load_meta(result.run_id), store.load_results(result.run_id), "md")
-        # Every table row has the same column count as its header.
         rows = [line for line in text.splitlines() if line.startswith("|")]
-        if rows:
-            widths = {line.count("|") for line in rows}
-            assert len(widths) == 1, f"a value broke the table into widths {widths}"
+        assert rows, "the export had no table at all, so nothing was checked"
+        # Unescaped pipes only: an escaped one is still a `|` character but is
+        # no longer a cell separator, which is the whole point.
+        widths = {len(re.findall(r"(?<!\\)\|", line)) for line in rows}
+        assert len(widths) == 1, f"a value broke the table into widths {widths}"
 
     def test_json_output_is_parseable(self, hostile):
         path, _ = hostile

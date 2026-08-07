@@ -329,20 +329,28 @@ async def _run_eval_impl(
     # first's response in the cache instead of paying for a duplicate call.
     single_flight = KeyedLocks()
 
-    budget = _CostBudget(
-        max_cost_usd,
-        # Cached cells cost nothing, so seeding the budget with them would
-        # make a resumed run believe it had already spent money it hadn't.
-        spent=sum(r.cost_usd for r in prior_records if r.cost_usd and not r.cached) or 0.0,
-    )
-    limiters = {model.id: limiter_for(model) for model in config.models}
-
     # Judge spend is real spend. It is not attributable to a cell — a judge is
     # not a matrix member — so it is tracked here and reported separately.
     # Seeded from what the run has already spent on judges. finalize()
     # overwrites the total rather than adding to it, so starting from zero
     # made a resumed run report only its second half's judge cost.
-    judge_spend = [_prior_judge_total(store, resume_run_id, "judge_cost_usd")]
+    prior_judge_cost = _prior_judge_total(store, resume_run_id, "judge_cost_usd")
+
+    budget = _CostBudget(
+        max_cost_usd,
+        # Cached cells cost nothing, so seeding the budget with them would
+        # make a resumed run believe it had already spent money it hadn't.
+        #
+        # Prior judge spend belongs here too. --max-cost is a ceiling on the
+        # run, and a resume continues that run — leaving judges out let every
+        # resume spend the ceiling afresh, so a heavily judged eval stopped
+        # and resumed three times cost three ceilings.
+        spent=(sum(r.cost_usd for r in prior_records if r.cost_usd and not r.cached) or 0.0)
+        + prior_judge_cost,
+    )
+    limiters = {model.id: limiter_for(model) for model in config.models}
+
+    judge_spend = [prior_judge_cost]
     # Counted alongside the spend, and cumulative for the same reason: both
     # describe the run, which a resume continues rather than replaces.
     judge_calls = [int(_prior_judge_total(store, resume_run_id, "judge_calls"))]
@@ -523,6 +531,15 @@ async def _run_eval_impl(
                 entry.update(score=result.score, passed=result.passed)
                 if result.detail is not None:
                     entry["detail"] = result.detail
+            except BudgetExhausted:
+                # Not a scoring failure: the ceiling was reached before this
+                # judge could be called, so the cell is owed, not answered.
+                # Scoring it 0 would write a record — counting the cell as a
+                # quality failure in the aggregates and marking it done, so a
+                # resume with a higher ceiling would skip it and the judge
+                # would never run. Let it reach the cell handler, which drops
+                # the record exactly as it does for a cell never started.
+                raise
             except Exception as exc:  # noqa: BLE001 - a broken scorer fails the criterion, not the run
                 entry.update(
                     score=0.0, passed=False, error=_describe_error(exc, safe=privacy.no_look)

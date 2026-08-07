@@ -56,8 +56,6 @@ class TestHttpProviderEndToEnd:
         # engine, scorers, storage, gating — runs for real.
         from evaling.providers import http as http_module
 
-        original = http_module.HttpProvider.client
-
         def fake_client(self):
             if self._client is None:
                 self._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -75,7 +73,9 @@ class TestHttpProviderEndToEnd:
         settings = make_settings(tmp_path)
         result = run_eval(config, settings)
 
-        assert original is not fake_client  # sanity: we really patched it
+        # `seen` is only appended to by the fake, so two entries is the proof
+        # that the patch took — comparing the two objects was not, since a
+        # bound method and a test function are never the same object.
         assert len(seen) == 2
         assert seen[0]["model"] == "gpt-5.2"
 

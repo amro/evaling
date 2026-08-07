@@ -62,6 +62,23 @@ server is unaffected. Both are detailed below.
   error instead of guessing, and the `ImportError` is chained rather than
   suppressed so the traceback still names the module that actually failed.
 
+- **A judge stopped by `--max-cost` no longer poisons the cell it was grading.**
+  When the ceiling was crossed after a cell's own call landed but before its
+  judge could start, the judge's criterion was scored `0` and recorded with
+  `skipped: max cost limit reached`. That contradicted the rule the ceiling is
+  built on — a cell it stops is *owed*, not failed, so it leaves no record —
+  and the consequences were permanent: the cell counted as a quality failure
+  in the aggregates and gated the run, and because it now had a record, a
+  resume with a higher ceiling skipped it and the judge never ran. Under the
+  default concurrency every cell in flight at the crossing point was affected,
+  not just one. The cell is now dropped and stays owed.
+
+- **A resumed run counts what it already spent on judges.** `--max-cost` seeded
+  its ledger from prior cells only, so each resume began afresh as far as judge
+  spend was concerned: a heavily judged eval stopped and resumed three times
+  cost three ceilings. The reported judge total was already cumulative; only
+  the enforcement was not.
+
 - **Five text models added to the price table**, checked against all three
   published rate cards on 2026-08-07. No existing rate changed. New: OpenAI's
   `gpt-5.3-chat-latest`, `gpt-5.3-codex`, `gpt-5.2-chat-latest`, and
@@ -79,6 +96,26 @@ server is unaffected. Both are detailed below.
   The docs tests checked that every command and flag *exists*, which cannot
   catch a real flag in a position click rejects. They now also parse every
   documented `evaling …` line, running none of them.
+
+- **Documentation corrections found by auditing every claim against the code.**
+  `hash_case_id`'s worked example printed a digest belonging to a different id
+  (and used an email address as its sample id, which the repo does not carry
+  anywhere else). `dry_run` was said to raise on the first template problem; it
+  collects them per cell in `report.errors` and raises only for config
+  problems. A cell skipped by `--max-cost` was described as a failing cell.
+  Three files claimed a source-backed run without a `limit` refuses to start
+  unconditionally — it refuses when nothing is watching, and `examples/no-look`
+  additionally offered a `--yes` flag that does not exist. `secrets.md` said a
+  missing API key fails the run before any request; every cell on that model
+  fails and the run finishes. The `calibrate` flag table omitted `--model`, the
+  large-report note omitted that failing cases are themselves capped at 200,
+  `configuration.md`'s typed-part list omitted `video`, and the tutorial called
+  its own five-block example four.
+
+- **`evaling doctor` no longer calls an `mcp` past the cap usable.** The extra
+  installs `mcp>=2.0,<3`, but doctor accepted any 2.0-or-newer, so a
+  force-installed 3.x read as healthy — and the line describing it said "too
+  old".
 
 ### Security
 

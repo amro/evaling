@@ -310,6 +310,9 @@ def _mcp_extra_line(install) -> str:
         return "not installed"
     if install["mcp_extra"]:
         return f"installed ({found})"
+    major = found.split(".", 1)[0]
+    if major.isdigit() and int(major) >= 3:
+        return f"{found} — too new, evaling supports 2.x"
     return f"{found} — too old, needs 2.0 or newer"
 
 

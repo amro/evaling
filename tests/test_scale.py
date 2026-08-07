@@ -133,7 +133,12 @@ class TestIncrementalAggregation:
             record.scores = {"acc": {"weight": 1.0, "score": score, "passed": passed}}
         return record
 
-    def test_streaming_matches_batch(self):
+    def test_streaming_produces_the_arithmetic_it_should(self):
+        """Checked against figures worked out by hand, not against `aggregate`.
+
+        `aggregate` *is* an Aggregator fed in a loop, so comparing the two can
+        only ever agree — an error in the shared arithmetic would pass.
+        """
         records = [
             self.make("a", "m1", 1.0, True),
             self.make("a", "m1", 0.5, False),
@@ -143,10 +148,28 @@ class TestIncrementalAggregation:
         streamed = Aggregator()
         for record in records:
             streamed.add(record)
-        assert streamed.result() == aggregate(records)
+        result = streamed.result()
+
+        overall = result["overall"]
+        assert overall["cases"] == 4
+        assert overall["errors"] == 1
+        # Mean over the three scored cells; the errored one contributes 0.
+        assert overall["score"] == pytest.approx((1.0 + 0.5 + 0.0 + 0.75) / 4)
+        assert overall["pass_rate"] == pytest.approx(2 / 4)
+
+        cells = {(cell["variant"], cell["model"]): cell for cell in result["matrix"]}
+        assert set(cells) == {("a", "m1"), ("b", "m1"), ("b", "m2")}
+        assert cells[("a", "m1")]["cases"] == 2
+        assert cells[("a", "m1")]["score"] == pytest.approx(0.75)
+        assert cells[("a", "m1")]["pass_rate"] == pytest.approx(0.5)
+        assert cells[("b", "m1")]["errors"] == 1
+        assert cells[("b", "m2")]["pass_rate"] == pytest.approx(1.0)
 
     def test_empty_aggregate_is_stable(self):
-        assert Aggregator().result() == aggregate([])
+        empty = Aggregator().result()
+        assert empty["overall"] == {"cases": 0, "score": 0.0, "pass_rate": 0.0, "errors": 0}
+        assert empty["matrix"] == []
+        assert empty == aggregate([])
 
     def test_group_arithmetic(self):
         aggregator = Aggregator()

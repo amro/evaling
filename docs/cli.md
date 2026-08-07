@@ -75,8 +75,9 @@ used automatically (pin one first with `evaling baseline set`).
 
 `--no-look` can turn privacy mode on but never off — a config that sets
 `privacy.no_look: true` cannot be loosened from the command line. A run whose
-cases come from a source refuses to start without `limit` or `--max-cost`, and
-cannot be resumed; see [no-look.md](no-look.md) for why.
+cases come from a source cannot be resumed; see [no-look.md](no-look.md) for
+why. With no `limit` and no `--max-cost` it refuses to start when nothing is
+watching — no terminal attached, so no Ctrl-C — and otherwise just runs.
 
 #### Debugging a provider
 
@@ -153,8 +154,9 @@ one cell rather than the whole matrix. Cells already in flight finish and are
 recorded — the run finalizes normally and everything that ran is readable with
 `evaling show` afterwards.
 
-"Failing" means the cell did not pass — an errored cell counts, including one
-skipped by `--max-cost`.
+"Failing" means the cell did not pass, and an errored cell counts. A cell
+skipped by `--max-cost` does not: it was never attempted, so it leaves no
+record at all rather than a failure it did not earn.
 
 It exits `1` on its own, gate or no gate: a build that stopped early but
 exited `0` would read as a pass. The run's summary and `--json` output both
@@ -191,9 +193,10 @@ output │ Fraud — the charge is card not present at an unusual hour for a
 scores │ cites-the-signal 1.000 pass
 ```
 
-This is the only place the **rendered prompt** is shown. It is stored on every
-record, but otherwise readable only as `export --format json` — so when a
-variant behaves unexpectedly, this is how you check what it actually said
+This is where the **rendered prompt** is easiest to read. It is stored on
+every record, and also reachable through the HTML report, `export --format
+json`, and MCP's `get_case_result` — so when a variant behaves unexpectedly,
+this is how you check what it actually said
 rather than what you think the template says.
 
 The header carries the verdict, then latency and cost — or `cached` alone,
@@ -313,6 +316,7 @@ hand-assembled.
 | `--labels FILE` | CSV or JSONL of `case_id` and your rating (required) |
 | `--out DIR` | Directory to create (default: `calibration`) |
 | `--variant NAME` | Which variant's output to rate, if the run has several |
+| `--model ID` | Which model's output to rate, if the run has several |
 | `--judge-model ID` | Model the judge will run on |
 
 ```sh
@@ -390,7 +394,7 @@ rather than markup. Binary inputs are referenced by content hash, never
 inlined, which keeps reports small.
 
 **Large runs are summarized.** Above 2,000 cells the per-case drill-down is
-limited to failing cases and the report says what it omitted. The summary
+limited to the first 200 failing cases, and the report says what it omitted. The summary
 matrix and gate verdict always cover the whole run. This is a practical limit
 rather than a stylistic one: a full drill-down costs roughly 1.5 KB of HTML per
 cell, so a 50,000-cell report would be about 75 MB — a file a browser will not

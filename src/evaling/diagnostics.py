@@ -107,10 +107,16 @@ def _installed_mcp_version() -> str | None:
 
 
 def _mcp_is_usable(found: str | None) -> bool:
+    """Mirrors the `mcp>=2.0,<3` the extra installs, ceiling included.
+
+    Reporting a force-installed 3.x as usable would be doctor disagreeing with
+    both the packaging and the changelog, in the command people run to find
+    out why something is broken.
+    """
     if found is None:
         return False
     major = found.split(".", 1)[0]
-    return major.isdigit() and int(major) >= 2
+    return major.isdigit() and 2 <= int(major) < 3
 
 
 def _describe_config(path: Path, problems: list[str]) -> tuple[EvalConfig | None, dict[str, Any]]:

@@ -135,8 +135,10 @@ print(report.requests)  # how many calls a real run would make
 print(report.cells)  # the matrix that would run
 ```
 
-`dry_run` renders every prompt and raises on the first template or config
-problem, without issuing a request. This is what `evaling validate` calls.
+`dry_run` renders every prompt without issuing a request, and is what
+`evaling validate` calls. A config problem — an unusable scorer, a sample
+against a source — raises. A template problem is collected per cell in
+`report.errors` instead, so one bad case does not hide the rest.
 
 To see the matrix itself:
 
@@ -299,7 +301,7 @@ whitelist of what to keep, not a list of what to remove.
 can find a hashed case in your own data:
 
 ```python
-hash_case_id("customer@example.com")  # 'case-2be299046ace7bbe'
+hash_case_id("order-8837")  # 'case-34fafabf4820edbf'
 ```
 
 See [no-look.md](no-look.md).

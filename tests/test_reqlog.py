@@ -259,12 +259,26 @@ class TestItNeverBreaksARun:
     def test_a_write_failure_mid_run_does_not_fail_the_run(self, project, monkeypatch):
         """The run being diagnosed matters more than the diagnosis of it."""
         log = RequestLog(project / "trace.jsonl")
+        log.record(model="before")
+        assert entries(project / "trace.jsonl"), "the log was never working, so nothing broke"
+
+        exploded = []
 
         def explode(*args, **kwargs):
+            exploded.append(True)
             raise OSError("disk full")
 
         monkeypatch.setattr(type(log.path), "open", explode, raising=False)
         log.record(model="m")  # must not raise
+        # Without this the test passes when the patch misses — swapping
+        # `self.path.open(...)` for `open(self.path, ...)` would leave the
+        # write working and the failure never injected.
+        assert exploded, "the write failure was never injected"
+
+        monkeypatch.undo()
+        log.record(model="after")
+        written = [entry["model"] for entry in entries(project / "trace.jsonl")]
+        assert written == ["before", "after"], "the log stopped working after one failure"
 
     def test_an_unserializable_entry_is_still_a_line(self, project):
         log = RequestLog(project / "trace.jsonl")

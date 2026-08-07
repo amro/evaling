@@ -175,5 +175,10 @@ class TestJudgeCallsAreCachedToo:
         settings = make_settings(tmp_path, cache=True)
         run_eval(config, settings)
 
-        for path in (tmp_path / "cache").rglob("*.json"):
+        cached = list((tmp_path / "cache").rglob("*.json"))
+        # Without this the loop is vacuous: if judge responses ever stop being
+        # cached, "no file contains the secret" becomes true of no files, and
+        # the test goes green while proving the opposite of its name.
+        assert cached, "nothing was cached, so nothing here was checked"
+        for path in cached:
             assert secret not in path.read_text(encoding="utf-8"), path

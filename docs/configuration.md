@@ -153,7 +153,8 @@ variants:
 
 Messages are multi-turn (`system` / `user` / `assistant`). A message's
 `content` is either a plain string (shorthand for one text part) or a list of
-typed parts: `text`, `image`, `file` (documents such as PDFs), `audio`. See
+typed parts: `text`, `image`, `file` (documents such as PDFs), `audio`,
+`video`. See
 [prompts.md](prompts.md) for templating details.
 
 ## `cases`

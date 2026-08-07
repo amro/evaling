@@ -76,6 +76,20 @@ class TestWhatItReports:
         assert payload["evaling"]["mcp_extra"] is True
         assert "installed (2.0.0)" in invoke(project, "doctor").output
 
+    def test_an_mcp_past_the_cap_is_not_called_usable(self, project, monkeypatch):
+        """The extra installs `mcp>=2.0,<3`; doctor must not disagree with it.
+
+        Only reachable by force-installing a 3.x, but that is exactly when
+        someone runs doctor.
+        """
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: "3.0.0")
+        payload = json.loads(invoke(project, "--json", "doctor").output)
+        assert payload["evaling"]["mcp_extra"] is False
+        assert payload["evaling"]["mcp_version"] == "3.0.0"
+        text = invoke(project, "doctor").output
+        assert "too new" in text, "a newer mcp was reported as too old"
+        assert "3.0.0" in text
+
     def test_the_mcp_line_says_not_installed_when_it_is_absent(self, project, monkeypatch):
         monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: None)
         payload = json.loads(invoke(project, "--json", "doctor").output)

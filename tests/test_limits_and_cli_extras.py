@@ -1,6 +1,7 @@
 """Per-model limits, the cache command, validate, and init --provider."""
 
 import asyncio
+import json
 import time
 
 import pytest
@@ -277,12 +278,29 @@ class TestInitProvider:
 
 
 class TestStreamingReads:
-    def test_iter_results_matches_load_results(self, tmp_path):
+    def test_iter_results_yields_what_the_run_wrote(self, tmp_path):
+        """Checked against the file, not against `load_results`.
+
+        `load_results` *is* `list(iter_results)`, so comparing them agrees by
+        construction — a reader that dropped or reordered records would pass.
+        """
         settings = make_settings(tmp_path)
         result = run_eval(make_config(tmp_path), settings)
         store = RunStore(settings.output_dir)
-        streamed = [record.key for record in store.iter_results(result.run_id)]
-        assert streamed == [record.key for record in store.load_results(result.run_id)]
+        on_disk = [
+            (record["variant"], record["model"], record["case_id"])
+            for record in (
+                json.loads(line)
+                for line in (result.path / "results.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+        ]
+        assert on_disk, "the run wrote no records"
+        streamed = [
+            (record.variant, record.model, record.case_id)
+            for record in store.iter_results(result.run_id)
+        ]
+        assert streamed == on_disk
 
     def test_iter_results_on_missing_run_is_empty(self, tmp_path):
         assert list(RunStore(tmp_path).iter_results("nope")) == []

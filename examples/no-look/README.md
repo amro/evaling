@@ -54,9 +54,9 @@ limit"`). That detail
 is the only thing about the output that reaches a report — so what you put
 there is the decision about what leaves the boundary.
 
-**Bounded by construction.** `limit: 100` caps the run. Without a `limit`,
-evaling asks for `--max-cost` or `--yes` first, since the call count would
-otherwise be whatever the source returns.
+**Bounded by construction.** `limit: 100` caps the run. Without a `limit` the
+call count is whatever the source returns, so evaling refuses to start without
+`--max-cost` when nothing is watching — no terminal, no Ctrl-C.
 
 **No resume.** Deliberate. A live source can return different rows on the
 second call — inserted, mutated, aged out — and evaling cannot verify that it

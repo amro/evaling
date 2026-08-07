@@ -115,8 +115,10 @@ models:
 
 ## If a key is missing
 
-The run fails before any request goes out, naming both the model and the
-variable it expected:
+Every cell on that model fails, naming both the model and the variable it
+expected. The run itself finishes and reports them — nothing checks keys
+before the first call, so a config with one good model and one bad still gets
+you the good model's results:
 
 ```
 model 'claude-sonnet-5': no API key found — set ANTHROPIC_API_KEY
