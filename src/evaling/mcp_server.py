@@ -377,23 +377,45 @@ def render_prompt_tool(
 # -- server --------------------------------------------------------------
 
 
+def _unusable_mcp_message() -> str:
+    """Say which of the two things is wrong: no `mcp` at all, or too old an one.
+
+    Both arrive as an ImportError from the same line, and the difference is the
+    whole of what the reader has to do next. Telling someone who already has
+    mcp 1.x to install mcp sends them to check a box that is already ticked.
+    """
+    try:
+        import mcp  # noqa: F401
+    except ImportError:
+        return (
+            "the MCP server needs the optional 'mcp' dependency: "
+            "install with  pip install 'evaling[mcp]'"
+        )
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        found = f"mcp {version('mcp')}"
+    except PackageNotFoundError:  # pragma: no cover - installed but unregistered
+        found = "an older mcp"
+    return (
+        f"the MCP server needs mcp 2.0 or newer, but {found} is installed: "
+        "upgrade with  pip install --upgrade 'evaling[mcp]'"
+    )
+
+
 def build_server(output_dir: str | None = None, config_path: str | None = None):
+    """Register the tools on an MCP server (import is lazy: optional dep)."""
     # Bound once here so the tool wrappers below can take `config_path` as
     # their own parameter name without shadowing the server's default.
     default_config = config_path
-    """Register the tools on a FastMCP server (import is lazy: optional dep)."""
     try:
-        from mcp.server.fastmcp import Context, FastMCP
+        from mcp.server.mcpserver import Context, MCPServer
     except ImportError:  # pragma: no cover - exercised via the CLI's hint path
-        raise EvalingError(
-            "the MCP server needs the optional 'mcp' dependency: "
-            "install with  pip install 'evaling[mcp]'"
-        ) from None
+        raise EvalingError(_unusable_mcp_message()) from None
 
-    server = FastMCP("evaling", instructions=INSTRUCTIONS)
-    # FastMCP has no version parameter, so it reports the SDK's version as the
-    # server's. An agent asking what it is connected to should hear evaling's.
-    server._mcp_server.version = __version__
+    # Without `version`, the server reports an empty one. An agent asking what
+    # it is connected to should hear evaling's.
+    server = MCPServer("evaling", version=__version__, instructions=INSTRUCTIONS)
 
     @server.tool(description=run_eval_tool.__doc__)
     async def run_eval(
@@ -475,15 +497,15 @@ def _reject_unknown_arguments(server) -> None:
     because it looks like it worked, on the one tool that spends money.
 
     Two halves. The generated schema permits any extra property, so each tool's
-    schema is marked closed. And FastMCP registers its call handler with
-    ``validate_input=False``, so nothing checks arguments against that schema —
-    re-registering the same handler with validation on makes the server refuse
-    an unknown argument rather than dropping it.
+    schema is marked closed. And nothing checks arguments against that schema —
+    the SDK drops what a tool didn't declare — so ``call_tool`` is wrapped to
+    refuse an unknown argument rather than silently discard it.
 
-    ``validate_input`` is public API on the lowlevel server, which the ``mcp``
-    floor in pyproject guarantees. Setting the schema needs the tool manager's
-    internals, so that half is best-effort; a test asserts the schemas really
-    are closed, so an SDK change breaks CI rather than a user's server.
+    ``call_tool`` is the SDK's public entry point, and its own request handler
+    dispatches through it, so wrapping the instance covers every caller.
+    Setting the schema needs the tool manager's internals, so that half is
+    best-effort; a test asserts the schemas really are closed, so an SDK change
+    breaks CI rather than a user's server.
     """
     manager = getattr(server, "_tool_manager", None)
     tools = getattr(manager, "_tools", None)
@@ -496,13 +518,13 @@ def _reject_unknown_arguments(server) -> None:
                 schema.setdefault("additionalProperties", False)
     # Reject arguments the tool doesn't declare, and nothing else.
     #
-    # The lowlevel server's `validate_input=True` would do this, but it runs
-    # full jsonschema validation ahead of FastMCP's `pre_parse_json` — which
-    # exists because some clients send list and object arguments as
-    # JSON-encoded strings. Turning it on therefore refused calls those clients
-    # make correctly today, to fix a different problem. Checking names only
-    # keeps the leniency and closes the hole.
-    from mcp.server.fastmcp.exceptions import ToolError  # optional dep
+    # Full jsonschema validation against the closed schema would do this, but
+    # it would run ahead of the SDK's `pre_parse_json` — which exists because
+    # some clients send list and object arguments as JSON-encoded strings.
+    # Validating everything would therefore refuse calls those clients make
+    # correctly today, to fix a different problem. Checking names only keeps
+    # the leniency and closes the hole.
+    from mcp.server.mcpserver.exceptions import ToolError  # optional dep
 
     declared = {
         name: set((getattr(tool, "parameters", {}) or {}).get("properties", {}))
@@ -510,16 +532,16 @@ def _reject_unknown_arguments(server) -> None:
     }
     inner = server.call_tool
 
-    async def call_tool_checked(name: str, arguments: dict):
+    async def call_tool_checked(name: str, arguments: dict, *args, **kwargs):
         unknown = sorted(set(arguments or {}) - declared.get(name, set()))
         if unknown:
             known = ", ".join(sorted(declared.get(name, set()))) or "none"
             raise ToolError(
                 f"unknown argument(s) for {name}: {', '.join(unknown)}. This tool takes: {known}."
             )
-        return await inner(name, arguments)
+        return await inner(name, arguments, *args, **kwargs)
 
-    server._mcp_server.call_tool(validate_input=False)(call_tool_checked)
+    server.call_tool = call_tool_checked
 
 
 async def _report(ctx, done: int, total: int | None) -> None:

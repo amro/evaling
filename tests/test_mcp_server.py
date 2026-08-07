@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import json
 import os
-from datetime import timedelta
 
 import pytest
 import yaml
@@ -269,6 +268,12 @@ class TestServerWiring:
         for tool in asyncio.run(server.list_tools()):
             assert tool.description, f"{tool.name} needs a description for the agent"
 
+    def test_the_server_reports_evalings_version(self, tmp_path):
+        """Left unset, the SDK reports an empty version rather than evaling's."""
+        from evaling import __version__
+
+        assert build_server(output_dir=str(tmp_path)).version == __version__
+
     def test_call_through_the_server(self, project):
         server = build_server(output_dir=runs_dir(project))
 
@@ -277,9 +282,47 @@ class TestServerWiring:
             return await server.call_tool("list_runs", {})
 
         result = asyncio.run(go())
-        # FastMCP returns (content_blocks, structured_result)
-        structured = result[1] if isinstance(result, tuple) else result
-        assert structured["total"] == 1
+        assert result.is_error is False, result.content
+        assert json.loads(result.content[0].text)["total"] == 1
+
+
+class TestWhenMcpIsUnusable:
+    """Two ways that import fails, and they need opposite instructions.
+
+    Both reach us as an ImportError from the same line. Telling someone who
+    already runs mcp 1.x to install mcp sends them to tick a ticked box.
+    """
+
+    def block(self, monkeypatch, prefix):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def blocked(name, *args, **kwargs):
+            if name == prefix or name.startswith(f"{prefix}."):
+                raise ImportError(f"no {prefix}")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", blocked)
+
+    def test_no_mcp_at_all_says_install_it(self, monkeypatch):
+        self.block(monkeypatch, "mcp")
+        with pytest.raises(EvalingError) as err:
+            build_server()
+        assert "evaling[mcp]" in str(err.value)
+        assert "upgrade" not in str(err.value)
+
+    def test_too_old_an_mcp_says_upgrade_and_names_what_is_there(self, monkeypatch):
+        import importlib.metadata
+
+        monkeypatch.setattr(importlib.metadata, "version", lambda name: "1.28.1")
+        self.block(monkeypatch, "mcp.server.mcpserver")
+        with pytest.raises(EvalingError) as err:
+            build_server()
+        message = str(err.value)
+        assert "mcp 2.0 or newer" in message
+        assert "mcp 1.28.1 is installed" in message, message
+        assert "upgrade" in message
 
 
 @pytest.mark.slow
@@ -322,7 +365,7 @@ class TestOverTheProtocol:
                 # A server that starts but never answers — a stray print() to
                 # stdout corrupting the framing, say — would otherwise hang the
                 # CI job to its limit instead of failing.
-                ClientSession(read, write, read_timeout_seconds=timedelta(seconds=30)) as session,
+                ClientSession(read, write, read_timeout_seconds=30) as session,
             ):
                 init = await session.initialize()
                 return await body(session, init)
@@ -333,7 +376,7 @@ class TestOverTheProtocol:
         from evaling import __version__
 
         async def body(session, init):
-            return init.serverInfo.name, init.serverInfo.version
+            return init.server_info.name, init.server_info.version
 
         name, version = self.drive(project, body)
         assert name == "evaling"
@@ -365,7 +408,7 @@ class TestOverTheProtocol:
     def test_errors_reach_the_client_as_errors(self, project):
         async def body(session, init):
             result = await session.call_tool("get_run", {"run_id": "ghost"})
-            return result.isError, result.content[0].text
+            return result.is_error, result.content[0].text
 
         is_error, text = self.drive(project, body)
         assert is_error is True
@@ -380,7 +423,7 @@ class TestOverTheProtocol:
 
         async def body(session, init):
             return {
-                t.name: t.inputSchema.get("additionalProperties")
+                t.name: t.input_schema.get("additionalProperties")
                 for t in (await session.list_tools()).tools
             }
 
@@ -393,7 +436,7 @@ class TestOverTheProtocol:
 
         async def body(session, init):
             result = await session.call_tool("run_eval", {"config": "somewhere-else.yaml"})
-            return result.isError, result.content[0].text
+            return result.is_error, result.content[0].text
 
         is_error, text = self.drive(project, body)
         assert is_error is True, "an unknown argument was accepted and dropped"
@@ -403,9 +446,9 @@ class TestOverTheProtocol:
 class TestProgressNotifications:
     """The fire-and-forget progress path, which had no coverage at any layer.
 
-    In-process rather than a subprocess: `create_connected_server_and_client_session`
-    runs the whole JSON-RPC layer over memory streams, so this is fast enough
-    not to need the slow marker.
+    In-process rather than a subprocess: `Client(server)` runs the whole
+    JSON-RPC layer over memory streams, so this is fast enough not to need the
+    slow marker.
     """
 
     def collect(self, tmp_path, cases=3):
@@ -418,14 +461,14 @@ class TestProgressNotifications:
         seen = []
 
         async def go():
-            from mcp.shared.memory import create_connected_server_and_client_session as connect
+            from mcp import Client
 
             server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
 
             async def on_progress(progress, total, message):
                 seen.append((progress, total, message))
 
-            async with connect(server._mcp_server) as session:
+            async with Client(server) as session:
                 result = await session.call_tool(
                     "run_eval",
                     {"config_path": str(tmp_path / "eval.yaml")},
@@ -447,14 +490,14 @@ class TestProgressNotifications:
         """Progress is fire-and-forget: no client callback must not fail a run."""
 
         async def go():
-            from mcp.shared.memory import create_connected_server_and_client_session as connect
+            from mcp import Client
 
             config = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "x"}}])
             (tmp_path / "eval.yaml").write_text(
                 yaml.safe_dump(config.model_dump(mode="json")), encoding="utf-8"
             )
             server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
-            async with connect(server._mcp_server) as session:
+            async with Client(server) as session:
                 result = await session.call_tool(
                     "run_eval", {"config_path": str(tmp_path / "eval.yaml")}
                 )
@@ -496,10 +539,10 @@ class TestSourceBackedRunsOverMcp:
 
     def call(self, project, args=None):
         async def go():
-            from mcp.shared.memory import create_connected_server_and_client_session as connect
+            from mcp import Client
 
             server = build_server(output_dir=str(project / "runs"), config_path=None)
-            async with connect(server._mcp_server) as session:
+            async with Client(server) as session:
                 return await session.call_tool(
                     "run_eval", {"config_path": str(project / "eval.yaml"), **(args or {})}
                 )
@@ -508,18 +551,18 @@ class TestSourceBackedRunsOverMcp:
 
     def test_a_source_backed_config_runs(self, tmp_path):
         result = self.call(self.project(tmp_path))
-        assert not result.isError, result.content[0].text
+        assert not result.is_error, result.content[0].text
         assert json.loads(result.content[0].text)["counts"]["total"] == 4
 
     def test_an_unbounded_source_asks_for_a_ceiling(self, tmp_path):
         """An agent should not be able to start an unbounded paid run by accident."""
         result = self.call(self.project(tmp_path, limit="page_size: 2"))
-        assert result.isError
+        assert result.is_error
         assert "limit" in result.content[0].text and "max_cost_usd" in result.content[0].text
 
     def test_an_unbounded_source_runs_with_a_ceiling(self, tmp_path):
         result = self.call(self.project(tmp_path, limit="page_size: 2"), {"max_cost_usd": 1.0})
-        assert not result.isError, result.content[0].text
+        assert not result.is_error, result.content[0].text
         assert json.loads(result.content[0].text)["counts"]["total"] == 10
 
     def test_lenient_argument_encodings_still_work(self, tmp_path):
@@ -531,18 +574,18 @@ class TestSourceBackedRunsOverMcp:
         """
         project = self.project(tmp_path)
         result = self.call(project, {"variants": '["v1"]'})
-        assert not result.isError, result.content[0].text
+        assert not result.is_error, result.content[0].text
         assert json.loads(result.content[0].text)["counts"]["total"] == 4
 
     def test_an_unknown_argument_names_what_the_tool_takes(self, tmp_path):
         result = self.call(self.project(tmp_path), {"varients": ["v1"]})
-        assert result.isError
+        assert result.is_error
         text = result.content[0].text
         assert "varients" in text and "This tool takes:" in text and "variants" in text
 
     def test_case_filters_are_refused_with_a_reason(self, tmp_path):
         result = self.call(self.project(tmp_path), {"cases": ["c1"]})
-        assert result.isError
+        assert result.is_error
         assert "fetched lazily" in result.content[0].text
 
 
@@ -587,11 +630,11 @@ class TestNoLookOverASourceOverMcp:
         project = self.project(tmp_path)
 
         async def go():
-            from mcp.shared.memory import create_connected_server_and_client_session as connect
+            from mcp import Client
 
             server = build_server(output_dir=str(project / "runs"), config_path=None)
             seen = []
-            async with connect(server._mcp_server) as session:
+            async with Client(server) as session:
                 run = await session.call_tool(
                     "run_eval", {"config_path": str(project / "eval.yaml")}
                 )
@@ -651,11 +694,11 @@ class TestConcurrentToolCalls:
         progress = {index: [] for index in range(len(sizes))}
 
         async def go():
-            from mcp.shared.memory import create_connected_server_and_client_session as connect
+            from mcp import Client
 
             server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
 
-            async with connect(server._mcp_server) as session:
+            async with Client(server) as session:
 
                 async def call(index):
                     async def on_progress(done, total, message):
@@ -706,10 +749,10 @@ class TestConcurrentToolCalls:
         (tmp_path / "good.yaml").write_text(self.config(3), encoding="utf-8")
 
         async def go():
-            from mcp.shared.memory import create_connected_server_and_client_session as connect
+            from mcp import Client
 
             server = build_server(output_dir=str(tmp_path / "runs"), config_path=None)
-            async with connect(server._mcp_server) as session:
+            async with Client(server) as session:
                 good, bad = await asyncio.gather(
                     session.call_tool("run_eval", {"config_path": str(tmp_path / "good.yaml")}),
                     session.call_tool("run_eval", {"config_path": str(tmp_path / "missing.yaml")}),
@@ -718,7 +761,7 @@ class TestConcurrentToolCalls:
 
         summary, failure = asyncio.run(go())
         assert summary["counts"]["total"] == 3
-        assert failure.isError is True
+        assert failure.is_error is True
 
 
 class TestInterruptedRun:
@@ -825,10 +868,10 @@ class TestInterruptedRun:
         project = self.project(tmp_path)
 
         async def go():
-            from mcp.shared.memory import create_connected_server_and_client_session as connect
+            from mcp import Client
 
             server = build_server(output_dir=str(project / "runs"), config_path=None)
-            async with connect(server._mcp_server) as session:
+            async with Client(server) as session:
                 call = asyncio.create_task(
                     session.call_tool("run_eval", {"config_path": str(project / "eval.yaml")})
                 )
@@ -887,7 +930,7 @@ class TestServerStartedFromAnotherDirectory:
             )
             async with (
                 stdio_client(params) as (read, write),
-                ClientSession(read, write, read_timeout_seconds=timedelta(seconds=30)) as session,
+                ClientSession(read, write, read_timeout_seconds=30) as session,
             ):
                 await session.initialize()
                 return await body(session)
@@ -899,7 +942,7 @@ class TestServerStartedFromAnotherDirectory:
 
         async def body(session):
             result = await session.call_tool("run_eval", {})
-            return result.isError, json.loads(result.content[0].text)
+            return result.is_error, json.loads(result.content[0].text)
 
         is_error, summary = self.drive(launch, ["-c", str(project / "eval.yaml")], body)
         assert is_error is False, summary
@@ -951,7 +994,7 @@ class TestServerStartedFromAnotherDirectory:
 
         async def body(session):
             result = await session.call_tool("run_eval", {})
-            return result.isError, result.content[0].text
+            return result.is_error, result.content[0].text
 
         is_error, text = self.drive(launch, [], body)
         assert is_error is True

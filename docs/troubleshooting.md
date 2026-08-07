@@ -342,6 +342,13 @@ The MCP extra isn't installed:
 uv tool install "evaling[mcp]"
 ```
 
+Or it is installed, but on the 1.x line — evaling needs `mcp` 2.0 or newer. The
+message says which of the two it is, and names the version it found:
+
+```sh
+uv tool install --force "evaling[mcp]"
+```
+
 The server speaks stdio and is meant to be launched by an MCP client, not run
 interactively — started by hand it will look like it's hanging. See
 [mcp.md](mcp.md).
