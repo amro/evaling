@@ -168,7 +168,10 @@ class TestADatasetCannotReachOutsideItself:
         (project / "eval.yaml").write_text(
             "models: [{id: m, provider: mock}]\n"
             "variants:\n  - name: v1\n"
-            f'    prompt: [{{role: user, content: [{{image: "{outside}"}}]}}]\n'
+            # Single-quoted: a Windows path is full of backslashes, and inside
+            # a double-quoted YAML scalar `C:\Users\...` is read as escape
+            # sequences — `\U` starts a unicode escape and fails to parse.
+            f"    prompt: [{{role: user, content: [{{image: '{outside}'}}]}}]\n"
             "cases: [{id: c1, vars: {q: a}}]\n" + SCORECARD,
             encoding="utf-8",
         )
