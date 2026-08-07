@@ -15,10 +15,12 @@ from evaling.engine import run_eval, run_eval_async
 from evaling.errors import EvalingError
 from evaling.mcp_server import (
     PAGE_SIZE,
+    _unusable_mcp_message,
     build_server,
     compare_runs_tool,
     get_case_result_tool,
     get_run_tool,
+    installed_mcp_version,
     list_runs_tool,
     render_prompt_tool,
     run_eval_tool,
@@ -287,42 +289,75 @@ class TestServerWiring:
 
 
 class TestWhenMcpIsUnusable:
-    """Two ways that import fails, and they need opposite instructions.
+    """Three ways that import fails, each needing different instructions.
 
-    Both reach us as an ImportError from the same line. Telling someone who
-    already runs mcp 1.x to install mcp sends them to tick a ticked box.
+    All of them reach us as an ImportError from the same line. Telling someone
+    who already runs mcp 1.x to install mcp sends them to tick a ticked box.
+
+    Only the absent case is driven through `build_server`, because only it can
+    be simulated honestly. Blocking `mcp.server.mcpserver` does not produce a
+    1.x installation: mcp 2.x's own `__init__` imports that module, so blocking
+    it breaks plain `import mcp` too — which is why the version is read from
+    distribution metadata rather than by importing. The other two go straight
+    at the message, with the version they would have read.
     """
 
-    def block(self, monkeypatch, prefix):
+    def test_no_mcp_at_all_says_install_it(self, monkeypatch):
         import builtins
 
         real_import = builtins.__import__
 
         def blocked(name, *args, **kwargs):
-            if name == prefix or name.startswith(f"{prefix}."):
-                raise ImportError(f"no {prefix}")
+            if name == "mcp" or name.startswith("mcp."):
+                raise ImportError("no mcp")
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", blocked)
-
-    def test_no_mcp_at_all_says_install_it(self, monkeypatch):
-        self.block(monkeypatch, "mcp")
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: None)
         with pytest.raises(EvalingError) as err:
             build_server()
         assert "evaling[mcp]" in str(err.value)
         assert "upgrade" not in str(err.value)
 
     def test_too_old_an_mcp_says_upgrade_and_names_what_is_there(self, monkeypatch):
-        import importlib.metadata
-
-        monkeypatch.setattr(importlib.metadata, "version", lambda name: "1.28.1")
-        self.block(monkeypatch, "mcp.server.mcpserver")
-        with pytest.raises(EvalingError) as err:
-            build_server()
-        message = str(err.value)
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: "1.28.1")
+        message = _unusable_mcp_message(ImportError("no module named mcp.server.mcpserver"))
         assert "mcp 2.0 or newer" in message
         assert "mcp 1.28.1 is installed" in message, message
         assert "upgrade" in message
+
+    def test_an_mcp_that_is_new_enough_but_broken_is_not_called_missing(self, monkeypatch):
+        """A 2.x whose own imports fail must not be reported as absent or stale.
+
+        It used to be: the check was `import mcp`, which fails for a broken
+        install exactly as it does for an absent one, so the advice was to
+        install what was already there.
+        """
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: "2.0.0")
+        message = _unusable_mcp_message(ImportError("no module named opentelemetry"))
+        assert "mcp 2.0.0 is installed but could not be loaded" in message
+        assert "opentelemetry" in message, "the real cause has to survive"
+        assert "pip install" not in message, "reinstalling is not the remedy here"
+
+    def test_a_version_that_is_not_a_number_is_not_guessed_at(self, monkeypatch):
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: "nightly")
+        message = _unusable_mcp_message(ImportError("boom"))
+        assert "could not be loaded" in message
+        assert "upgrade" not in message
+
+    def test_the_version_is_read_without_importing_mcp(self, monkeypatch):
+        """The whole point: a broken import must not hide the version."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def blocked(name, *args, **kwargs):
+            if name == "mcp" or name.startswith("mcp."):
+                raise ImportError("no mcp")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", blocked)
+        assert installed_mcp_version() is not None
 
 
 @pytest.mark.slow
@@ -417,7 +452,7 @@ class TestOverTheProtocol:
     def test_tools_advertise_that_they_take_no_extra_arguments(self, project):
         """A misspelled argument must not read as a successful run of the default.
 
-        This is advertisement, not enforcement — see _forbid_unknown_arguments.
+        This is advertisement, not enforcement — see _reject_unknown_arguments.
         A client that validates against the schema refuses before we see it.
         """
 
@@ -446,9 +481,11 @@ class TestOverTheProtocol:
 class TestProgressNotifications:
     """The fire-and-forget progress path, which had no coverage at any layer.
 
-    In-process rather than a subprocess: `Client(server)` runs the whole
-    JSON-RPC layer over memory streams, so this is fast enough not to need the
-    slow marker.
+    In-process rather than a subprocess: `Client(server)` dispatches straight
+    into the server's handlers, skipping JSON-RPC framing, so this is fast
+    enough not to need the slow marker. It therefore covers the notification
+    path but not serialization — `TestOverTheProtocol` above carries that over
+    real stdio.
     """
 
     def collect(self, tmp_path, cases=3):
@@ -568,7 +605,7 @@ class TestSourceBackedRunsOverMcp:
     def test_lenient_argument_encodings_still_work(self, tmp_path):
         """Some clients send list and object arguments as JSON-encoded strings.
 
-        FastMCP has `pre_parse_json` for exactly that. Full jsonschema
+        The SDK has `pre_parse_json` for exactly that. Full jsonschema
         validation would run ahead of it and refuse calls those clients make
         correctly, so the unknown-argument check looks at names only.
         """

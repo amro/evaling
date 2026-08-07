@@ -377,30 +377,44 @@ def render_prompt_tool(
 # -- server --------------------------------------------------------------
 
 
-def _unusable_mcp_message() -> str:
-    """Say which of the two things is wrong: no `mcp` at all, or too old an one.
+def installed_mcp_version() -> str | None:
+    """The installed `mcp` version, or None if the package isn't there.
 
-    Both arrive as an ImportError from the same line, and the difference is the
-    whole of what the reader has to do next. Telling someone who already has
-    mcp 1.x to install mcp sends them to check a box that is already ticked.
+    Read from distribution metadata rather than by importing, so an `mcp` whose
+    import is broken still reports the version it claims to be. Importing to
+    find out is what makes "not installed" and "installed but unusable" look
+    alike, which is the confusion this exists to avoid.
     """
+    from importlib.metadata import PackageNotFoundError, version
+
     try:
-        import mcp  # noqa: F401
-    except ImportError:
+        return version("mcp")
+    except PackageNotFoundError:
+        return None
+
+
+def _unusable_mcp_message(err: ImportError) -> str:
+    """Say which of three things is wrong, since the remedy differs for each.
+
+    All of them arrive as an ImportError from the same line. Blaming the one we
+    can name — "install mcp" — sends someone already running 1.x to tick a
+    ticked box, and tells someone whose 2.x install is broken to reinstall what
+    is already there. The third case can't be diagnosed from here, so it hands
+    back the import error instead of guessing.
+    """
+    found = installed_mcp_version()
+    if found is None:
         return (
             "the MCP server needs the optional 'mcp' dependency: "
             "install with  pip install 'evaling[mcp]'"
         )
-    from importlib.metadata import PackageNotFoundError, version
-
-    try:
-        found = f"mcp {version('mcp')}"
-    except PackageNotFoundError:  # pragma: no cover - installed but unregistered
-        found = "an older mcp"
-    return (
-        f"the MCP server needs mcp 2.0 or newer, but {found} is installed: "
-        "upgrade with  pip install --upgrade 'evaling[mcp]'"
-    )
+    major = found.split(".", 1)[0]
+    if major.isdigit() and int(major) < 2:
+        return (
+            f"the MCP server needs mcp 2.0 or newer, but mcp {found} is installed: "
+            "upgrade with  pip install --upgrade 'evaling[mcp]'"
+        )
+    return f"mcp {found} is installed but could not be loaded: {err}"
 
 
 def build_server(output_dir: str | None = None, config_path: str | None = None):
@@ -410,8 +424,10 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
     default_config = config_path
     try:
         from mcp.server.mcpserver import Context, MCPServer
-    except ImportError:  # pragma: no cover - exercised via the CLI's hint path
-        raise EvalingError(_unusable_mcp_message()) from None
+    except ImportError as err:  # pragma: no cover - exercised via the CLI's hint path
+        # Chained, not suppressed: for the third case above the traceback is
+        # the only thing that says which module actually failed.
+        raise EvalingError(_unusable_mcp_message(err)) from err
 
     # Without `version`, the server reports an empty one. An agent asking what
     # it is connected to should hear evaling's.
@@ -503,9 +519,13 @@ def _reject_unknown_arguments(server) -> None:
 
     ``call_tool`` is the SDK's public entry point, and its own request handler
     dispatches through it, so wrapping the instance covers every caller.
-    Setting the schema needs the tool manager's internals, so that half is
-    best-effort; a test asserts the schemas really are closed, so an SDK change
-    breaks CI rather than a user's server.
+
+    Reading the declared names needs the tool manager's internals, which is why
+    pyproject pins ``mcp`` below 3. If those internals move anyway, the schemas
+    silently stop being closed *and* every call carrying an argument is refused
+    — this fails shut, not open, but a server that refuses everything is still
+    a broken one. Two tests over the real protocol cover both halves, so the
+    SDK release that moves them breaks CI rather than a user's server.
     """
     manager = getattr(server, "_tool_manager", None)
     tools = getattr(manager, "_tools", None)

@@ -299,6 +299,20 @@ def _delta(value: float, fmt) -> str:
     return f"[{color}]{sign}{fmt(value)}[/{color}]"
 
 
+def _mcp_extra_line(install) -> str:
+    """Whether `evaling mcp` will start, not merely whether a package is there.
+
+    A 1.x install reported as "installed" reads as a clean bill of health next
+    to a server that refuses to start.
+    """
+    found = install.get("mcp_version")
+    if found is None:
+        return "not installed"
+    if install["mcp_extra"]:
+        return f"installed ({found})"
+    return f"{found} — too old, needs 2.0 or newer"
+
+
 def doctor_lines(report, probes=None) -> list[str]:
     """`evaling doctor` as flat text, so it pastes into an issue unmangled.
 
@@ -318,7 +332,7 @@ def doctor_lines(report, probes=None) -> list[str]:
     # Named separately from the interpreter because an MCP client config needs
     # this path and would otherwise be given the wrong one.
     lines.append(f"  evaling      {safe(install['evaling_path'] or 'not on PATH')}")
-    lines.append(f"  mcp extra    {'installed' if install['mcp_extra'] else 'not installed'}")
+    lines.append(f"  mcp extra    {safe(_mcp_extra_line(install))}")
 
     config = sections["config"]
     lines.append("")

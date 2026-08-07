@@ -56,6 +56,33 @@ class TestWhatItReports:
         assert __version__ in result.output
         assert "python" in result.output and "platform" in result.output
 
+    def test_the_mcp_line_reports_usable_not_merely_present(self, project, monkeypatch):
+        """ "installed" next to a server that refuses to start is a wrong answer.
+
+        `evaling mcp` needs mcp 2.0 or newer. doctor used to report any mcp on
+        the path as installed, so the one place built for "why is this not
+        working" gave the 1.x user a clean bill of health.
+        """
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: "1.28.1")
+        payload = json.loads(invoke(project, "--json", "doctor").output)
+        assert payload["evaling"]["mcp_extra"] is False
+        assert payload["evaling"]["mcp_version"] == "1.28.1"
+        text = invoke(project, "doctor").output
+        assert "1.28.1" in text and "too old" in text
+
+    def test_the_mcp_line_names_the_version_when_it_is_usable(self, project, monkeypatch):
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: "2.0.0")
+        payload = json.loads(invoke(project, "--json", "doctor").output)
+        assert payload["evaling"]["mcp_extra"] is True
+        assert "installed (2.0.0)" in invoke(project, "doctor").output
+
+    def test_the_mcp_line_says_not_installed_when_it_is_absent(self, project, monkeypatch):
+        monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: None)
+        payload = json.loads(invoke(project, "--json", "doctor").output)
+        assert payload["evaling"]["mcp_extra"] is False
+        assert payload["evaling"]["mcp_version"] is None
+        assert "not installed" in invoke(project, "doctor").output
+
     def test_it_summarizes_the_config(self, project):
         result = invoke(project, "doctor")
         assert "mock" in result.output

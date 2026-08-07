@@ -21,7 +21,6 @@ import shutil
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -93,8 +92,25 @@ def _describe_install() -> dict[str, Any]:
         # sys.executable is the wrong answer to that question.
         "evaling_path": shutil.which("evaling"),
         "platform": platform.platform(),
-        "mcp_extra": find_spec("mcp") is not None,
+        # Usable, not merely present: `evaling mcp` needs mcp 2.0 or newer, and
+        # reporting a 1.x install as "installed" answers a question nobody
+        # asked while contradicting the error they are about to get.
+        "mcp_extra": _mcp_is_usable(mcp_version := _installed_mcp_version()),
+        "mcp_version": mcp_version,
     }
+
+
+def _installed_mcp_version() -> str | None:
+    from evaling.mcp_server import installed_mcp_version  # local: optional extra
+
+    return installed_mcp_version()
+
+
+def _mcp_is_usable(found: str | None) -> bool:
+    if found is None:
+        return False
+    major = found.split(".", 1)[0]
+    return major.isdigit() and int(major) >= 2
 
 
 def _describe_config(path: Path, problems: list[str]) -> tuple[EvalConfig | None, dict[str, Any]]:
