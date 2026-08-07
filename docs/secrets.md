@@ -126,6 +126,12 @@ model 'claude-sonnet-5': no API key found — set ANTHROPIC_API_KEY
 
 It does not fall back to an unauthenticated request or to a different key.
 
+If you are seeing this **through the MCP server** while `evaling run` works
+from the same directory, the environment is the reason: an MCP client starts
+the server with a minimal one that does not carry your key. Use the project
+secrets file, which the server reads for itself — see
+[mcp.md](mcp.md#api-keys-dont-arrive-through-your-shell).
+
 ## CI
 
 Use your CI system's secret store and let it set the environment — no secrets

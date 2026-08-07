@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-07
+
 Everything here came out of a full-codebase review of the parts earlier
-reviews had not reached.
+reviews had not reached, and two further rounds verifying those fixes — which
+found that the first attempt at the containment fix below covered one of the
+two routes, and that a memory note had been "fixed" by deleting the check it
+described.
 
 ### Security
 
@@ -91,6 +96,15 @@ reviews had not reached.
 - **The HTML report labelled withheld output "(empty response)".** Under
   [no-look](docs/no-look.md) the model answered and the answer was never
   stored, which is a different fact about the run than an empty one.
+
+- **Documented how an API key reaches the MCP server**, which nothing said
+  before. An MCP client starts the server with a deliberately minimal
+  environment — the reference implementation passes `HOME`, `LOGNAME`, `PATH`,
+  `SHELL`, `TERM` and `USER` — so a key exported in your shell never arrives,
+  and every cell fails with `no API key found` on a machine where `evaling run`
+  works from that same directory. The project secrets file is read by the
+  server itself and needs nothing from the client; an `env` block in the client
+  config also works. Found by running the server against a real provider.
 
 ### Changed
 

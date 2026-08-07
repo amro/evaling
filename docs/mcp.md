@@ -98,6 +98,42 @@ into a user directory — give the full path as `command`. `evaling doctor`
 prints it on the `evaling` line; `which evaling` (`where evaling` on Windows)
 also works.
 
+### API keys don't arrive through your shell
+
+An MCP client starts the server as a subprocess with a deliberately minimal
+environment — the reference implementation passes `HOME`, `LOGNAME`, `PATH`,
+`SHELL`, `TERM` and `USER`, and nothing else. A key you exported in your shell,
+or set in your shell profile, is not among them. Every cell then fails with
+`no API key found — set ANTHROPIC_API_KEY`, on a machine where `evaling run`
+works from the same directory.
+
+Use the project secrets file, which the server reads itself and which needs no
+cooperation from the client:
+
+```yaml
+# .evaling.secrets.yaml, beside your config — gitignored by `evaling init`
+ANTHROPIC_API_KEY: sk-ant-...
+```
+
+Or pass the key explicitly, if your client supports an `env` block:
+
+```json
+{
+  "mcpServers": {
+    "evaling": {
+      "command": "evaling",
+      "args": ["mcp"],
+      "cwd": "/absolute/path/to/your/eval-project",
+      "env": {"ANTHROPIC_API_KEY": "sk-ant-..."}
+    }
+  }
+}
+```
+
+The secrets file is usually better: the client config is not always gitignored,
+and some clients keep it somewhere you would rather a credential not be. See
+[secrets.md](secrets.md).
+
 Note that doctor's `python` line is the interpreter, not the launcher. If you
 would rather use that, the module entry point takes the same arguments:
 `"command": "/path/to/python", "args": ["-m", "evaling", "mcp"]`.
