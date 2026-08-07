@@ -83,6 +83,13 @@ Media parts reference files, never inline binary in templates. The reference is
 itself a template, so it can come from case attachments (`{{ files.photo }}`)
 or be a literal path (`diagram.png`, resolved relative to the config file).
 
+A path templated from an ordinary case *variable* — `{{ photo }}` where `photo`
+is a plain column — must stay inside the project, for the same reason a
+dataset's attachments must: the file is read, sent to a model API, and archived
+with the run, and a dataset chooses that value. Use `files` for attachments,
+which is checked when the case loads. A literal path in the config may point
+anywhere, since that is the config's own author.
+
 Files are identified by extension, validated against the part type, and hashed
 by content (sha256) — so response caching and run storage recognize the same
 file wherever it lives, and renamed-but-identical inputs don't invalidate the

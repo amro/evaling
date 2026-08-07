@@ -55,13 +55,38 @@ class MediaRef:
         return self.path.read_bytes()
 
 
-def resolve_media(kind: MediaKind, path_str: str, base_dir: Path, where: str = "") -> MediaRef:
-    """Resolve a media path against base_dir, validate its type, and hash it."""
+def resolve_media(
+    kind: MediaKind,
+    path_str: str,
+    base_dir: Path,
+    where: str = "",
+    *,
+    may_reach_outside: bool = True,
+) -> MediaRef:
+    """Resolve a media path against base_dir, validate its type, and hash it.
+
+    ``may_reach_outside=False`` when the path came from case data rather than
+    from the config: this file is read, hashed, sent to a model API, and
+    archived with the run, so a dataset must not be able to choose it. Case
+    attachments (``files.<name>``) are contained when the case loads and arrive
+    here already absolute; a path templated straight out of a case *variable*
+    is not contained anywhere else.
+    """
     prefix = f"{where}: " if where else ""
     path = Path(path_str)
     if not path.is_absolute():
         path = base_dir / path
     path = path.resolve()
+
+    if not may_reach_outside:
+        root = base_dir.resolve()
+        if path != root and root not in path.parents:
+            raise ContentError(
+                f"{prefix}{kind} path {path_str!r} comes from case data and resolves "
+                f"outside {root} — it would be read, sent to a model API, and archived "
+                "with the run. Attach it with `files` on the case, which is checked "
+                "when the case loads."
+            )
 
     if not path.is_file():
         raise ContentError(f"{prefix}{kind} file not found: {path_str} (resolved to {path})")

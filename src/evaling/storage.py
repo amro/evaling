@@ -257,6 +257,10 @@ class RunStore:
             "matrix": matrix,
             "counts": None,
             "totals": None,
+            # Recorded so a reader can tell "the model returned nothing" from
+            # "the answer was never stored" — the two look identical in a
+            # record, since both leave the messages and output empty.
+            "no_look": redact_cases,
         }
         write_json_atomic(path / "run.json", meta)
         return RunWriter(path, meta)

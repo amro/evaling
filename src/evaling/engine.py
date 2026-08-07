@@ -8,6 +8,7 @@ interrupted run can be resumed — cells with a record are skipped.
 import asyncio
 import contextlib
 import hashlib
+import math
 import random
 import secrets
 import time
@@ -942,6 +943,12 @@ class _CostBudget:
     """
 
     def __init__(self, limit: float | None, spent: float = 0.0):
+        if limit is not None and (not math.isfinite(limit) or limit < 0):
+            # `spent >= nan` is always False, so a NaN ceiling enforces
+            # nothing while still counting as "a ceiling was given" — which is
+            # what lets an unbounded source start. Checked here rather than at
+            # each surface so the CLI and the MCP tool cannot drift.
+            raise ConfigError(f"max cost must be a finite non-negative number, got {limit!r}")
         self.limit = limit
         self.spent = spent
         self.in_flight = 0

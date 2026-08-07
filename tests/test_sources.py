@@ -270,6 +270,24 @@ class TestIteration:
             self.collect(source, page_size=1)
         assert source.fetches <= MAX_EMPTY_PAGES + 2, "the guard let it run away"
 
+    def test_a_longer_cursor_cycle_is_caught_too(self):
+        """A→B→A advances at every step and still never ends.
+
+        Comparing only against the previous cursor walks it forever: with no
+        `limit` the run hangs, and with one it quietly fills up on the same
+        cases repeated.
+        """
+
+        class TwoCycle:
+            def fetch(self, cursor, limit):
+                from evaling import Case
+
+                nxt = "b" if cursor in (None, "a") else "a"
+                return CasePage(cases=[Case(id=nxt, vars={})], cursor=nxt)
+
+        with pytest.raises(SourceError, match="twice"):
+            self.collect(TwoCycle(), page_size=1)
+
     def test_wrong_return_type(self):
         class Bad:
             def fetch(self, cursor, limit):

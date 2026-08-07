@@ -13,7 +13,9 @@ import pytest
 from evaling.config import load_config
 from evaling.config.cases import load_cases
 from evaling.config.errors import ConfigError
+from evaling.content import ContentError
 from evaling.errors import EvalingError
+from evaling.render import render_messages
 from evaling.reqlog import RequestLog
 
 CONFIG_HEAD = (
@@ -128,6 +130,72 @@ class TestADatasetCannotReachOutsideItself:
         )
         [case] = load_cases(load_config(path / "eval.yaml"))
         assert case.files["doc"] == str(inside.resolve())
+
+    def test_a_case_variable_cannot_be_used_as_a_media_path(self, tmp_path):
+        """The other way a dataset can name a file: skip `files` entirely.
+
+        Containment happens when a case loads, and only `files` entries go
+        through it. A prompt that templates a plain case var into a media part
+        — `{{ photo }}` rather than `{{ files.photo }}` — resolved wherever
+        the dataset said, and the file was read, hashed, sent to the model API
+        and archived, which is what containment exists to stop.
+        """
+        outside = tmp_path / "elsewhere.png"
+        outside.write_bytes(b"secret-bytes")
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "cases.jsonl").write_text(
+            json.dumps({"id": "c1", "q": "a", "photo": str(outside)}) + "\n", encoding="utf-8"
+        )
+        (project / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: [{text: "{{ q }}"}, {image: "{{ photo }}"}]}]\n'
+            "cases: {file: cases.jsonl}\n" + SCORECARD,
+            encoding="utf-8",
+        )
+        config = load_config(project / "eval.yaml")
+        [case] = load_cases(config)
+        with pytest.raises(ContentError, match="comes from case data"):
+            render_messages(config.variants[0].prompt, case, config.base_dir)
+
+    def test_a_media_path_written_into_the_config_still_reaches_outside(self, tmp_path):
+        """A literal in the prompt is the config author's own path."""
+        outside = tmp_path / "elsewhere.png"
+        outside.write_bytes(b"deliberate")
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            f'    prompt: [{{role: user, content: [{{image: "{outside}"}}]}}]\n'
+            "cases: [{id: c1, vars: {q: a}}]\n" + SCORECARD,
+            encoding="utf-8",
+        )
+        config = load_config(project / "eval.yaml")
+        [case] = load_cases(config)
+        [message] = render_messages(config.variants[0].prompt, case, config.base_dir)
+        assert message.parts[0].path == outside.resolve()
+
+    def test_a_files_attachment_still_reaches_the_prompt(self, tmp_path):
+        """`files.*` is contained at load time, so it is trusted here."""
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "pic.png").write_bytes(b"fine")
+        (project / "cases.jsonl").write_text(
+            json.dumps({"id": "c1", "q": "a", "photo": "file://pic.png"}) + "\n", encoding="utf-8"
+        )
+        (project / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: [{image: "{{ files.photo }}"}]}]\n'
+            "cases: {file: cases.jsonl}\n" + SCORECARD,
+            encoding="utf-8",
+        )
+        config = load_config(project / "eval.yaml")
+        [case] = load_cases(config)
+        [message] = render_messages(config.variants[0].prompt, case, config.base_dir)
+        assert message.parts[0].path == (project / "pic.png").resolve()
 
     def test_an_inline_case_may_still_reach_outside(self, tmp_path):
         """The config's author can already point evaling anywhere."""

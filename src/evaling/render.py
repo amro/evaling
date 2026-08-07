@@ -44,6 +44,7 @@ def render_messages(messages: list[Message], case: Case, base_dir: Path) -> list
     absolute already (case loading resolves them).
     """
     context = build_context(case)
+    attachments = set((case.files or {}).values())
     rendered: list[RenderedMessage] = []
     for index, message in enumerate(messages, start=1):
         where = f"message {index} ({message.role})"
@@ -53,12 +54,12 @@ def render_messages(messages: list[Message], case: Case, base_dir: Path) -> list
             parts.append(RenderedText(render_text(content, context, where)))
         else:
             for part in content:
-                parts.append(_render_part(part, context, base_dir, where))
+                parts.append(_render_part(part, context, base_dir, where, attachments))
         rendered.append(RenderedMessage(role=message.role, parts=tuple(parts)))
     return rendered
 
 
-def _render_part(part, context, base_dir: Path, where: str) -> RenderedPart:
+def _render_part(part, context, base_dir: Path, where: str, attachments: set) -> RenderedPart:
     if isinstance(part, TextPart):
         return RenderedText(render_text(part.text, context, where))
     kind: MediaKind
@@ -73,4 +74,16 @@ def _render_part(part, context, base_dir: Path, where: str) -> RenderedPart:
     else:  # pragma: no cover - schema guarantees exhaustiveness
         raise TypeError(f"unknown content part: {part!r}")
     path_str = render_text(expr, context, where)
-    return resolve_media(kind, path_str, base_dir, where)
+    # A literal in the config is the config author's own path, and a `files.*`
+    # attachment was contained when the case loaded. Anything else is a case
+    # variable — dataset data — choosing a file to read and transmit, so it
+    # has to stay inside the project.
+    from_config = path_str == expr
+    from_attachment = path_str in attachments
+    return resolve_media(
+        kind,
+        path_str,
+        base_dir,
+        where,
+        may_reach_outside=from_config or from_attachment,
+    )

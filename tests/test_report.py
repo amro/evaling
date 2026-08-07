@@ -155,6 +155,45 @@ def test_a_hostile_model_id_is_escaped(tmp_path):
     assert "&lt;script&gt;" in html
 
 
+def test_a_no_look_run_says_the_output_was_withheld(tmp_path):
+    """ "(empty response)" reads as "the model returned nothing".
+
+    Under no-look the model answered and the answer was never stored, which is
+    a different fact about the run — and the shared artifact is exactly where
+    that difference matters.
+    """
+    config = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "x"}, "expected": "x"}])
+    config = config.model_copy(
+        update={"privacy": config.privacy.model_copy(update={"no_look": True})}
+    )
+    settings = make_settings(tmp_path)
+    result = run_eval(config, settings)
+    store = RunStore(settings.output_dir)
+    html = render_run_html(store.load_meta(result.run_id), store.load_results(result.run_id))
+    assert "withheld" in html
+    assert "(empty response)" not in html
+
+
+def test_an_ordinary_empty_response_is_not_called_withheld(tmp_path):
+    """The record cannot tell the two apart: both leave `messages` empty.
+
+    A variant with no messages at all renders to zero of them, exactly as
+    redaction does, so this used to be labelled as a no-look withholding.
+    """
+    config = make_config(
+        tmp_path,
+        models=[{"id": "m1", "provider": "mock", "params": {"response": ""}}],
+        variants=[{"name": "v1", "prompt": []}],
+        cases=[{"id": "c1", "vars": {"q": "x"}, "expected": ""}],
+    )
+    settings = make_settings(tmp_path)
+    result = run_eval(config, settings)
+    store = RunStore(settings.output_dir)
+    html = render_run_html(store.load_meta(result.run_id), store.load_results(result.run_id))
+    assert "(empty response)" in html
+    assert "withheld" not in html
+
+
 def test_media_referenced_by_hash_not_embedded(tmp_path):
     (tmp_path / "pic.png").write_bytes(b"binary-image-bytes")
     config = make_config(

@@ -12,6 +12,7 @@ import pytest
 
 from evaling.cache import ResponseCache
 from evaling.config import Case, EvalConfig, Message, ModelSpec
+from evaling.config.errors import ConfigError
 from evaling.engine import run_eval
 from evaling.providers import _REGISTRY
 from evaling.providers.base import Completion, ProviderError
@@ -85,6 +86,24 @@ class TestCostBudgetConcurrency:
         # failures for cells it never attempted, and stays resumable.
         assert result.incomplete is True
         assert any("cost ceiling" in warning for warning in result.warnings)
+
+    @pytest.mark.parametrize("limit", [float("nan"), float("inf"), -1.0])
+    def test_a_nonsense_ceiling_is_refused(self, tmp_path, probe, limit):
+        """A NaN ceiling enforces nothing while still counting as a ceiling.
+
+        `spent >= nan` is False forever, so the budget never trips — and
+        because a ceiling was "given", it also satisfies the guard that stops
+        an unbounded source from running unwatched. The one flag standing
+        between a source and an unbounded bill, switched off by a typo.
+        """
+        probe.reset(cost=1.0)
+        with pytest.raises(ConfigError, match="finite non-negative"):
+            run_eval(eight_cases(tmp_path), make_settings(tmp_path), max_cost_usd=limit)
+
+    def test_a_zero_ceiling_is_allowed_and_stops_everything(self, tmp_path, probe):
+        probe.reset(cost=1.0)
+        result = run_eval(eight_cases(tmp_path), make_settings(tmp_path), max_cost_usd=0.0)
+        assert result.counts["total"] == 0
 
     def test_no_cap_means_no_warning(self, tmp_path, probe):
         probe.reset(cost=None)

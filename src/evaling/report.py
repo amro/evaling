@@ -163,8 +163,8 @@ def _matrix_table(aggregates: dict[str, Any]) -> str:
             "<tr class='overall'><td>overall</td><td></td>"
             f"<td class='num'>{_score(overall['score'])}</td>"
             f"<td class='num'>{_pct(overall['pass_rate'])}</td>"
-            f"<td class='num'>{overall['cases']}</td>"
-            f"<td class='num'>{overall['errors'] or ''}</td></tr>"
+            f"<td class='num'>{esc(overall['cases'])}</td>"
+            f"<td class='num'>{esc(overall['errors'] or '')}</td></tr>"
         )
     return (
         "<div class='scroll'><table><thead><tr>"
@@ -213,7 +213,7 @@ def _criteria_list(record: ResultRecord) -> str:
     return f"<ul class='criteria'>{''.join(items)}</ul>"
 
 
-def _cell(record: ResultRecord) -> str:
+def _cell(record: ResultRecord, no_look: bool = False) -> str:
     score, passed = cell_summary(record)
     bits = []
     if record.cached:
@@ -232,13 +232,12 @@ def _cell(record: ResultRecord) -> str:
     else:
         # No error and no output means one of two different things, and
         # "(empty response)" said the wrong one for a whole no-look run: the
-        # model answered, the answer was never stored. A cell that rendered
-        # always has its messages; no-look is what clears them, and a cell that
-        # failed before rendering took the error branch above.
-        withheld = not record.messages
+        # model answered, the answer was never stored. The record cannot tell
+        # them apart — redaction and an empty prompt both leave `messages`
+        # empty — so the run says which it was.
         body = (
             "<div class='out empty'>(withheld — no-look run)</div>"
-            if withheld
+            if no_look
             else "<div class='out empty'>(empty response)</div>"
         )
 
@@ -256,7 +255,7 @@ def _cell(record: ResultRecord) -> str:
     )
 
 
-def _cases_section(records: list[ResultRecord]) -> str:
+def _cases_section(records: list[ResultRecord], no_look: bool = False) -> str:
     grouped: dict[str, list[ResultRecord]] = {}
     for record in records:
         grouped.setdefault(record.case_id, []).append(record)
@@ -275,7 +274,7 @@ def _cases_section(records: list[ResultRecord]) -> str:
         sections.append(
             f"<section class='case{' all-pass' if all_pass else ''}'>"
             f"<h3>{esc(case_id)}</h3>"
-            f"{''.join(_cell(record) for record in ordered)}"
+            f"{''.join(_cell(record, no_look) for record in ordered)}"
             "</section>"
         )
     return "".join(sections)
@@ -342,7 +341,7 @@ def render_run_html(meta: dict[str, Any], records: list[ResultRecord]) -> str:
         + notice
         + "<input type='checkbox' id='failures-only'>"
         + "<div class='filter'><label for='failures-only'>Show failures only</label></div>"
-        + f"<div class='cases'>{_cases_section(detailed)}</div>"
+        + f"<div class='cases'>{_cases_section(detailed, bool(meta.get('no_look')))}</div>"
     )
     return _page(f"evaling run {meta.get('id')}", body)
 

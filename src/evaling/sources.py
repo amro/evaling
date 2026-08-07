@@ -187,16 +187,20 @@ async def iter_source_cases(
     is the one thing streaming exists to avoid, so a source handing out
     duplicate ids produces records that share one.
 
-    Memory is constant: one page of cases, one cursor string. Cycle detection
-    compares against the previous cursor rather than every cursor seen, which
-    is the contract the error states — advance, or end — and does not grow a
-    set for the length of the walk.
+    Every cursor seen is remembered, so a cursor that repeats at any distance
+    is caught rather than only one that repeats immediately: an A→B→A cycle
+    advances at every step and never ends, and comparing against the previous
+    cursor alone walks it forever — yielding the same cases over and over, or
+    silently filling a ``limit`` with duplicates. That costs one short string
+    per page walked, which is the one thing here that is not constant, and is
+    worth it to bound the loop.
     """
     if page_size < 1:
         raise SourceError("page_size must be >= 1")
     cursor: str | None = None
     seen = 0
     empty_pages = 0
+    seen_cursors: set[str] = set()
     while True:
         want = page_size if limit is None else min(page_size, limit - seen)
         if want <= 0:
@@ -237,9 +241,10 @@ async def iter_source_cases(
                 return
         if page.cursor is None:
             return
-        if page.cursor == cursor:
+        if page.cursor in seen_cursors:
             raise SourceError(
                 f"case source returned cursor {page.cursor!r} twice; "
                 "a cursor must advance or be None on the last page"
             )
+        seen_cursors.add(page.cursor)
         cursor = page.cursor

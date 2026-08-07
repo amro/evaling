@@ -25,6 +25,18 @@ reviews had not reached.
   path: that is the config's own author, who can point evaling anywhere
   already, and is the distinction the check was meant to draw.
 
+- **A case variable used as a media path is contained the same way.** Only
+  `files` entries were checked, so a prompt templating a plain case variable
+  into a media part — `{{ photo }}` rather than `{{ files.photo }}` — resolved
+  wherever the dataset said. A literal path written into the config still
+  reaches outside, and a `files` attachment is trusted here because it was
+  already checked when the case loaded.
+
+- **`--max-cost` rejects a value that is not a finite number.** `spent >= nan`
+  is False forever, so a NaN ceiling enforced nothing — while still counting
+  as "a ceiling was given", which is what lets an unbounded source start. The
+  one flag between a case source and an unbounded bill, switched off by a typo.
+
 - **A malformed secrets file could print the secret it was hiding.** The
   parse error for a secrets file suppresses the offending line by design, but
   still quoted PyYAML's own description — and that description names tokens
@@ -41,7 +53,10 @@ reviews had not reached.
   empties a whole page whenever every row on it is filtered out, so the run
   silently scored a prefix of the data and the gate passed on it. Empty pages
   are now walked through, and a source that returns a thousand in a row while
-  still promising more raises rather than appearing to hang.
+  still promising more raises rather than appearing to hang. A cursor that
+  repeats at any distance is still an error: an `A → B → A` cycle advances at
+  every step and never ends, so checking only the previous cursor would walk
+  it forever, or quietly fill a `limit` with the same cases.
 
 - **Cases from a source had no ids.** Inline and dataset cases are numbered
   `case-N` when they arrive without one; source cases skipped that entirely, so
