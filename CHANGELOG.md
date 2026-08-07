@@ -15,8 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all. Since the extra's floor was `mcp>=1.28`, a fresh
   `pip install 'evaling[mcp]'` resolved to 2.0 and got a server that was dead
   on arrival — so this is a fix for new installs as much as a version bump.
-  The floor is now `mcp>=2.0`; 1.x is upstream maintenance-only, and the two
-  lines cannot be served from one import path.
+  The requirement is now `mcp>=2.0,<3`; 1.x is upstream maintenance-only, and
+  the two lines cannot be served from one import path.
+
+  The upper bound is deliberate. Refusing arguments a tool never declared
+  needs the SDK's tool-manager internals, so a major SDK release is entitled
+  to break it — and it fails shut, refusing every call that carries an
+  argument, which is a broken server rather than a silent one. Capping means
+  the next major arrives as a dependency PR with CI attached instead of as a
+  user's outage.
 
   The migration retired two private-API dependencies rather than porting
   them. The server's version is a constructor argument now, instead of being
@@ -26,20 +33,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (see [mcp.md](docs/mcp.md#argument-names-must-match-exactly)) — the SDK drops
   what a tool didn't declare in 2.0 exactly as it did in 1.x.
 
+- **`evaling doctor` reports whether the MCP extra is *usable*, not merely
+  present**, and names its version. It answered `find_spec("mcp") is not None`,
+  so a 1.x install — the one case where `evaling mcp` refuses to start — read
+  as a clean bill of health in the one command built for "why is this not
+  working". The JSON field `mcp_extra` keeps its name and boolean type but now
+  means usable; `mcp_version` is new alongside it.
+
 ### Fixed
 
-- **An `mcp` that is installed but too old no longer reads as one that is
-  missing.** Both arrive as an `ImportError` from the same line, and the
-  handler blamed the one it could name: someone on 1.x was told to install the
-  package they already had. The message now says which of the two it is and
-  names the version it found.
+- **An `mcp` that is installed but unusable no longer reads as one that is
+  missing.** Absent, too old, and installed-but-broken all arrive as an
+  `ImportError` from the same line, and the handler blamed the one it could
+  name: someone on 1.x was told to install the package they already had. The
+  version is now read from distribution metadata rather than by importing —
+  importing to find out is precisely what makes a broken install look like an
+  absent one — and each case gets its own message. The one case that cannot be
+  diagnosed from here, a 2.x that fails to import, hands back the underlying
+  error instead of guessing, and the `ImportError` is chained rather than
+  suppressed so the traceback still names the module that actually failed.
 
 ### Security
 
 - **`cryptography` 50.0.0** (CVE-2026-69247) — a Bleichenbacher timing oracle
-  in PKCS#7 decryption. It reaches evaling only as a transitive dependency of
-  the `mcp` extra (`mcp[crypto]` → `pyjwt[crypto]`), on a code path nothing in
-  evaling calls, so no released version was exploitable through it.
+  in PKCS#7 decryption. It reaches evaling only through the `mcp` extra, which
+  depends on `pyjwt[crypto]` unconditionally, on a code path nothing in evaling
+  calls; no released version was exploitable through it.
 
 ## [0.1.1] - 2026-08-01
 

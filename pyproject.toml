@@ -41,12 +41,14 @@ evaling = "evaling.cli:main"
 
 [project.optional-dependencies]
 mcp = [
-    "mcp>=2.0",
+    # Capped below 3: the server reads the SDK's tool-manager internals to
+    # refuse arguments a tool never declared. See _reject_unknown_arguments.
+    "mcp>=2.0,<3",
 ]
 
 [dependency-groups]
 dev = [
-    "mcp>=2.0",
+    "mcp>=2.0,<3",  # same range as the extra above, so tests run what ships
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.8",

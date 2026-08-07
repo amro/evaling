@@ -89,6 +89,10 @@ def test_mcp_hint_survives_when_extra_missing(tmp_path, monkeypatch):
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", blocked)
+    # Absence is decided from distribution metadata, not from whether the
+    # import works — a blocked import alone is a *broken* install, which gets a
+    # different message on purpose.
+    monkeypatch.setattr("evaling.mcp_server.installed_mcp_version", lambda: None)
     result = cli(tmp_path, "mcp")
     assert result.exit_code == 2
     # "evaling[mcp]" must survive intact — it's the install command

@@ -374,7 +374,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.0" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.0,<3" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=15.0.0" },
@@ -383,7 +383,7 @@ provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "mcp", specifier = ">=2.0" },
+    { name = "mcp", specifier = ">=2.0,<3" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=5" },
     { name = "ruff", specifier = ">=0.8" },

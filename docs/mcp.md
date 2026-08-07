@@ -17,10 +17,11 @@ pip install 'evaling[mcp]'      # or: uv tool install 'evaling[mcp]'
 
 Without it, `evaling mcp` exits with that install hint.
 
-evaling needs **`mcp` 2.0 or newer**. The 1.x line renamed and moved the
-classes the server is built on, so it cannot serve both; on 1.x, `evaling mcp`
-says so and names the version it found rather than repeating the install hint
-above. Upgrade with `pip install --upgrade 'evaling[mcp]'`.
+evaling needs **`mcp` 2.0 or newer**. 2.0 renamed `FastMCP` to `MCPServer` and
+moved it to a different module, so one import path cannot serve both lines; on
+1.x, `evaling mcp` says so and names the version it found rather than repeating
+the install hint above. Upgrade with `pip install --upgrade 'evaling[mcp]'`.
+`evaling doctor` reports the same thing before you try.
 
 ## Connect
 
