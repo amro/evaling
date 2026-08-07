@@ -4,6 +4,7 @@ Three classes of rot, each cheap to catch and expensive to find by hand:
 
 * a YAML example that no longer matches the schema
 * a command or flag that exists but is undocumented (or documented but gone)
+* a documented invocation that the CLI would refuse to parse
 * a link to a file that has been moved or renamed
 """
 
@@ -148,6 +149,102 @@ class TestCliDocsMatchReality:
         # Subcommands (`baseline set`) and global-flag examples aren't top-level.
         stale = {name for name in claimed - real if name not in {"set", "show", "info", "clear"}}
         assert not stale, f"docs/cli.md documents commands that don't exist: {stale}"
+
+
+class TestDocumentedInvocationsParse:
+    """A documented command line must be one the CLI would actually accept.
+
+    The two tests above check that commands and flags *exist*. They cannot
+    catch a real command carrying a real flag in a position click rejects,
+    which is how `evaling show <run> --case <id> -v` reached a release: `-v`
+    is a global option and has to precede the subcommand.
+
+    Scoped to misplaced and unknown options, which is that bug and the only
+    thing this can judge honestly. A snippet naming a command without its
+    arguments (`evaling compare`) is prose, not a broken invocation, and a
+    placeholder standing in for a real value cannot be type-checked from here.
+
+    Parsed, never run — `make_context` raises on a bad option without invoking
+    the callback, so `cache clear` in the docs cannot clear anyone's cache.
+    """
+
+    PLACEHOLDER = re.compile(r"^(<[^>]+>|[A-Z][A-Z0-9_]*)$")
+
+    #: Wrong on purpose: cli.md teaches global-flag placement by showing the
+    #: form that fails. Guarded below, so it cannot outlive its counter-example.
+    COUNTEREXAMPLES = {"evaling run --json"}
+
+    def normalize(self, snippet: str) -> list[str]:
+        """Turn a documented line into an argv a parser can judge.
+
+        Placeholders become a dummy value, `[optional]` groups are taken as
+        present (the stricter reading), and `a|b` takes its first alternative.
+        """
+        argv = []
+        for token in snippet.replace("[", " ").replace("]", " ").split()[1:]:
+            token = token.split("|", 1)[0]
+            argv.append("x" if self.PLACEHOLDER.match(token) else token)
+        return argv
+
+    def parse(self, argv: list[str]) -> None:
+        """Walk the group tree, parsing each level and running nothing."""
+        import warnings
+
+        import click
+
+        command, context = main, main.make_context("evaling", list(argv))
+        while isinstance(command, click.Group):
+            with warnings.catch_warnings():
+                # click 8 splits the subcommand off into `protected_args`;
+                # click 9 drops it and leaves everything in `args`.
+                warnings.simplefilter("ignore", DeprecationWarning)
+                protected = list(getattr(context, "protected_args", []) or [])
+            rest = protected + list(context.args)
+            if not rest:
+                break
+            name, command, rest = command.resolve_command(context, rest)
+            context = command.make_context(name, rest, parent=context)
+
+    def invocations(self) -> list[tuple[Path, str]]:
+        found = []
+        for path in DOCS:
+            for snippet in re.findall(r"`(evaling [^`]+)`", path.read_text(encoding="utf-8")):
+                found.append((path, snippet))
+        return found
+
+    def test_there_are_invocations_to_check(self):
+        """Guards the regex: a rename upstream would silently check nothing."""
+        assert len(self.invocations()) > 20
+
+    def test_each_counterexample_is_still_shown_as_one(self):
+        """An exemption that outlives its reason hides the next real bug."""
+        text = (REPO / "docs" / "cli.md").read_text(encoding="utf-8")
+        for snippet in self.COUNTEREXAMPLES:
+            assert f"not\n`{snippet}`" in text or f"not `{snippet}`" in text, (
+                f"`{snippet}` is exempt as a counter-example but cli.md no longer "
+                "presents it as the wrong form"
+            )
+
+    def test_every_documented_invocation_parses(self):
+        import click
+
+        broken = []
+        for path, snippet in self.invocations():
+            if snippet in self.COUNTEREXAMPLES:
+                continue
+            try:
+                self.parse(self.normalize(snippet))
+            except (click.NoSuchOption, click.BadOptionUsage) as err:
+                broken.append(f"{path.name}: `{snippet}` — {err.format_message()}")
+            except click.UsageError:
+                # A missing argument or an unusable placeholder value: prose
+                # naming a command, not a command line that would be refused.
+                pass
+            except (click.exceptions.Exit, SystemExit):
+                # `--version` and `--help` are eager: they print and exit
+                # during parsing, which means they parsed.
+                pass
+        assert not broken, "documented command lines the CLI would refuse:\n" + "\n".join(broken)
 
 
 class TestLinks:

@@ -202,7 +202,7 @@ cached cell made no call, so it has neither a duration nor a price this run.
 
 Bounded so a runaway generation can't fill the scrollback: 20 lines per prompt
 message and 200 lines of response, then a `… N more lines` note.
-`evaling show <run> --case <id> -v` prints the same block from storage, for
+`evaling -v show <run> --case <id>` prints the same block from storage, for
 reading afterwards rather than live.
 
 Under `--quiet` and `--json` it prints nothing — `--json` promises a single

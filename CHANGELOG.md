@@ -69,6 +69,17 @@ server is unaffected. Both are detailed below.
   id, so a variant priced the same as its base model still needs its own entry
   — without one it reports an *unknown* cost, which is worse than a stale one.
 
+- **`docs/cli.md` documented a `-v` that the CLI refuses.** It showed
+  `evaling show <run> --case <id> -v`; `-v` is a global option and has to
+  precede the subcommand, so anyone who copied that line got
+  `Error: No such option '-v'`. The feature always worked — only the
+  documented spelling was wrong. Corrected here and in 0.1.1's entry above,
+  where the same line shipped.
+
+  The docs tests checked that every command and flag *exists*, which cannot
+  catch a real flag in a position click rejects. They now also parse every
+  documented `evaling …` line, running none of them.
+
 ### Security
 
 - **`cryptography` 50.0.0** (CVE-2026-69247) — a Bleichenbacher timing oracle
@@ -85,8 +96,8 @@ server is unaffected. Both are detailed below.
   characters, with no indication of whether the cell passed. The rendered
   prompt had no human-readable surface anywhere: it is stored on every record
   and was reachable only through `export --format json`, which is a strange
-  place to send someone debugging a template. `evaling show <run> --case <id>
-  -v` prints the same block from storage.
+  place to send someone debugging a template. `evaling -v show <run> --case
+  <id>` prints the same block from storage.
 
   Bounded at 20 lines per prompt message and 200 lines of response, with a
   character backstop, since a response with no newlines is one line however
