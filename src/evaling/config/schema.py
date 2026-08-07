@@ -4,6 +4,7 @@ Unknown keys are rejected everywhere except scorer parameters, so config typos
 fail loudly at load time.
 """
 
+import math
 from pathlib import Path
 from typing import Any, Literal
 
@@ -75,9 +76,13 @@ class ModelSpec(StrictModel):
     # Which environment variable holds the API key (providers have sensible
     # defaults, e.g. ANTHROPIC_API_KEY; set this for OpenAI-compatible
     # backends like Gemini or OpenRouter with their own key variables).
-    api_key_env: str | None = None
+    # Constrained to environment-variable shape so a pasted key is caught here
+    # rather than committed: this field is the one place a credential can enter
+    # a config while looking like it belongs, and the config is serialized
+    # verbatim into every run's snapshot.
+    api_key_env: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
     # Per-model request timeout in seconds (wired by HTTP providers).
-    timeout_s: float | None = Field(default=None, gt=0)
+    timeout_s: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     # Per-model retry count for transient failures (attempts = retries + 1).
     max_retries: int | None = Field(default=None, ge=0)
     # Cap in-flight calls to this model (composes with settings.concurrency).
@@ -111,10 +116,15 @@ class ModelSpec(StrictModel):
             )
         for field in ("input", "output"):
             value = pricing[field]
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            bad_type = isinstance(value, bool) or not isinstance(value, (int, float))
+            # `value < 0` is False for NaN, and inf clears every
+            # comparison — both then reach estimate_cost and fail the
+            # cell after the call was billed, which is the exact
+            # failure this validator exists to move earlier.
+            if bad_type or not math.isfinite(value) or value < 0:
                 raise ValueError(
                     f"model {self.id!r}: params.pricing.{field} must be a "
-                    f"non-negative number, got {value!r}"
+                    f"finite non-negative number, got {value!r}"
                 )
         return self
 
@@ -194,7 +204,7 @@ class ScorerSpec(BaseModel):
 
 class CriterionSpec(StrictModel):
     criterion: str = Field(min_length=1)
-    weight: float = Field(default=1.0, gt=0)
+    weight: float = Field(default=1.0, gt=0, allow_inf_nan=False)
     scorer: ScorerSpec
 
 

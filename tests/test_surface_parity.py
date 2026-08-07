@@ -6,15 +6,28 @@ five times: the large-matrix confirmation, `sample_seed` without `sample`, the
 source-backed refusals, `--yes` against an unbounded source, and `list
 --limit`. Each was found separately, by a person, after it shipped.
 
-This is one scenario table driven through both surfaces. Adding a guard to
-either without the other fails here, which is the point: the class stops
-depending on someone noticing.
+Three layers, because the first alone was not enough.
 
-Deliberate differences are listed at the bottom, with the reason, so a reader
-can tell "not yet implemented" from "decided".
+A scenario table drives both surfaces through the same refusals, and checks
+they refuse for the same *reason* — agreeing that something is wrong while
+disagreeing about what sends the reader to fix the wrong thing.
+
+Every `run` option is classified as shared or CLI-only, so a new one on either
+surface fails here until someone places it. The table covers the options it
+happens to name, which is why five more gaps shipped after it was written:
+`--fail-fast`, `--no-cache`, `--resume`, `--baseline` and `--no-look` were in
+neither the table nor the list of deliberate differences.
+
+The options both surfaces accept are then checked to *do* the same thing, not
+just to be accepted by both.
+
+Deliberate differences are listed with the reason, so a reader can tell "not
+yet implemented" from "decided".
 """
 
 import asyncio
+import contextlib
+from difflib import SequenceMatcher
 
 import pytest
 from click.testing import CliRunner
@@ -153,6 +166,18 @@ def test_both_surfaces_agree(scenario, tmp_path):
     )
 
 
+#: Shortest run of explanation the two refusals must share, in characters.
+#: Every scenario above clears this with margin — the tightest is "sample must
+#: be at least 1" at 25 — so raising it further would only be measuring the
+#: current wording rather than the property.
+SHARED_REASON_CHARS = 20
+
+
+def flat(text: str) -> str:
+    """One line, single-spaced: both surfaces wrap, at different widths."""
+    return " ".join(text.split())
+
+
 @pytest.mark.parametrize("scenario", [s for s in SCENARIOS if not s[4]], ids=lambda s: s[0])
 def test_a_refusal_says_why_on_both(scenario, tmp_path):
     """A guard nobody can act on is a guard people work around."""
@@ -162,6 +187,33 @@ def test_a_refusal_says_why_on_both(scenario, tmp_path):
     for surface, message in (("CLI", cli_message), ("MCP", mcp_message)):
         assert message.strip(), f"{name}: {surface} refused silently"
         assert len(message.split()) > 4, f"{name}: {surface} said only {message!r}"
+
+
+@pytest.mark.parametrize("scenario", [s for s in SCENARIOS if not s[4]], ids=lambda s: s[0])
+def test_both_refusals_give_the_same_reason(scenario, tmp_path):
+    """Refusing together is not enough — they have to refuse for one reason.
+
+    Two surfaces can agree that something is wrong and disagree about what,
+    which sends the reader to fix the wrong thing. Checked as the longest run
+    of shared text rather than equality: each surface names its own argument
+    (`--sample-seed` against `sample_seed`), which is correct, and the length
+    bar alone was cleared by click's own boilerplate.
+    """
+    name, config, cli_kwargs, mcp_kwargs, _ = scenario
+    _, cli_message = via_cli(write(tmp_path / "cli", config), **cli_kwargs)
+    _, mcp_message = via_mcp(write(tmp_path / "mcp", config), **mcp_kwargs)
+
+    cli_text, mcp_text = flat(cli_message), flat(mcp_message)
+    match = SequenceMatcher(None, cli_text, mcp_text, autojunk=False).find_longest_match(
+        0, len(cli_text), 0, len(mcp_text)
+    )
+    shared = mcp_text[match.b : match.b + match.size]
+    assert match.size >= SHARED_REASON_CHARS, (
+        f"{name}: the surfaces refused for different reasons.\n"
+        f"  shared only {match.size} chars: {shared!r}\n"
+        f"  CLI: {cli_text}\n"
+        f"  MCP: {mcp_text}"
+    )
 
 
 class TestTheSameRunProducesTheSameNumbers:
@@ -230,6 +282,200 @@ class TestListingLimitsClampTheSameWay:
     def test_the_same_limit_shows_the_same_number(self, tmp_path, limit):
         from_cli, from_mcp = self.runs_shown(tmp_path, limit)
         assert from_cli == from_mcp, f"--limit {limit}: CLI showed {from_cli}, MCP {from_mcp}"
+
+
+#: `evaling run` flag -> the `run_eval` argument that means the same thing.
+SHARED_OPTIONS = {
+    "--case": "cases",
+    "--fail-fast": "fail_fast",
+    "--label": "label",
+    "--max-cost": "max_cost_usd",
+    "--model": "models",
+    "--no-cache": "no_cache",
+    "--sample": "sample",
+    "--sample-seed": "sample_seed",
+    "--variant": "variants",
+}
+
+#: CLI-only, and why. "Not implemented" is a legitimate entry — the point is
+#: that it is written down, not that every gap has a rationale.
+CLI_ONLY_OPTIONS = {
+    "--baseline": "no MCP equivalent yet; an agent can read the baseline with get_run",
+    "--concurrency": "a settings knob, reachable through the config or EVALING_CONCURRENCY",
+    "--dry-run": "render_prompt is the MCP way to check a config without spending",
+    "--html": "writes a file to a caller-chosen path, which a tool call should not do",
+    "--log-requests": "writes prompts and completions verbatim to a caller-chosen path",
+    "--no-look": "privacy is a property of the config, which both surfaces already honor",
+    "--resume": "no MCP equivalent yet",
+}
+
+#: Plumbing on the MCP tool: how it is called, not what it was asked to do.
+MCP_PLUMBING = {"config_path", "output_dir", "on_progress"}
+
+
+class TestEveryRunOptionIsClassified:
+    """A new option on either surface fails here until someone places it.
+
+    This is the guard the file's premise needs. The scenario table covers the
+    options it happens to name; five gaps shipped anyway, and would have again
+    — `--fail-fast`, `--no-cache`, `--resume`, `--baseline` and `--no-look`
+    were in neither the table nor the deliberate-differences list, so adding
+    one to a surface and not the other broke nothing here.
+    """
+
+    def cli_flags(self) -> set[str]:
+        return {
+            option
+            for param in main.commands["run"].params
+            for option in param.opts
+            if option.startswith("--")
+        }
+
+    def mcp_arguments(self) -> set[str]:
+        import inspect
+
+        from evaling.mcp_server import run_eval_tool
+
+        return set(inspect.signature(run_eval_tool).parameters) - MCP_PLUMBING
+
+    def test_every_cli_flag_is_shared_or_explained(self):
+        unclassified = self.cli_flags() - set(SHARED_OPTIONS) - set(CLI_ONLY_OPTIONS)
+        assert not unclassified, (
+            f"new `evaling run` flags: {sorted(unclassified)}. Add each to "
+            "SHARED_OPTIONS with its MCP argument, or to CLI_ONLY_OPTIONS with the reason."
+        )
+
+    def test_every_mcp_argument_is_shared(self):
+        unclassified = self.mcp_arguments() - set(SHARED_OPTIONS.values())
+        assert not unclassified, (
+            f"new run_eval arguments: {sorted(unclassified)}. Add each to SHARED_OPTIONS "
+            "with its CLI flag, or to MCP_PLUMBING if it is not a user-facing option."
+        )
+
+    def test_the_classification_describes_options_that_exist(self):
+        """An entry that outlives its option hides the next real gap."""
+        flags = self.cli_flags()
+        stale = (set(SHARED_OPTIONS) | set(CLI_ONLY_OPTIONS)) - flags
+        assert not stale, f"classified flags that `evaling run` no longer has: {sorted(stale)}"
+        gone = set(SHARED_OPTIONS.values()) - self.mcp_arguments()
+        assert not gone, f"shared options whose MCP argument is gone: {sorted(gone)}"
+
+    def test_each_cli_only_option_carries_a_reason(self):
+        vague = [flag for flag, why in CLI_ONLY_OPTIONS.items() if len(why.split()) < 4]
+        assert not vague, f"these need a real reason, not a placeholder: {vague}"
+
+
+class TestSharedOptionsBehaveTheSame:
+    """The options both surfaces accept must also *do* the same thing.
+
+    `--max-cost` was in the scenario table only as a permission token — as the
+    thing that lets an unbounded run start. Whether the two surfaces stop at
+    the same point, and agree the run is incomplete, was untested.
+    """
+
+    def results(self, path):
+        from evaling.storage import RunStore
+
+        store = RunStore(path / "runs")
+        run_id = store.list_runs()[0]["id"]
+        return store.load_meta(run_id)
+
+    def both(self, tmp_path, config, cli_kwargs, mcp_kwargs):
+        cli_path = write(tmp_path / "cli", config)
+        mcp_path = write(tmp_path / "mcp", config)
+        via_cli(cli_path, **cli_kwargs)
+        # A refusal is still a result worth comparing, and the CLI swallows
+        # its own into an exit code rather than raising.
+        with contextlib.suppress(EvalingError):
+            asyncio.run(
+                run_eval_tool(
+                    config_path=str(mcp_path / "eval.yaml"),
+                    output_dir=str(mcp_path / "runs"),
+                    **mcp_kwargs,
+                )
+            )
+        return self.results(cli_path), self.results(mcp_path)
+
+    def test_fail_fast_stops_both_at_the_same_place(self, tmp_path):
+        # Every cell fails, so fail-fast has something to stop on.
+        config = (
+            "models: [{id: mock, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            + "cases: ["
+            + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(6))
+            + "]\n"
+            + 'scorecard: [{criterion: acc, scorer: {type: contains, value: "nowhere"}}]\n'
+            + "settings: {concurrency: 1}\n"
+        )
+        cli_meta, mcp_meta = self.both(tmp_path, config, {"fail-fast": True}, {"fail_fast": True})
+        assert cli_meta["counts"] == mcp_meta["counts"], (
+            f"--fail-fast stopped at {cli_meta['counts']} on the CLI and "
+            f"{mcp_meta['counts']} over MCP"
+        )
+        assert cli_meta["stopped_early"] == mcp_meta["stopped_early"]
+        assert cli_meta["counts"]["total"] < 6, "fail-fast did not stop anything"
+        assert cli_meta["stopped_early"] is True
+
+    def test_max_cost_stops_both_at_the_same_place(self, tmp_path):
+        config = (
+            "models: [{id: mock, provider: mock, params: {cost: 0.01}}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            + "cases: ["
+            + ", ".join(f"{{id: c{i}, vars: {{q: '{i}'}}}}" for i in range(10))
+            + "]\n"
+            + 'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n'
+            + "settings: {concurrency: 1}\n"
+        )
+        cli_meta, mcp_meta = self.both(tmp_path, config, {"max-cost": 0.03}, {"max_cost_usd": 0.03})
+        assert cli_meta["counts"] == mcp_meta["counts"]
+        assert cli_meta["totals"]["cost_usd"] == mcp_meta["totals"]["cost_usd"]
+        assert cli_meta["status"] == mcp_meta["status"]
+        assert cli_meta["warnings"] == mcp_meta["warnings"]
+        assert cli_meta["counts"]["total"] < 10, "the ceiling stopped nothing"
+        # A ceiling-stopped run is `incomplete` and resumable; `stopped_early`
+        # is --fail-fast's flag, and must stay off here.
+        assert cli_meta["status"] == "incomplete"
+        assert cli_meta["stopped_early"] is False
+        assert cli_meta["totals"]["cost_usd"] <= 0.03
+
+    def test_no_cache_bypasses_the_cache_on_both(self, tmp_path):
+        config = inline(4) + "settings: {cache: true}\n"
+        for path in (tmp_path / "cli", tmp_path / "mcp"):
+            write(path, config)
+        # Prime each surface's own cache, then ask it to ignore it.
+        via_cli(tmp_path / "cli")
+        asyncio.run(
+            run_eval_tool(
+                config_path=str(tmp_path / "mcp" / "eval.yaml"),
+                output_dir=str(tmp_path / "mcp" / "runs"),
+            )
+        )
+        via_cli(tmp_path / "cli", **{"no-cache": True})
+        mcp_summary = asyncio.run(
+            run_eval_tool(
+                config_path=str(tmp_path / "mcp" / "eval.yaml"),
+                output_dir=str(tmp_path / "mcp" / "runs"),
+                no_cache=True,
+            )
+        )
+        cli_meta = self.results(tmp_path / "cli")
+        assert cli_meta["counts"]["cached"] == 0, "--no-cache still served from the cache"
+        assert mcp_summary["counts"]["cached"] == 0, "no_cache still served from the cache"
+
+    def test_a_label_lands_the_same_way_on_both(self, tmp_path):
+        cli_path = write(tmp_path / "cli", inline(2))
+        mcp_path = write(tmp_path / "mcp", inline(2))
+        via_cli(cli_path, label="tagged")
+        asyncio.run(
+            run_eval_tool(
+                config_path=str(mcp_path / "eval.yaml"),
+                output_dir=str(mcp_path / "runs"),
+                label="tagged",
+            )
+        )
+        assert self.results(cli_path)["label"] == self.results(mcp_path)["label"] == "tagged"
 
 
 class TestDeliberateDifferences:

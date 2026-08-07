@@ -29,7 +29,11 @@ FILE_PREFIX = "file://"
 def load_cases(config: EvalConfig) -> list[Case]:
     """Produce the final case list: loaded, path-resolved, with unique ids."""
     if isinstance(config.cases, list):
-        cases = [_resolve_files(case, config.base_dir) for case in config.cases]
+        # Inline cases live in the config, so an absolute path there is the
+        # config author reaching outside on purpose.
+        cases = [
+            _resolve_files(case, config.base_dir, may_reach_outside=True) for case in config.cases
+        ]
     else:
         dataset = config.base_dir / config.cases.file
         cases = _load_dataset(dataset)
@@ -47,7 +51,7 @@ def _load_dataset(path: Path) -> list[Case]:
     if not rows:
         raise ConfigError(f"case file is empty: {path}")
     return [
-        _resolve_files(_row_to_case(path, index, row), path.parent)
+        _resolve_files(_row_to_case(path, index, row), path.parent, may_reach_outside=False)
         for index, row in enumerate(rows, start=1)
     ]
 
@@ -114,34 +118,51 @@ def _row_to_case(path: Path, index: int, row: dict[str, Any]) -> Case:
         raise ConfigError(f"{path}: row {index}: {first['msg']}") from exc
 
 
-def _resolve_files(case: Case, base_dir: Path) -> Case:
+def _resolve_files(case: Case, base_dir: Path, *, may_reach_outside: bool) -> Case:
     if not case.files:
         return case
-    resolved = {name: _resolve_attachment(raw, base_dir) for name, raw in case.files.items()}
+    resolved = {
+        name: _resolve_attachment(raw, base_dir, may_reach_outside=may_reach_outside)
+        for name, raw in case.files.items()
+    }
     return case.model_copy(update={"files": resolved})
 
 
-def _resolve_attachment(raw: str, base_dir: Path) -> str:
+def _resolve_attachment(raw: str, base_dir: Path, *, may_reach_outside: bool) -> str:
     """One attachment path, resolved and kept where it belongs.
 
-    A relative path must stay under the file that declared it. Datasets arrive
-    from elsewhere — a vendor, a colleague, an export — and evaling reads every
-    attachment, hashes it, sends it to a model API, and archives it in the run
-    directory. `file://../../../.ssh/id_rsa` in a CSV would do all four.
+    evaling reads every attachment, hashes it, sends it to a model API, and
+    archives it in the run directory. Who wrote the path decides whether it may
+    point outside the project.
 
-    Absolute paths are left alone: those are a deliberate choice by whoever
-    wrote the config, not something a dataset can smuggle in.
+    A relative path always stays under the file that declared it, whoever wrote
+    it. An absolute one is an explicit reach outside, and only the config may
+    make it: an inline case is written by whoever wrote the config, while a
+    dataset arrives from elsewhere — a vendor, a colleague, an export.
+
+    The containment check used to apply to relative paths alone, so a dataset
+    escaped it by writing the same path absolute — `/home/you/.ssh/id_rsa`
+    instead of `../../../.ssh/id_rsa` — which read, transmitted and archived
+    the file exactly as the check existed to prevent.
     """
     path = Path(raw)
-    if path.is_absolute():
-        return str(path.resolve())
     root = base_dir.resolve()
-    resolved = (root / path).resolve()
+    resolved = path.resolve() if path.is_absolute() else (root / path).resolve()
+    if path.is_absolute() and may_reach_outside:
+        return str(resolved)
     if resolved != root and root not in resolved.parents:
+        # Two ways to land here, and the way out differs. A config's own
+        # relative path can be made absolute; a dataset's cannot.
+        way_out = (
+            "Move the file under that directory, or use an absolute path if reaching "
+            "outside is intended."
+            if may_reach_outside
+            else "Move the file under that directory, or declare it on an inline case "
+            "in the config if reaching outside is intended."
+        )
         raise ConfigError(
-            f"attachment {raw!r} resolves outside {root}, which a dataset may not do. "
-            "Move the file under that directory, or name it with an absolute path if "
-            "reaching outside is intended."
+            f"attachment {raw!r} resolves outside {root} — it would be read, sent to a "
+            f"model API, and archived with the run. {way_out}"
         )
     return str(resolved)
 

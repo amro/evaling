@@ -161,6 +161,23 @@ class TestAgreement:
         assert score(scorer, '{"score": 4}', Case(human_label=5)).passed
         assert not score(scorer, '{"score": 3}', Case(human_label=5)).passed
 
+    @pytest.mark.parametrize("tolerance", [-1, float("inf"), float("nan")])
+    def test_a_nonsense_tolerance_is_refused_at_construction(self, tolerance):
+        """Each of these produced a plausible score instead of an error.
+
+        A negative tolerance makes identical values disagree, so a perfect
+        judge calibrates at 0%. Infinity makes everything agree, so any judge
+        calibrates at 100%. NaN fails every comparison. Silent wrong answers,
+        from the tool whose job is measuring agreement.
+        """
+        with pytest.raises(ScoringError, match="finite and non-negative"):
+            AgreementScorer({"mode": "within", "tolerance": tolerance}, BASE)
+
+    def test_the_label_nan_agrees_with_itself(self):
+        """ "nan" is a label, not a number: normalizing it made it self-unequal."""
+        scorer = AgreementScorer({}, BASE)
+        assert score(scorer, '{"score": "nan"}', Case(human_label="nan")).passed
+
     def test_within_requires_numbers(self):
         scorer = AgreementScorer({"mode": "within"}, BASE)
         with pytest.raises(ScoringError, match="needs numeric"):

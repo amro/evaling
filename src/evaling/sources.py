@@ -36,6 +36,11 @@ from evaling.config.schema import Case
 #: Cases requested per fetch when the config doesn't say.
 DEFAULT_PAGE_SIZE = 100
 
+#: Consecutive empty pages tolerated before a source is called broken. A source
+#: filtering its own rows legitimately returns some; it does not return
+#: thousands while still claiming there is more to come.
+MAX_EMPTY_PAGES = 1000
+
 
 @dataclass(frozen=True)
 class CasePage:
@@ -175,35 +180,66 @@ async def iter_source_cases(
 
     Stops at ``limit`` cases if given, at the source's last page otherwise. A
     source that keeps returning the same cursor would spin forever, so a cursor
-    that does not advance ends iteration.
+    that does not advance is an error.
+
+    A case without an ``id`` is numbered by position, as inline and dataset
+    cases are. Uniqueness is *not* checked: that needs every id at once, which
+    is the one thing streaming exists to avoid, so a source handing out
+    duplicate ids produces records that share one.
+
+    Memory is constant: one page of cases, one cursor string. Cycle detection
+    compares against the previous cursor rather than every cursor seen, which
+    is the contract the error states — advance, or end — and does not grow a
+    set for the length of the walk.
     """
     if page_size < 1:
         raise SourceError("page_size must be >= 1")
     cursor: str | None = None
     seen = 0
-    seen_cursors: set[str] = set()
+    empty_pages = 0
     while True:
         want = page_size if limit is None else min(page_size, limit - seen)
         if want <= 0:
             return
         page = await _call_fetch(source, cursor, want)
-        if not page.cases:
+        # An empty page is only the end when the cursor says so. Treating any
+        # empty page as the end truncated the run silently: a source that
+        # filters its own rows — which docs/large-datasets.md recommends —
+        # returns an empty page with a live cursor whenever a whole page is
+        # filtered out, and everything after it was dropped without a word.
+        if not page.cases and page.cursor is None:
             return
+        # Following those pages means a source can now advance forever without
+        # yielding anything, which looks like a hang rather than a fault: no
+        # cases, no cost, no progress. Bounded generously — a source filtering
+        # out this many consecutive pages is broken, not thorough.
+        empty_pages = empty_pages + 1 if not page.cases else 0
+        if empty_pages > MAX_EMPTY_PAGES:
+            raise SourceError(
+                f"case source returned {empty_pages} pages in a row with no cases and "
+                "more to come; it is filtering everything out or its cursor is stuck"
+            )
         for case in page.cases:
             if not isinstance(case, Case):
                 raise SourceError(
                     f"case source yielded {type(case).__name__}, expected evaling.Case"
                 )
+            if not case.id:
+                # Inline and dataset cases are numbered by _assign_ids; source
+                # cases reach the engine directly and skipped it, so every
+                # record carried an empty case id — which grouped unrelated
+                # cases under one heading in the report and made them
+                # indistinguishable in an export.
+                case = case.model_copy(update={"id": f"case-{seen + 1}"})
             yield case
             seen += 1
             if limit is not None and seen >= limit:
                 return
         if page.cursor is None:
             return
-        if page.cursor in seen_cursors:
+        if page.cursor == cursor:
             raise SourceError(
                 f"case source returned cursor {page.cursor!r} twice; "
                 "a cursor must advance or be None on the last page"
             )
-        seen_cursors.add(page.cursor)
         cursor = page.cursor

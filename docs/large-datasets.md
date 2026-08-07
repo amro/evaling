@@ -80,6 +80,16 @@ when there is nothing more.
 
 A cursor that repeats is an error rather than an infinite loop.
 
+**An empty page is not the end** unless its cursor is `None`. Filtering inside
+your source empties a whole page whenever every row on it is filtered out, and
+the walk continues past it. A source that returns a thousand empty pages in a
+row while still promising more is treated as broken and raises.
+
+A case without an `id` is numbered by position, like an inline or dataset case.
+Uniqueness is not checked — that needs every id at once, which is what
+streaming exists to avoid — so a source handing out duplicate ids produces
+records that share one.
+
 ## Bounding a run
 
 A source with no `limit` and no cost ceiling will not start:

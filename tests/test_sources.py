@@ -9,6 +9,7 @@ from evaling.cli import main
 from evaling.config import EvalConfig
 from evaling.engine import dry_run, run_eval, select_matrix
 from evaling.sources import (
+    MAX_EMPTY_PAGES,
     BaseCaseSource,
     CasePage,
     CaseSource,
@@ -191,6 +192,83 @@ class TestIteration:
 
         with pytest.raises(SourceError, match="twice"):
             self.collect(Stuck(), page_size=1)
+
+    def test_an_empty_page_with_more_to_come_is_walked_through(self):
+        """Filtering inside a source is documented, and it empties whole pages.
+
+        Any empty page used to end iteration, so everything after the first one
+        was dropped: no error, run reported success, gate scored partial data.
+        """
+
+        class Filtered:
+            def fetch(self, cursor, limit):
+                from evaling import Case
+
+                step = int(cursor or 0)
+                pages = [
+                    ([Case(id="a", vars={})], "1"),
+                    ([], "2"),  # a page whose rows the source filtered out
+                    ([], "3"),
+                    ([Case(id="b", vars={})], None),
+                ]
+                rows, nxt = pages[step]
+                return CasePage(cases=rows, cursor=nxt)
+
+        assert [case.id for case in self.collect(Filtered(), page_size=1)] == ["a", "b"]
+
+    def test_cases_without_an_id_are_numbered_by_position(self):
+        """Inline and dataset cases get `case-N`; source cases got nothing.
+
+        Every record then carried `case_id: ""`, so the report grouped
+        unrelated cases under one heading and an export could not tell them
+        apart.
+        """
+
+        class NoIds:
+            def fetch(self, cursor, limit):
+                from evaling import Case
+
+                step = int(cursor or 0)
+                if step >= 2:
+                    return CasePage(cases=[], cursor=None)
+                rows = [Case(vars={"q": str(step * 2 + i)}) for i in range(2)]
+                return CasePage(cases=rows, cursor=str(step + 1))
+
+        ids = [case.id for case in self.collect(NoIds(), page_size=2)]
+        assert ids == ["case-1", "case-2", "case-3", "case-4"]
+
+    def test_an_id_the_source_supplies_is_kept(self):
+        class WithIds:
+            def fetch(self, cursor, limit):
+                from evaling import Case
+
+                return CasePage(cases=[Case(id="theirs", vars={})], cursor=None)
+
+        assert [case.id for case in self.collect(WithIds())] == ["theirs"]
+
+    def test_an_empty_last_page_still_ends_iteration(self):
+        class EndsEmpty:
+            def fetch(self, cursor, limit):
+                return CasePage(cases=[], cursor=None)
+
+        assert self.collect(EndsEmpty(), page_size=1) == []
+
+    def test_a_source_that_only_ever_empties_is_an_error_not_a_hang(self):
+        """Following empty pages means a source can advance forever yielding
+        nothing, which looks like a hang: no cases, no cost, no progress."""
+
+        class AlwaysEmpty:
+            def __init__(self):
+                self.fetches = 0
+
+            def fetch(self, cursor, limit):
+                self.fetches += 1
+                return CasePage(cases=[], cursor=str(self.fetches))
+
+        source = AlwaysEmpty()
+        with pytest.raises(SourceError, match="no cases"):
+            self.collect(source, page_size=1)
+        assert source.fetches <= MAX_EMPTY_PAGES + 2, "the guard let it run away"
 
     def test_wrong_return_type(self):
         class Bad:

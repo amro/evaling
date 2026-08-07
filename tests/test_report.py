@@ -107,6 +107,54 @@ def test_hostile_names_are_escaped(tmp_path):
     assert "&lt;i&gt;c1&lt;/i&gt;" in html
 
 
+def test_a_hostile_error_message_is_escaped(tmp_path):
+    """No test rendered an erroring cell, so this `esc()` was unguarded.
+
+    Provider errors quote what the endpoint said back, and a gateway can put
+    anything in a body — this is untrusted text on the same footing as model
+    output, and it lands in a different branch of the same function.
+    """
+    payload = "<script>alert('boom')</script>"
+    config = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "x"}, "expected": "x"}])
+    settings = make_settings(tmp_path)
+    result = run_eval(config, settings)
+    store = RunStore(settings.output_dir)
+    records = store.load_results(result.run_id)
+    # Set on the record rather than provoked from a provider: what matters is
+    # that the error *branch* escapes, and no mock error carries chosen text.
+    for record in records:
+        record.error = f"provider said: {payload}"
+        record.output = None
+    html = render_run_html(store.load_meta(result.run_id), records)
+    assert "<script" not in html.lower()
+    assert "&lt;script&gt;" in html
+
+
+def test_a_hostile_run_label_is_escaped(tmp_path):
+    """The label is chosen at the command line and lands in the page header."""
+    config = make_config(tmp_path, cases=[{"id": "c1", "vars": {"q": "x"}, "expected": "x"}])
+    settings = make_settings(tmp_path)
+    result = run_eval(config, settings, label="<script>alert('label')</script>")
+    store = RunStore(settings.output_dir)
+    html = render_run_html(store.load_meta(result.run_id), store.load_results(result.run_id))
+    assert "<script" not in html.lower()
+    assert "&lt;script&gt;" in html
+
+
+def test_a_hostile_model_id_is_escaped(tmp_path):
+    config = make_config(
+        tmp_path,
+        models=[{"id": "<script>alert('m')</script>", "provider": "mock"}],
+        cases=[{"id": "c1", "vars": {"q": "x"}, "expected": "x"}],
+    )
+    settings = make_settings(tmp_path)
+    result = run_eval(config, settings)
+    store = RunStore(settings.output_dir)
+    html = render_run_html(store.load_meta(result.run_id), store.load_results(result.run_id))
+    assert "<script" not in html.lower()
+    assert "&lt;script&gt;" in html
+
+
 def test_media_referenced_by_hash_not_embedded(tmp_path):
     (tmp_path / "pic.png").write_bytes(b"binary-image-bytes")
     config = make_config(

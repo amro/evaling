@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Everything here came out of a full-codebase review of the parts earlier
+reviews had not reached.
+
+### Security
+
+- **A dataset could name an attachment outside the project.** Attachment paths
+  from a dataset are checked to stay under the dataset file, because a dataset
+  arrives from elsewhere and evaling reads every attachment, sends it to a
+  model API, and archives it with the run. The check applied to relative paths
+  only, so writing the same path absolutely skipped it — `file://../../id_rsa`
+  was refused and `file:///home/you/.ssh/id_rsa` was not.
+
+  Reaching evaling this way needs a dataset you did not write, a `file://`
+  value in it, and a prompt that attaches that field. Present since 0.1.0, and
+  no known use of it. An inline case in the config may still use an absolute
+  path: that is the config's own author, who can point evaling anywhere
+  already, and is the distinction the check was meant to draw.
+
+- **A malformed secrets file could print the secret it was hiding.** The
+  parse error for a secrets file suppresses the offending line by design, but
+  still quoted PyYAML's own description — and that description names tokens
+  taken from the file. A value beginning with `*` is YAML alias syntax, so
+  `MY_KEY: *sk-…` failed with `found undefined alias 'sk-…'`. Quoted spans are
+  now dropped from that description; the position and the kind of problem
+  remain.
+
+### Fixed
+
+- **A source-backed run stopped early at the first empty page.** Any empty page
+  ended iteration, even when its cursor said there was more. Filtering inside a
+  source — which [large-datasets.md](docs/large-datasets.md) recommends —
+  empties a whole page whenever every row on it is filtered out, so the run
+  silently scored a prefix of the data and the gate passed on it. Empty pages
+  are now walked through, and a source that returns a thousand in a row while
+  still promising more raises rather than appearing to hang.
+
+- **Cases from a source had no ids.** Inline and dataset cases are numbered
+  `case-N` when they arrive without one; source cases skipped that entirely, so
+  every record carried an empty case id — which grouped unrelated cases under
+  one heading in the HTML report and made them indistinguishable in an export.
+
+- **`.nan` and `.inf` were accepted where a number was required.** `params.
+  pricing` reached the estimator and produced a NaN cost that failed the cell
+  *after* the call was billed — the exact failure that validator exists to
+  move earlier. A criterion `weight` of infinity made the weighted score
+  `inf/inf`, and the resulting NaN spread into the aggregates, the gate, and a
+  `--json` export where NaN is not valid JSON. `timeout_s` accepted infinity,
+  which is a request that never gives up. Each is one YAML token away from a
+  number.
+
+- **`api_key_env` accepts a variable name, not a key.** It is the one field
+  where pasting a credential looks plausible, and the config is serialized
+  verbatim into every run's snapshot. Values that are not environment-variable
+  shaped are now refused at load.
+
+- **The agreement scorer accepted a tolerance that silently inverted it.** Only
+  the type was checked, so a negative tolerance made identical values disagree
+  (a perfect judge calibrating at 0%), infinity made everything agree (any
+  judge at 100%), and NaN failed every comparison. All three produced a
+  plausible number from the tool whose job is measuring agreement. The label
+  `"nan"` also compared unequal to itself, since it was normalized to a float.
+
+- **A template expression that failed on its own terms escaped as a bare Python
+  error.** `render_text` promises `TemplateError`, but `{{ 1 % q }}` with
+  `q: 0` raised `ZeroDivisionError`, naming neither the template nor the case.
+
+- **The HTML report labelled withheld output "(empty response)".** Under
+  [no-look](docs/no-look.md) the model answered and the answer was never
+  stored, which is a different fact about the run than an empty one.
+
+### Changed
+
+- **CLI/MCP parity is enforced by classification, not by a list of scenarios.**
+  Every `evaling run` flag must now be declared shared with its MCP argument,
+  or CLI-only with a reason, so a new option on either surface fails the tests
+  until someone places it. The scenario table only ever covered options it
+  happened to name, which is why `--fail-fast`, `--no-cache`, `--resume`,
+  `--baseline` and `--no-look` sat in neither it nor the deliberate-differences
+  list. The options both surfaces share are also checked to *behave* the same
+  — `--max-cost` had been tested only as the thing that lets a run start, never
+  as a ceiling — and refusals must now agree on the reason, not just refuse
+  together.
+
 ## [0.2.0] - 2026-08-07
 
 **Breaking.** Two contracts moved, both around the optional MCP extra. It now

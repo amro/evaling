@@ -78,6 +78,22 @@ class TestWherePyyamlSaysTheProblemIs:
         message = self.error_for(tmp_path, "KEY: sk-ant-a-real-looking-credential\n  BAD: x\n")
         assert "sk-ant-a-real-looking-credential" not in message
 
+    @pytest.mark.parametrize(
+        "body",
+        [
+            # An unquoted value starting with `*` is YAML alias syntax, and the
+            # parse error names the alias — printing the key from the message
+            # that exists to avoid printing it.
+            "MY_KEY: *sk-ant-a-real-looking-credential\n",
+            # Anchors quote the name back the same way.
+            "a: &sk-ant-a-real-looking-credential 1\nb: &sk-ant-a-real-looking-credential 2\n",
+        ],
+    )
+    def test_a_secret_inside_pyyamls_own_problem_text_is_not_echoed(self, tmp_path, body):
+        message = self.error_for(tmp_path, body)
+        assert "sk-ant-a-real-looking-credential" not in message, message
+        assert "line" in message, "the position is what makes this fixable"
+
     def test_it_still_says_what_was_wrong(self, tmp_path):
         assert "invalid YAML" in self.error_for(tmp_path, self.BROKEN)
 

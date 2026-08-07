@@ -64,7 +64,6 @@ tr.overall td { font-weight: 600; border-top: 2px solid var(--line); }
   margin: 0; padding: .6rem .9rem; font-size: .95rem; background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
-.case > h3 .vars { color: var(--muted); font-weight: 400; margin-left: .5rem; }
 .cell { padding: .8rem .9rem; border-top: 1px solid var(--line); }
 .cell:first-of-type { border-top: none; }
 .cell > .head { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
@@ -153,8 +152,8 @@ def _matrix_table(aggregates: dict[str, Any]) -> str:
         f"<td>{esc(cell['variant'])}</td><td>{esc(cell['model'])}</td>"
         f"<td class='num'>{_score(cell['score'])}</td>"
         f"<td class='num'>{_pct(cell['pass_rate'])}</td>"
-        f"<td class='num'>{cell['cases']}</td>"
-        f"<td class='num'>{cell['errors'] or ''}</td>"
+        f"<td class='num'>{esc(cell['cases'])}</td>"
+        f"<td class='num'>{esc(cell['errors'] or '')}</td>"
         "</tr>"
         for cell in aggregates.get("matrix", [])
     )
@@ -222,7 +221,7 @@ def _cell(record: ResultRecord) -> str:
     if record.latency_ms is not None:
         bits.append(f"{record.latency_ms:.0f} ms")
     if record.input_tokens or record.output_tokens:
-        bits.append(f"{record.input_tokens or 0}/{record.output_tokens or 0} tok")
+        bits.append(esc(f"{record.input_tokens or 0}/{record.output_tokens or 0} tok"))
     if record.cost_usd:
         bits.append(f"${record.cost_usd:.4f}")
 
@@ -231,7 +230,17 @@ def _cell(record: ResultRecord) -> str:
     elif record.output:
         body = f"<div class='out'>{esc(record.output)}</div>"
     else:
-        body = "<div class='out empty'>(empty response)</div>"
+        # No error and no output means one of two different things, and
+        # "(empty response)" said the wrong one for a whole no-look run: the
+        # model answered, the answer was never stored. A cell that rendered
+        # always has its messages; no-look is what clears them, and a cell that
+        # failed before rendering took the error branch above.
+        withheld = not record.messages
+        body = (
+            "<div class='out empty'>(withheld — no-look run)</div>"
+            if withheld
+            else "<div class='out empty'>(empty response)</div>"
+        )
 
     state = "pass" if passed else "fail"
     return (

@@ -86,7 +86,8 @@ class TestADatasetCannotReachOutsideItself:
         path = self.project(tmp_path, "../secret.txt")
         with pytest.raises(ConfigError) as caught:
             load_cases(load_config(path / "eval.yaml"))
-        assert "absolute path" in str(caught.value)
+        # Not "use an absolute path" — that is the escape this closed.
+        assert "inline case" in str(caught.value)
 
     def test_a_path_beside_the_dataset_still_works(self, tmp_path):
         path = self.project(tmp_path, "doc.pdf")
@@ -101,12 +102,46 @@ class TestADatasetCannotReachOutsideItself:
         [case] = load_cases(load_config(path / "eval.yaml"))
         assert case.files["doc"].endswith("doc.pdf")
 
-    def test_an_absolute_path_is_still_allowed(self, tmp_path):
-        """Someone writing an absolute path meant it; a dataset cannot smuggle one."""
+    def test_an_absolute_path_is_refused_too(self, tmp_path):
+        """The traversal check was skipped entirely by writing the path absolute.
+
+        This test used to assert the opposite, on the premise that an absolute
+        path "is a deliberate choice by whoever wrote the config" — but a
+        dataset row is written by whoever wrote the *dataset*, which is the
+        thing being defended against. `/home/you/.ssh/id_rsa` in a vendor CSV
+        was read, sent to the model API, and archived with the run.
+        """
         outside = tmp_path / "elsewhere.pdf"
         outside.write_text("deliberate", encoding="utf-8")
         path = self.project(tmp_path, str(outside))
+        with pytest.raises(ConfigError, match="resolves outside"):
+            load_cases(load_config(path / "eval.yaml"))
+
+    def test_an_absolute_path_inside_the_dataset_directory_is_fine(self, tmp_path):
+        """Contained is contained; how the path is spelled does not matter."""
+        path = self.project(tmp_path, "placeholder")
+        inside = path / "data" / "doc.pdf"
+        inside.write_text("fine", encoding="utf-8")
+        (path / "data" / "cases.jsonl").write_text(
+            json.dumps({"id": "c1", "q": "a", "doc": f"file://{inside}"}) + "\n",
+            encoding="utf-8",
+        )
         [case] = load_cases(load_config(path / "eval.yaml"))
+        assert case.files["doc"] == str(inside.resolve())
+
+    def test_an_inline_case_may_still_reach_outside(self, tmp_path):
+        """The config's author can already point evaling anywhere."""
+        outside = tmp_path / "elsewhere.pdf"
+        outside.write_text("deliberate", encoding="utf-8")
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "eval.yaml").write_text(
+            CONFIG_HEAD
+            + f"cases: [{{id: c1, vars: {{q: a}}, files: {{doc: '{outside}'}}}}]\n"
+            + SCORECARD,
+            encoding="utf-8",
+        )
+        [case] = load_cases(load_config(project / "eval.yaml"))
         assert case.files["doc"] == str(outside.resolve())
 
     def test_inline_cases_are_bounded_by_the_config_directory(self, tmp_path):

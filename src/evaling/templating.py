@@ -44,6 +44,15 @@ def render_text(template: str, context: dict[str, Any], where: str = "template")
         return compiled.render(context)
     except UndefinedError as exc:
         raise TemplateError(f"{where}: {exc.message}") from exc
+    except TemplateError:
+        raise
+    except Exception as exc:
+        # An expression can fail on its own terms rather than Jinja's:
+        # `{{ 1 % q }}` with `q: 0` is a ZeroDivisionError, and a filter given
+        # the wrong type is a TypeError. Neither is a TemplateError, so both
+        # escaped a function documented to raise one — reaching the caller as
+        # a bare Python error naming no template and no case.
+        raise TemplateError(f"{where}: {type(exc).__name__}: {exc}") from exc
 
 
 def build_context(case: Case) -> dict[str, Any]:

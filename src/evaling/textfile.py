@@ -11,6 +11,7 @@ The rule for everything here: raise the caller's own error type with a message
 naming the file, or return the parsed value. Nothing else gets out.
 """
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,21 @@ def read_text(path: Path, error: type[EvalingError], *, missing: str) -> str:
         raise error(f"could not read {path}: {exc}") from exc
 
 
+def _redact_yaml_problem(problem: str | None) -> str:
+    """PyYAML's short description, minus anything lifted from the file.
+
+    Suppressing the context line is not enough on its own. `problem` quotes
+    content-derived tokens back — a value beginning with `*` is YAML alias
+    syntax, so `MY_KEY: *sk-live-…` fails with "found undefined alias
+    'sk-live-…'", printing the key from the message written to avoid printing
+    it. Anchors do the same. PyYAML quotes those tokens, so dropping quoted
+    spans keeps the useful half ("found undefined alias") and none of the file.
+    """
+    if not problem:
+        return "could not be parsed"
+    return re.sub(r"'[^']*'", "'…'", problem)
+
+
 def read_yaml(
     path: Path, error: type[EvalingError], *, missing: str, quote_content: bool = True
 ) -> Any:
@@ -63,7 +79,7 @@ def read_yaml(
         if not quote_content:
             mark = getattr(exc, "problem_mark", None)
             where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
-            problem = getattr(exc, "problem", None) or "could not be parsed"
+            problem = _redact_yaml_problem(getattr(exc, "problem", None))
             raise error(f"{path}: invalid YAML{where}: {problem}") from exc
         raise error(f"{path}: invalid YAML: {exc}") from exc
     except RecursionError as exc:

@@ -10,6 +10,7 @@ JSON verdict; the case's ``human_label`` is ground truth. Params:
 """
 
 import json
+import math
 from numbers import Real
 
 from evaling.config.schema import Case
@@ -32,6 +33,16 @@ class AgreementScorer(Scorer):
             raise ScoringError(
                 f"agreement scorer: tolerance must be a number, got {raw!r}"
             ) from None
+        # Only the type was checked, and every unchecked value fails silently
+        # rather than loudly: a negative tolerance makes identical values
+        # disagree, so a perfect judge calibrates at 0%; infinity makes
+        # everything agree, so any judge calibrates at 100%; NaN fails every
+        # comparison. All three produce a plausible number, which is the worst
+        # outcome for a tool whose whole job is measuring agreement.
+        if not math.isfinite(self.tolerance) or self.tolerance < 0:
+            raise ScoringError(
+                f"agreement scorer: tolerance must be finite and non-negative, got {raw!r}"
+            )
         self.field = params.get("field", "score")
 
     async def score(self, output: str, case: Case) -> ScoreResult:
@@ -78,7 +89,11 @@ class AgreementScorer(Scorer):
             return float(value)
         if isinstance(value, str):
             try:
-                return float(value.strip())
+                number = float(value.strip())
             except ValueError:
                 return value.strip().lower()
+            # float("nan") is not equal to itself, so normalizing the *string*
+            # "nan" to a number made two identical labels disagree. It is a
+            # label like any other here — compare it as text.
+            return value.strip().lower() if math.isnan(number) else number
         return value

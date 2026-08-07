@@ -29,6 +29,23 @@ def test_syntax_error_raises_template_error():
         render_text("{% if x %}unclosed", {"x": 1})
 
 
+@pytest.mark.parametrize(
+    ("template", "context"),
+    [
+        ("{{ 1 % q }}", {"q": 0}),  # ZeroDivisionError
+        ("{{ q | length }}", {"q": 5}),  # TypeError from a filter
+    ],
+)
+def test_an_expression_failing_on_its_own_terms_is_still_a_template_error(template, context):
+    """Documented to raise TemplateError; these escaped as bare Python errors.
+
+    A ZeroDivisionError from `{{ 1 % q }}` names neither the template nor the
+    case, so the reader gets an exception type with no way back to the line.
+    """
+    with pytest.raises(TemplateError, match="message 1"):
+        render_text(template, context, "message 1")
+
+
 def test_error_message_includes_location():
     with pytest.raises(TemplateError, match=r"message 2 \(user\):"):
         render_text("{{ nope }}", {}, where="message 2 (user)")

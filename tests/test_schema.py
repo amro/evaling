@@ -109,6 +109,14 @@ def test_command_provider_requires_command():
         {"input": 5},
         {"input": True, "output": 5},
         "free",
+        # NaN clears `value < 0` — every comparison against it is False — and
+        # inf clears it honestly. Both are one YAML token (`.nan`, `.inf`)
+        # away from a number, and both used to load, then produce a NaN cost
+        # that failed the cell *after* the API call was billed.
+        {"input": float("nan"), "output": 5},
+        {"input": 5, "output": float("nan")},
+        {"input": float("inf"), "output": 5},
+        {"input": 5, "output": float("inf")},
     ],
 )
 def test_malformed_pricing_rejected_at_load(pricing):
@@ -198,6 +206,48 @@ def test_zero_weight_rejected():
     bad = minimal_config(scorecard=[{"criterion": "x", "weight": 0, "scorer": {"type": "exact"}}])
     with pytest.raises(ValidationError):
         EvalConfig.model_validate(bad)
+
+
+@pytest.mark.parametrize("weight", [float("inf"), float("nan")])
+def test_a_non_finite_weight_is_rejected(weight):
+    """`gt=0` is true of inf, and a weighted score becomes inf/inf — NaN.
+
+    That NaN then spreads: into the cell score, the aggregates, the gate
+    comparison, and a `--json` export where it is not valid JSON at all.
+    """
+    bad = minimal_config(
+        scorecard=[{"criterion": "x", "weight": weight, "scorer": {"type": "exact"}}]
+    )
+    with pytest.raises(ValidationError):
+        EvalConfig.model_validate(bad)
+
+
+@pytest.mark.parametrize("timeout", [float("inf"), float("nan")])
+def test_a_non_finite_timeout_is_rejected(timeout):
+    """An infinite timeout is a request that never gives up."""
+    with pytest.raises(ValidationError):
+        ModelSpec.model_validate({"id": "m", "provider": "mock", "timeout_s": timeout})
+
+
+@pytest.mark.parametrize(
+    "value", ["sk-ant-api03-looks-like-a-real-key", "sk-proj-abc123", "has space", ""]
+)
+def test_api_key_env_must_look_like_a_variable_name(value):
+    """It names a variable; a value here is a credential in a committed file.
+
+    The config is serialized verbatim into every run's snapshot, so a key
+    pasted here spreads from the repo into the run directory.
+    """
+    with pytest.raises(ValidationError):
+        ModelSpec.model_validate({"id": "m", "provider": "mock", "api_key_env": value})
+
+
+@pytest.mark.parametrize("value", ["ANTHROPIC_API_KEY", "my_key", "_X1"])
+def test_real_variable_names_are_accepted(value):
+    assert (
+        ModelSpec.model_validate({"id": "m", "provider": "mock", "api_key_env": value}).api_key_env
+        == value
+    )
 
 
 def test_llm_judge_requires_judge_name():
