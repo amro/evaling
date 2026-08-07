@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 #: When the built-in table was last checked against published pricing.
-PRICING_AS_OF = "2026-08-01"
+PRICING_AS_OF = "2026-08-07"
 
 
 @dataclass(frozen=True)
@@ -88,13 +88,20 @@ PRICES: dict[str, Price] = {
     "gpt-5.4-mini": Price(0.75, 4.50),
     "gpt-5.4-nano": Price(0.20, 1.25),
     "gpt-5.4-pro": Price(30.00, 180.00),
+    # 5.3 ships only as these two; there is no plain `gpt-5.3` on the card.
+    # Lookup is by exact id, so a variant priced the same as its base still
+    # has to be listed or it reports an unknown cost.
+    "gpt-5.3-chat-latest": Price(1.75, 14.00),
+    "gpt-5.3-codex": Price(1.75, 14.00),
     "gpt-5.2": Price(1.75, 14.00),
     "gpt-5.2-pro": Price(21.00, 168.00),
+    "gpt-5.2-chat-latest": Price(1.75, 14.00),
     "gpt-5.1": Price(1.25, 10.00),
     "gpt-5": Price(1.25, 10.00),
     "gpt-5-mini": Price(0.25, 2.00),
     "gpt-5-nano": Price(0.05, 0.40),
     "gpt-5-pro": Price(15.00, 120.00),
+    "gpt-5-search-api": Price(1.25, 10.00),
     "gpt-4.1": Price(2.00, 8.00),
     "gpt-4.1-mini": Price(0.40, 1.60),
     "gpt-4.1-nano": Price(0.10, 0.40),
@@ -128,6 +135,8 @@ PRICES: dict[str, Price] = {
     # Text input; audio in costs $0.50.
     "gemini-3.1-flash-lite": Price(0.25, 1.50),
     "gemini-3.1-pro-preview": Price(2.00, 12.00),  # >200k: $4.00 / $18.00
+    # Text input; audio in costs $1.00.
+    "gemini-3-flash-preview": Price(0.50, 3.00),
     "gemini-2.5-pro": Price(1.25, 10.00),  # >200k: $2.50 / $15.00
     "gemini-2.5-flash": Price(0.30, 2.50),
     "gemini-2.5-flash-lite": Price(0.10, 0.40),

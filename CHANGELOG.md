@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-07
+
+**Breaking.** Two contracts moved, both around the optional MCP extra. It now
+requires `mcp` 2.0 or newer, so an environment pinned to 1.x cannot install
+it; and `evaling doctor`'s `mcp_extra` JSON field keeps its name and boolean
+type but now means *usable* rather than *present*. Nothing about the config
+format changed, and the CLI is untouched — a project that does not use the MCP
+server is unaffected. Both are detailed below.
+
 ### Changed
 
 - **The MCP server needs `mcp` 2.0 or newer.** The 2.0 SDK renamed `FastMCP`
@@ -52,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagnosed from here, a 2.x that fails to import, hands back the underlying
   error instead of guessing, and the `ImportError` is chained rather than
   suppressed so the traceback still names the module that actually failed.
+
+- **Five text models added to the price table**, checked against all three
+  published rate cards on 2026-08-07. No existing rate changed. New: OpenAI's
+  `gpt-5.3-chat-latest`, `gpt-5.3-codex`, `gpt-5.2-chat-latest`, and
+  `gpt-5-search-api`, and Google's `gemini-3-flash-preview`. Lookup is by exact
+  id, so a variant priced the same as its base model still needs its own entry
+  — without one it reports an *unknown* cost, which is worse than a stale one.
 
 ### Security
 
