@@ -41,12 +41,12 @@ evaling = "evaling.cli:main"
 
 [project.optional-dependencies]
 mcp = [
-    "mcp>=1.28",
+    "mcp>=2.0",
 ]
 
 [dependency-groups]
 dev = [
-    "mcp>=1.28",
+    "mcp>=2.0",
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.8",

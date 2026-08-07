@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The MCP server needs `mcp` 2.0 or newer.** The 2.0 SDK renamed `FastMCP`
+  to `MCPServer` and moved it out of `mcp.server.fastmcp`, so the import the
+  server is built on no longer resolved and `evaling mcp` could not start at
+  all. Since the extra's floor was `mcp>=1.28`, a fresh
+  `pip install 'evaling[mcp]'` resolved to 2.0 and got a server that was dead
+  on arrival — so this is a fix for new installs as much as a version bump.
+  The floor is now `mcp>=2.0`; 1.x is upstream maintenance-only, and the two
+  lines cannot be served from one import path.
+
+  The migration retired two private-API dependencies rather than porting
+  them. The server's version is a constructor argument now, instead of being
+  poked onto `_mcp_server` after the fact, and the in-process tests connect
+  with the public `Client(server)` rather than reaching through the server for
+  a lowlevel handle. Unknown arguments are still refused, still by name only
+  (see [mcp.md](docs/mcp.md#argument-names-must-match-exactly)) — the SDK drops
+  what a tool didn't declare in 2.0 exactly as it did in 1.x.
+
+### Fixed
+
+- **An `mcp` that is installed but too old no longer reads as one that is
+  missing.** Both arrive as an `ImportError` from the same line, and the
+  handler blamed the one it could name: someone on 1.x was told to install the
+  package they already had. The message now says which of the two it is and
+  names the version it found.
+
+### Security
+
+- **`cryptography` 50.0.0** (CVE-2026-69247) — a Bleichenbacher timing oracle
+  in PKCS#7 decryption. It reaches evaling only as a transitive dependency of
+  the `mcp` extra (`mcp[crypto]` → `pyjwt[crypto]`), on a code path nothing in
+  evaling calls, so no released version was exploitable through it.
+
 ## [0.1.1] - 2026-08-01
 
 ### Added
