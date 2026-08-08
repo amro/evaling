@@ -1,4 +1,5 @@
 import json
+import re
 
 from click.testing import CliRunner
 
@@ -6,6 +7,11 @@ from evaling.cli import main
 from evaling.cli.scaffold import CASES_JSONL
 
 ENV = {"EVALING_USER_CONFIG": "/nonexistent"}
+
+
+def flat(output: str) -> str:
+    """Output with rich's wrapping collapsed, so a match cannot fall on a break."""
+    return re.sub(r"\s+", " ", output)
 
 
 def test_init_scaffolds_runnable_project():
@@ -107,10 +113,10 @@ def test_the_gitignore_action_is_reported_accurately():
     with runner.isolated_filesystem():
         Path(".gitignore").write_text("node_modules/\n", encoding="utf-8")
         merged = runner.invoke(main, ["init", "--force"], env=ENV)
-        assert "updated .gitignore" in merged.output, merged.output
+        assert "updated .gitignore" in flat(merged.output), merged.output
 
         again = runner.invoke(main, ["init", "--force"], env=ENV)
-        assert "left alone .gitignore" in again.output, again.output
+        assert "left alone .gitignore" in flat(again.output), again.output
 
 
 def test_a_gitignore_left_alone_is_not_rewritten():
@@ -126,7 +132,7 @@ def test_a_gitignore_left_alone_is_not_rewritten():
         before = path.read_bytes()
 
         result = runner.invoke(main, ["init", "--force"], env=ENV)
-        assert "left alone .gitignore" in result.output, result.output
+        assert "left alone .gitignore" in flat(result.output), result.output
         assert path.read_bytes() == before, "the file was rewritten despite the label"
 
 
@@ -155,7 +161,10 @@ def test_a_gitignore_that_is_not_utf8_is_refused_before_anything_is_written():
         Path(".gitignore").write_bytes(b"# caf\xe9\nnode_modules/\n")
         result = runner.invoke(main, ["init", "--force"], env=ENV)
         assert result.exit_code == 2, result.output
-        assert "not valid UTF-8" in result.output
+        # Collapsed: rich wraps to the terminal width, and where the break
+        # lands depends on the tmp path's length — on Windows it fell between
+        # "valid" and "UTF-8" and split the phrase being matched.
+        assert "not valid UTF-8" in flat(result.output), result.output
         assert not Path("eval.yaml").exists(), "the scaffold was left half-written"
 
 
@@ -175,5 +184,5 @@ def test_merging_into_a_crlf_gitignore_keeps_crlf():
         # And the second run recognises its own work.
         before = path.read_bytes()
         again = runner.invoke(main, ["init", "--force"], env=ENV)
-        assert "left alone .gitignore" in again.output
+        assert "left alone .gitignore" in flat(again.output)
         assert path.read_bytes() == before
