@@ -143,9 +143,12 @@ class TestJson:
         """
         import json as json_module
 
+        # 64 is the edge itself, not merely past it: at 63 starts the object
+        # is still found. Testing a looser 69 would tolerate any budget up to
+        # it, leaving the pin above as the only real check.
         with pytest.raises(json_module.JSONDecodeError):
-            parse_json_lenient("[" * 69 + '{"score": 1}')  # past 64
-        assert parse_json_lenient("[" * 63 + '{"score": 1}') == {"score": 1}  # inside it
+            parse_json_lenient("[" * 64 + '{"score": 1}')
+        assert parse_json_lenient("[" * 63 + '{"score": 1}') == {"score": 1}
 
     def test_unparseable_text_raises_original_error(self):
         import json as json_module

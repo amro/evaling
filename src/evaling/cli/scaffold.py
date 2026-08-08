@@ -130,7 +130,9 @@ MODEL_BLOCKS = {
 }
 
 
-def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock") -> list[str]:
+def scaffold_project(
+    root: Path, *, force: bool = False, provider: str = "mock"
+) -> list[tuple[str, str]]:
     """Write the example files under root; refuse to clobber without force.
 
     Returns ``(action, name)`` per file. ".gitignore" is merged rather than
@@ -146,28 +148,46 @@ def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock")
             f"refusing to overwrite existing file(s): {', '.join(existing)} "
             "(use --force to overwrite)"
         )
+    # Read before anything is written. A .gitignore evaling cannot decode used
+    # to raise mid-loop, after eval.yaml had already been replaced — a
+    # traceback and a half-written scaffold.
+    gitignore = _existing_gitignore(root / ".gitignore")
+
     written = []
     for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        action = "created"
-        if name == ".gitignore" and path.exists():
+        if name == ".gitignore" and gitignore is not None:
             # Compared as bytes, and skipped when they match: reading with
             # universal newlines and writing with "\n" rewrites a CRLF file
             # that already has every entry, so saying "left alone" while
             # changing every line ending would be false.
-            before = path.read_bytes()
-            merged = _merged_gitignore(before.decode("utf-8")).encode("utf-8")
-            if merged == before:
+            merged = _merged_gitignore(gitignore.decode("utf-8")).encode("utf-8")
+            if merged == gitignore:
                 written.append(("left alone", name))
                 continue
-            action = "updated"
             path.write_bytes(merged)
-            written.append((action, name))
+            written.append(("updated", name))
             continue
         path.write_text(content, encoding="utf-8", newline="\n")
-        written.append((action, name))
+        written.append(("created", name))
     return written
+
+
+def _existing_gitignore(path: Path) -> bytes | None:
+    """The file's bytes, or None if there is nothing to merge into."""
+    if not path.is_file():
+        return None
+    raw = path.read_bytes()
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise EvalingError(
+            f"{path} is not valid UTF-8 (byte {raw[exc.start]:#04x} at offset {exc.start}), "
+            "so evaling cannot merge its entries in. Re-save it as UTF-8, or add "
+            "`.evaling/` and `.evaling.secrets.yaml` to it by hand."
+        ) from None
+    return raw
 
 
 def _merged_gitignore(existing: str) -> str:
@@ -184,5 +204,8 @@ def _merged_gitignore(existing: str) -> str:
         return existing
     if not existing.strip():
         return GITIGNORE
-    separator = "" if existing.endswith("\n") else "\n"
-    return existing + separator + "\n" + "\n".join(missing) + "\n"
+    # Match the file's own convention: appending LF into a CRLF file leaves it
+    # mixed, which git tolerates but `core.autocrlf` setups warn about.
+    newline = "\r\n" if "\r\n" in existing else "\n"
+    separator = "" if existing.endswith(newline) else newline
+    return existing + separator + newline + newline.join(missing) + newline

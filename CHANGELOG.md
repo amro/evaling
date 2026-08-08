@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`evaling init --force` no longer crashes on a `.gitignore` that is not
+  UTF-8.** A single non-UTF-8 byte — a comment with an accent in it — raised
+  `UnicodeDecodeError` as a traceback, and because it happened partway through
+  writing, the scaffold was left with `eval.yaml` replaced and nothing else.
+  The file is now read before anything is written, and an undecodable one is
+  refused with a message naming the byte and the two entries to add by hand.
+
+- **Merging into a CRLF `.gitignore` keeps CRLF.** evaling's entries were
+  appended with `\n`, leaving one file with two conventions.
+
+### Changed
+
+- **The JSON start budget is tested at its edge.** The behavioural test used a
+  value comfortably past the limit, so it tolerated any budget between the real
+  edge and that value; it now uses the edge itself, and a change of one in
+  either direction fails.
+
 ## [0.2.2] - 2026-08-07
 
 From a review of the modules earlier reviews had not reached: the Python
@@ -44,7 +63,10 @@ scorer, the settings loader, the CLI display and scaffold.
 
 - **`evaling init --force` keeps an existing `.gitignore`.** It replaced the
   file wholesale, discarding entries that had nothing to do with evaling. Every
-  other scaffold file belongs to evaling; this one usually predates it.
+  other scaffold file belongs to evaling; this one usually predates it. The
+  file is compared as bytes and left untouched when evaling's entries are
+  already there — reading translates newlines and writing did not, so a CRLF
+  file was reported as left alone while every line ending was rewritten.
 
 - **A message role from a stored record can no longer crash `show`.** The role
   label was the one string in the verbose block reaching rich unescaped.

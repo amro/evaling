@@ -140,3 +140,40 @@ def test_merging_into_an_empty_gitignore_adds_the_entries():
         gitignore = Path(".gitignore").read_text(encoding="utf-8")
         assert gitignore.startswith("#"), "a leading blank line was left behind"
         assert ".evaling/" in gitignore and ".evaling.secrets.yaml" in gitignore
+
+
+def test_a_gitignore_that_is_not_utf8_is_refused_before_anything_is_written():
+    """It raised mid-loop, after eval.yaml had already been replaced.
+
+    A traceback and a half-written scaffold, from a file evaling only wanted
+    to append two lines to.
+    """
+    from pathlib import Path
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".gitignore").write_bytes(b"# caf\xe9\nnode_modules/\n")
+        result = runner.invoke(main, ["init", "--force"], env=ENV)
+        assert result.exit_code == 2, result.output
+        assert "not valid UTF-8" in result.output
+        assert not Path("eval.yaml").exists(), "the scaffold was left half-written"
+
+
+def test_merging_into_a_crlf_gitignore_keeps_crlf():
+    """Appending LF into a CRLF file leaves it mixed; autocrlf setups warn."""
+    from pathlib import Path
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        path = Path(".gitignore")
+        path.write_bytes(b"node_modules/\r\nlogs/\r\n")
+        assert runner.invoke(main, ["init", "--force"], env=ENV).exit_code == 0
+        raw = path.read_bytes()
+        assert raw.count(b"\n") == raw.count(b"\r\n"), "the merge left mixed line endings"
+        assert b".evaling.secrets.yaml" in raw
+
+        # And the second run recognises its own work.
+        before = path.read_bytes()
+        again = runner.invoke(main, ["init", "--force"], env=ENV)
+        assert "left alone .gitignore" in again.output
+        assert path.read_bytes() == before
