@@ -133,9 +133,8 @@ MODEL_BLOCKS = {
 def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock") -> list[str]:
     """Write the example files under root; refuse to clobber without force.
 
-    Returns one line per file, already worded for the reader: ".gitignore" is
-    merged rather than replaced, so reporting it as created would describe the
-    wrong thing.
+    Returns ``(action, name)`` per file. ".gitignore" is merged rather than
+    replaced, so reporting it as created would describe the wrong thing.
     """
     files = dict(FILES)
     if provider != "mock":
@@ -147,18 +146,28 @@ def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock")
             f"refusing to overwrite existing file(s): {', '.join(existing)} "
             "(use --force to overwrite)"
         )
-    created = []
+    written = []
     for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         action = "created"
         if name == ".gitignore" and path.exists():
-            before = path.read_text(encoding="utf-8")
-            content = _merged_gitignore(before)
-            action = "updated" if content != before else "left alone"
+            # Compared as bytes, and skipped when they match: reading with
+            # universal newlines and writing with "\n" rewrites a CRLF file
+            # that already has every entry, so saying "left alone" while
+            # changing every line ending would be false.
+            before = path.read_bytes()
+            merged = _merged_gitignore(before.decode("utf-8")).encode("utf-8")
+            if merged == before:
+                written.append(("left alone", name))
+                continue
+            action = "updated"
+            path.write_bytes(merged)
+            written.append((action, name))
+            continue
         path.write_text(content, encoding="utf-8", newline="\n")
-        created.append(f"{action} {name}")
-    return created
+        written.append((action, name))
+    return written
 
 
 def _merged_gitignore(existing: str) -> str:

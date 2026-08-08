@@ -124,21 +124,28 @@ class TestJson:
         with pytest.raises(json_module.JSONDecodeError):
             parse_json_lenient(decorate("[" * 100_000))
 
-    def test_json_past_the_start_budget_is_not_found(self):
-        """The budget is what keeps the scan from being quadratic.
+    def test_the_start_budget_is_the_value_it_is_documented_as(self):
+        """Pinned, because every behavioural test derives its input from it.
 
-        Each start can scan the whole remaining text, so trying every one
-        cost five seconds on 16 KB of "[" and held a concurrency slot. This is
-        that bound's observable edge: raising MAX_JSON_STARTS fails here, which
-        is what makes the budget testable at all — timing a flood does not,
-        since a deep enough one now short-circuits as invalid JSON instead.
+        Building the input from the constant makes a test that adapts to any
+        value and so cannot notice a change: raising the budget kept the suite
+        green while restoring the quadratic scan the budget exists to prevent.
+        """
+        assert MAX_JSON_STARTS == 64
+
+    def test_json_past_the_start_budget_is_not_found(self):
+        """The budget's observable edge, at the documented value.
+
+        Each start can scan the whole remaining text, so trying every one cost
+        five seconds on 16 KB of "[". Timing a flood cannot test this any more
+        — a deep enough one short-circuits as invalid JSON first — so the bound
+        is checked by where the scan stops looking.
         """
         import json as json_module
 
-        buried = "[" * (MAX_JSON_STARTS + 5) + '{"score": 1}'
         with pytest.raises(json_module.JSONDecodeError):
-            parse_json_lenient(buried)
-        assert parse_json_lenient("[" * (MAX_JSON_STARTS - 2) + '{"score": 1}') == {"score": 1}
+            parse_json_lenient("[" * 69 + '{"score": 1}')  # past 64
+        assert parse_json_lenient("[" * 63 + '{"score": 1}') == {"score": 1}  # inside it
 
     def test_unparseable_text_raises_original_error(self):
         import json as json_module

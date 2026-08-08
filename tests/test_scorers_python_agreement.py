@@ -113,6 +113,17 @@ class TestPython:
         with pytest.raises(ScoringError, match=r"sys\.exit\(3\)"):
             score(scorer, "x")
 
+    @pytest.mark.parametrize(
+        ("call", "reported"),
+        [("sys.exit()", r"sys\.exit\(\)"), ("sys.exit(None)", r"sys\.exit\(\)")],
+    )
+    def test_a_bare_sys_exit_is_reported_as_written(self, tmp_path, call, reported):
+        """`sys.exit()` reported as `sys.exit(None)` names a call nobody made."""
+        body = f"import sys\ndef score(output, case):\n    {call}\n"
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        with pytest.raises(ScoringError, match=reported):
+            score(scorer, "x")
+
     def test_missing_file_fails_at_construction(self, tmp_path):
         with pytest.raises(ScoringError, match="file not found"):
             PythonScorer({"file": "ghost.py"}, tmp_path)

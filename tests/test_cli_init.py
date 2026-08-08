@@ -111,3 +111,32 @@ def test_the_gitignore_action_is_reported_accurately():
 
         again = runner.invoke(main, ["init", "--force"], env=ENV)
         assert "left alone .gitignore" in again.output, again.output
+
+
+def test_a_gitignore_left_alone_is_not_rewritten():
+    """CRLF made "left alone" false: reading translates newlines and writing
+    with "\n" converted every line, so git showed the file modified."""
+    from pathlib import Path
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        path = Path(".gitignore")
+        assert runner.invoke(main, ["init"], env=ENV).exit_code == 0
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        before = path.read_bytes()
+
+        result = runner.invoke(main, ["init", "--force"], env=ENV)
+        assert "left alone .gitignore" in result.output, result.output
+        assert path.read_bytes() == before, "the file was rewritten despite the label"
+
+
+def test_merging_into_an_empty_gitignore_adds_the_entries():
+    from pathlib import Path
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".gitignore").write_text("   \n\n", encoding="utf-8")
+        assert runner.invoke(main, ["init", "--force"], env=ENV).exit_code == 0
+        gitignore = Path(".gitignore").read_text(encoding="utf-8")
+        assert gitignore.startswith("#"), "a leading blank line was left behind"
+        assert ".evaling/" in gitignore and ".evaling.secrets.yaml" in gitignore
