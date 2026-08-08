@@ -414,7 +414,7 @@ def run(
             # not the interesting part when nothing was evaluated.
             app.say("gate not evaluated — no cell ran")
         if log_requests:
-            app.say(f"request log written to [bold]{log_requests}[/bold]")
+            app.say(f"request log written to [bold]{display.safe(log_requests)}[/bold]")
         if result.selection:
             app.say(
                 f"sampled {result.selection['sample']} of "
@@ -422,9 +422,9 @@ def run(
                 f"[bold]--sample {result.selection['sample']} "
                 f"--sample-seed {result.selection['seed']}[/bold]"
             )
-        app.say(f"run [bold]{result.run_id}[/bold] stored in {result.path}")
+        app.say(f"run [bold]{result.run_id}[/bold] stored in {display.safe(result.path)}")
         if html_path:
-            app.say(f"report written to [bold]{html_path}[/bold]")
+            app.say(f"report written to [bold]{display.safe(html_path)}[/bold]")
     # --fail-fast exits non-zero on its own: it only stops because a cell
     # failed, and a build that ended early but exited 0 would read as a pass.
     gate_failed = bool(gate and not gate["passed"])
@@ -651,7 +651,9 @@ def show(app, ref, failures, case_id):
         subset = [record for record in records if record.case_id == case_id]
         if not subset:
             raise EvalingError(f"no results for case {case_id!r} in run {run_id}")
-        app.console.print(f"[bold]case {case_id}[/bold] in run {run_id}")
+        app.console.print(
+            f"[bold]case {display.safe(case_id)}[/bold] in run {display.safe(run_id)}"
+        )
         app.console.print(display.case_table(subset))
         if app.verbose:
             # The same block a verbose run prints, so the live view and the
@@ -673,7 +675,9 @@ def show(app, ref, failures, case_id):
     # Escaped: a label is user text, and an unbalanced tag in it made `show`
     # crash with a MarkupError — on the one command for reading a run back.
     label = f" ({display.safe(meta['label'])})" if meta.get("label") else ""
-    app.console.print(f"[bold]{meta['id']}[/bold]{label} — {meta['status']}")
+    app.console.print(
+        f"[bold]{display.safe(meta['id'])}[/bold]{label} — {display.safe(meta['status'])}"
+    )
     if meta.get("aggregates"):
         app.console.print(display.matrix_table(meta["aggregates"]))
     if meta.get("counts"):
@@ -743,7 +747,9 @@ def compare(app, ref_a, ref_b, html_path):
         # a caveat underneath them arrives too late to change how they read it.
         app.err.print(f"[yellow]warning:[/yellow] {markup_escape(caveat)}")
 
-    app.console.print(f"[bold]{meta_a['id']}[/bold] → [bold]{meta_b['id']}[/bold]")
+    app.console.print(
+        f"[bold]{display.safe(meta_a['id'])}[/bold] → [bold]{display.safe(meta_b['id'])}[/bold]"
+    )
     table, notes = display.compare_table(diff)
     app.console.print(table)
     for note in notes:
@@ -771,7 +777,7 @@ def export(app, ref, fmt, out):
     if out is not None:
         _require_path(out, "--out")
         Path(out).write_text(text, encoding="utf-8", newline="\n")
-        app.say(f"wrote {out}")
+        app.say(f"wrote {display.safe(out)}")
     else:
         click.echo(text)
 
@@ -790,7 +796,7 @@ def baseline_set(app, ref):
     store = app.store()
     run_id = store.resolve_ref(ref)
     store.set_baseline(run_id)
-    app.console.print(f"baseline pinned to [bold]{run_id}[/bold]")
+    app.console.print(f"baseline pinned to [bold]{display.safe(run_id)}[/bold]")
 
 
 @baseline.command(name="show")
@@ -862,7 +868,9 @@ def cache_info(app):
         app.echo_json(stats)
         return
     megabytes = stats["bytes"] / 1_048_576
-    app.console.print(f"{stats['entries']} entries · {megabytes:.1f} MB · {stats['path']}")
+    app.console.print(
+        f"{stats['entries']} entries · {megabytes:.1f} MB · {display.safe(stats['path'])}"
+    )
 
 
 @cache.command(name="clear")
@@ -943,14 +951,14 @@ def calibrate(app, ref, labels, out_dir, variant, model, judge_model):
         return
     for path in created:
         app.console.print(f"created [bold]{path}[/bold]")
-    app.say(f"\n{len(cases)} rated answers from run {run_id}")
+    app.say(f"\n{len(cases)} rated answers from run {display.safe(run_id)}")
     if unlabelled > 0:
         # Silence here would read as "every case was rated".
         app.err.print(
             f"[yellow]warning:[/yellow] {unlabelled} case(s) in the run had no rating "
             "and were left out"
         )
-    app.say(f"try it:  [bold]cd {out_dir} && evaling validate[/bold]")
+    app.say(f"try it:  [bold]cd {display.safe(out_dir)} && evaling validate[/bold]")
 
 
 @main.command()

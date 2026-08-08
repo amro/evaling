@@ -4,7 +4,7 @@ This module is the public, stable API surface — everything the CLI (and the
 MCP server) can do is available here programmatically.
 """
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 from evaling.config import (  # noqa: E402
     Case,

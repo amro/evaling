@@ -128,6 +128,9 @@ and evaling reads every attachment, sends it to a model API, and archives it
 with the run — so both `file://../../secrets.pdf` and `file:///home/you/.ssh/
 id_rsa` in a CSV are refused.
 
+A **case source** is the same: its code is yours, but the rows it returns
+generally are not, so their attachments are contained too.
+
 An **inline case** in the config may use an absolute path to reach outside:
 that is the config's own author, who can already point evaling anywhere. Its
 relative paths still stay under the config's directory.

@@ -442,8 +442,10 @@ behind afterwards is not.
 deleted, not written encrypted — never written. In a no-look run, `results.jsonl`
 holds scores and metadata, `run.json` holds aggregates, `config.snapshot.yaml`
 has inline cases stripped, `artifacts/` stays empty because attachments are
-never archived, and the response cache is disabled for the run. evaling uses no
-temporary files anywhere in its codebase, in any mode.
+never archived, and the response cache is disabled for the run. No case data
+reaches a temporary file either: evaling writes run metadata and archived
+artifacts temp-then-rename, for atomicity, and neither carries case data in a
+no-look run.
 
 This is a stronger guarantee than the original requirement asked for, and it is
 what made the encryption design below unnecessary.

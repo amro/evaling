@@ -6,10 +6,13 @@ that names `file://../../../.ssh/id_rsa` gets that file read, hashed, sent to
 a model API, and archived in the run directory.
 """
 
+import asyncio
 import json
 
 import pytest
+from click.testing import CliRunner
 
+from evaling.cli import main
 from evaling.config import load_config
 from evaling.config.cases import load_cases
 from evaling.config.errors import ConfigError
@@ -24,6 +27,7 @@ CONFIG_HEAD = (
     '    prompt: [{role: user, content: "{{ q }}"}]\n'
 )
 SCORECARD = 'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n'
+ENV = {"EVALING_USER_CONFIG": "/nonexistent"}
 
 
 class TestTheRequestLogWillNotClobber:
@@ -227,3 +231,80 @@ class TestADatasetCannotReachOutsideItself:
         )
         with pytest.raises(ConfigError, match="resolves outside"):
             load_cases(load_config(project / "eval.yaml"))
+
+
+class TestASourceCannotReachOutsideTheProject:
+    """The rows a source returns are data, even though its code is trusted.
+
+    Containment covered inline cases and dataset files; source-yielded cases
+    reached the engine without passing through it at all. A source usually
+    fetches from an API or a warehouse, so a `files` value in a row is
+    untrusted input arriving through trusted code — the dataset threat model,
+    by a different route. The same path that a CSV is refused for was read,
+    sent to the model API, and archived with the run.
+    """
+
+    SOURCE = (
+        "from evaling import Case, CasePage\n"
+        "import os\n"
+        "class S:\n"
+        "    def fetch(self, cursor, limit):\n"
+        "        row = Case(id='c1', vars={'q': 'a'}, files={'doc': os.environ['DOC']})\n"
+        "        return CasePage(cases=[row], cursor=None)\n"
+        "def make():\n"
+        "    return S()\n"
+    )
+
+    def project(self, tmp_path):
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "src.py").write_text(self.SOURCE, encoding="utf-8")
+        (project / "inside.pdf").write_bytes(b"fine")
+        (tmp_path / "outside.pdf").write_bytes(b"secret")
+        (project / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: [{text: "{{ q }}"}, {file: "{{ files.doc }}"}]}]\n'
+            "cases: {source: 'src.py:make', limit: 5}\n" + SCORECARD,
+            encoding="utf-8",
+        )
+        return project
+
+    def cases_from(self, project, doc, monkeypatch):
+        from evaling.config import load_config
+        from evaling.sources import iter_source_cases, load_source
+
+        monkeypatch.setenv("DOC", doc)
+        config = load_config(project / "eval.yaml")
+        source = load_source(config.cases.source, config.base_dir, config.cases.params)
+
+        async def go():
+            return [c async for c in iter_source_cases(source, 10, 10, config.base_dir)]
+
+        return asyncio.run(go())
+
+    @pytest.mark.parametrize("doc", ["../outside.pdf", "{absolute}"])
+    def test_a_row_naming_a_file_outside_is_refused(self, tmp_path, monkeypatch, doc):
+        project = self.project(tmp_path)
+        doc = doc.format(absolute=tmp_path / "outside.pdf")
+        with pytest.raises(ConfigError, match="resolves outside"):
+            self.cases_from(project, doc, monkeypatch)
+
+    def test_a_row_naming_a_file_inside_still_works(self, tmp_path, monkeypatch):
+        project = self.project(tmp_path)
+        [case] = self.cases_from(project, "inside.pdf", monkeypatch)
+        assert case.files["doc"] == str((project / "inside.pdf").resolve())
+
+    def test_the_whole_run_refuses_rather_than_reading_the_file(self, tmp_path, monkeypatch):
+        """End to end: the file must not be read, hashed, or archived."""
+        project = self.project(tmp_path)
+        monkeypatch.setenv("DOC", str(tmp_path / "outside.pdf"))
+        monkeypatch.chdir(project)
+        result = CliRunner().invoke(
+            main, ["-c", str(project / "eval.yaml"), "run"], env=ENV, catch_exceptions=False
+        )
+        assert result.exit_code != 0
+        archived = (
+            list((project / ".evaling").rglob("*.pdf")) if (project / ".evaling").is_dir() else []
+        )
+        assert not archived, f"the outside file was archived: {archived}"

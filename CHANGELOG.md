@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-08
+
+From a whole-project review — the first since 0.2.0, and the first to look at
+the codebase rather than a diff.
+
+### Security
+
+- **A case source could name an attachment outside the project.** Attachment
+  paths are contained for inline cases and for CSV/JSONL datasets; cases from a
+  `CaseSource` reached the engine without that check, so a `files` value
+  pointing outside was read, sent to the model API, and archived with the run.
+  The identical path was refused from a dataset row.
+
+  A source's *code* is written by whoever owns the config, which is why this
+  path was left uncontained. Its *rows* usually are not — they come from an
+  API, a warehouse, or a vendor export — so a `files` value is untrusted input
+  arriving through trusted code, which is what containment is for. Containment
+  now happens where source rows enter, so any future consumer gets it. Present
+  since case sources shipped; evaling is in alpha with no known users, and
+  reaching this needs a source whose upstream supplies the path.
+
 ### Fixed
+
+- **`evaling show` no longer crashes on markup in a case id or a stored run
+  status.** `evaling show <run> --case 'c[/bold]x'`, and any run whose
+  `run.json` carries markup in `status`, exited 1 with a `rich.errors.MarkupError`
+  traceback — from the commands whose purpose is reading a run back. `run.json`
+  is not revalidated on read, so a hand-edited or foreign one reached the
+  terminal unescaped. Every value the CLI interpolates into markup is now
+  escaped, not only these two: paths given on the command line, the cache
+  directory, and ids read back from storage.
 
 - **`evaling init --force` no longer crashes on a `.gitignore` that is not
   UTF-8.** A single non-UTF-8 byte — a comment with an accent in it — raised

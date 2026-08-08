@@ -574,7 +574,9 @@ async def _run_eval_impl(
 
         async def factories():
             try:
-                async for case in iter_source_cases(source, source_ref.page_size, source_ref.limit):
+                async for case in iter_source_cases(
+                    source, source_ref.page_size, source_ref.limit, config.base_dir
+                ):
                     for variant in variants_sel:
                         for model in models_sel:
                             if stop_early[0]:
@@ -1300,7 +1302,7 @@ def _dry_run_source(
             total = await source_count(source)
             take = min(source_ref.page_size, source_ref.limit or source_ref.page_size)
             cases: list[Case] = []
-            async for case in iter_source_cases(source, take, take):
+            async for case in iter_source_cases(source, take, take, config.base_dir):
                 cases.append(case)
             return cases, total
         finally:

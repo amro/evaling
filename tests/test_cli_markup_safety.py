@@ -156,3 +156,54 @@ class TestHostileTextInEveryReadingPath:
         # Exit 2 because the render fails, not because rich blew up.
         assert result.exit_code == 2, result.output
         assert "MarkupError" not in result.output
+
+
+class TestCommandsThatReadRunsBack:
+    """`cli/__init__.py` interpolates into markup; display.py escapes, it did not.
+
+    Both crashes below were `rich.errors.MarkupError` tracebacks with exit 1,
+    from the commands whose whole job is inspecting a run.
+    """
+
+    def project(self, tmp_path, case_id="c1"):
+        (tmp_path / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: "{{ q }}"}]\n'
+            f"cases: [{{id: '{case_id}', vars: {{q: a}}}}]\n"
+            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
+            encoding="utf-8",
+        )
+        assert cli(tmp_path, "-c", str(tmp_path / "eval.yaml"), "run").exit_code == 0
+        return tmp_path
+
+    def test_a_case_id_from_the_command_line_is_escaped(self, tmp_path):
+        hostile = "c[/bold]x[red]2"
+        path = self.project(tmp_path, hostile)
+        result = cli(path, "-c", str(path / "eval.yaml"), "show", "latest", "--case", hostile)
+        assert result.exit_code == 0, result.output
+        assert hostile in result.output  # shown literally, not applied
+
+    def test_a_status_read_back_from_run_json_is_escaped(self, tmp_path):
+        """run.json is not revalidated on read, so a foreign one must not crash."""
+        import json
+
+        path = self.project(tmp_path)
+        meta_path = next((path / "runs").glob("*/run.json"))
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["status"] = "[/bold]evil[red]"
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+        result = cli(path, "-c", str(path / "eval.yaml"), "show", "latest")
+        assert result.exit_code == 0, result.output
+        assert "[/bold]evil[red]" in result.output
+
+    def test_a_cache_directory_with_brackets_is_escaped(self, tmp_path):
+        result = CliRunner().invoke(
+            main,
+            ["--cache-dir", str(tmp_path / "ca[che]"), "cache", "info"],
+            env=ENV,
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        assert "ca[che]" in result.output

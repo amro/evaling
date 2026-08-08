@@ -1,6 +1,6 @@
 [project]
 name = "evaling"
-version = "0.2.2"
+version = "0.2.3"
 description = "Compare prompt variants and models from the command line"
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from evaling.config.cases import _resolve_files
 from evaling.config.errors import ConfigError
 from evaling.config.schema import Case
 
@@ -174,9 +175,19 @@ async def close_source(source: Any) -> None:
 
 
 async def iter_source_cases(
-    source: Any, page_size: int = DEFAULT_PAGE_SIZE, limit: int | None = None
+    source: Any,
+    page_size: int = DEFAULT_PAGE_SIZE,
+    limit: int | None = None,
+    base_dir: Path | None = None,
 ) -> AsyncIterator[Case]:
     """Yield cases page by page, never holding more than one page.
+
+    Given ``base_dir``, each case's attachments are contained under it, the
+    same as a dataset's. A source is the config author's own Python, but the
+    rows it returns usually are not — they come from an API, a warehouse, a
+    vendor export — so a `files` value is untrusted data arriving through
+    trusted code, which is exactly what containment is for. Passing None skips
+    the check and is only correct where no attachment will be read.
 
     Stops at ``limit`` cases if given, at the source's last page otherwise. A
     source that keeps returning the same cursor would spin forever, so a cursor
@@ -228,6 +239,8 @@ async def iter_source_cases(
                 raise SourceError(
                     f"case source yielded {type(case).__name__}, expected evaling.Case"
                 )
+            if base_dir is not None:
+                case = _resolve_files(case, base_dir, may_reach_outside=False)
             if not case.id:
                 # Inline and dataset cases are numbered by _assign_ids; source
                 # cases reach the engine directly and skipped it, so every

@@ -85,6 +85,11 @@ your source empties a whole page whenever every row on it is filtered out, and
 the walk continues past it. A source that returns a thousand empty pages in a
 row while still promising more is treated as broken and raises.
 
+Attachments named by a row are contained under the config's directory, the
+same as a dataset's. The source itself is your Python and is trusted, but the
+rows it returns usually are not — they come from an API or a warehouse — so a
+`files` value pointing outside the project is refused.
+
 A case without an `id` is numbered by position, like an inline or dataset case.
 Uniqueness is not checked — that needs every id at once, which is what
 streaming exists to avoid — so a source handing out duplicate ids produces
