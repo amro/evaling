@@ -234,8 +234,8 @@ sample, until you say otherwise.
 
 ### The cache isn't hitting when I expect it to
 
-The key covers only what changes the answer: provider, model, base URL,
-request parameters, and the rendered messages. Labels, output directory, and
+The key covers only what changes the answer: provider, model, base URL, the
+`command` string, request parameters, and the rendered messages. Labels, output directory, and
 concurrency don't invalidate it — but any edit to a prompt or a case's
 variables does, because that changes the request.
 

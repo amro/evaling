@@ -107,8 +107,8 @@ kill is detected and discarded.
 
 ### Cache keys cover only what changes the answer
 
-The key hashes provider, model, base URL, request parameters, and the rendered
-messages. It deliberately excludes run labels, output directories, and
+The key hashes provider, model, base URL, the `command` string, request
+parameters, and the rendered messages. It deliberately excludes run labels, output directories, and
 concurrency: those change what you call a run, not what the model returns.
 Cached responses you paid for survive edits that couldn't have changed them.
 

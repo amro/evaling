@@ -39,6 +39,27 @@ the codebase rather than a diff.
   escaped, not only these two: paths given on the command line, the cache
   directory, and ids read back from storage.
 
+- **Documentation corrections, from a claim-by-claim audit of the whole tree.**
+  The worked example in [large-datasets.md](docs/large-datasets.md) did not run:
+  the factory it defines takes no arguments while the config beside it passes
+  `params`, so pasting both gave a refusal on the primary example of case
+  sources. `REQUIREMENTS.md` listed Cohen's kappa and correlation as
+  implemented agreement scorers and claimed judge output is enforced through a
+  provider's structured-output support; neither is true, and the second
+  overstates a guarantee — verdicts are parsed leniently. The cache key was
+  described without the `command` string in three places, so a `command`-provider
+  user could conclude editing their script keeps cache hits. Smaller: the
+  dataset containment root, `timeout_s` described as HTTP-only, an example count,
+  the mock-model block in `examples/README.md`, and a cross-reference pointing at
+  the wrong page.
+
+- **A cross-page anchor that never resolved, and the check that missed it.**
+  The docs test built GitHub's heading slugs by collapsing whitespace runs to
+  one hyphen; GitHub emits one per space, so a heading punctuated with an em
+  dash gets a double hyphen. Every link to such a heading passed while
+  resolving nowhere. The helper now matches GitHub, and the one broken link it
+  found is fixed.
+
 - **`evaling init --force` no longer crashes on a `.gitignore` that is not
   UTF-8.** A single non-UTF-8 byte — a comment with an accent in it — raised
   `UnicodeDecodeError` as a traceback, and because it happened partway through

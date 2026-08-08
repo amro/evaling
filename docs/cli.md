@@ -75,8 +75,8 @@ used automatically (pin one first with `evaling baseline set`).
 
 `--no-look` can turn privacy mode on but never off — a config that sets
 `privacy.no_look: true` cannot be loosened from the command line. A run whose
-cases come from a source cannot be resumed; see [no-look.md](no-look.md) for
-why. With no `limit` and no `--max-cost` it refuses to start when nothing is
+cases come from a source cannot be resumed; see
+[large-datasets.md](large-datasets.md#why-resume-is-refused) for why. With no `limit` and no `--max-cost` it refuses to start when nothing is
 watching — no terminal attached, so no Ctrl-C — and otherwise just runs.
 
 #### Debugging a provider
@@ -301,8 +301,8 @@ count, and total size; `clear` deletes entries.
 | `--yes` | Skip the confirmation prompt (on `clear`) |
 
 The cache key covers only what changes a response — provider, model, base
-URL, request parameters, and the rendered messages — so run labels and output
-directories never invalidate it. Use `--json` for machine-readable output.
+URL, the `command` string, request parameters, and the rendered messages — so
+run labels and output directories never invalidate it. Use `--json` for machine-readable output.
 
 ### `evaling calibrate --from-run RUN --labels FILE`
 

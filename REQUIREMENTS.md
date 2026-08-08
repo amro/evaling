@@ -145,8 +145,10 @@ in layers, most specific wins:
 - `json-valid` / `json-schema` — output parses as JSON / matches a schema.
 - `llm-judge` — an autorater grades the output (see below).
 - `python` — user-supplied Python function for custom scoring.
-- **Agreement scorers** for judge calibration: exact agreement, within-N,
-  correlation / Cohen's kappa against `human_label`.
+- **Agreement scorers** for judge calibration: exact agreement and within-N
+  against `human_label`. Correlation and Cohen's kappa are not built in —
+  `evaling calibrate` produces the run and the export to compute them from;
+  see [evaluating-judges.md](docs/evaluating-judges.md).
 
 **Scorecard:** users define quality as named, weighted criteria, each backed by a
 scorer:
@@ -165,9 +167,11 @@ Per case: per-criterion scores and pass/fail. Per run: weighted aggregate per
 variant × model cell, which feeds thresholds (4.7).
 
 **Autorater (`llm-judge`):** a judge is a first-class prompt — a template + judge
-model + rubric, with a **structured output schema** (score + rationale) enforced
-via the provider's structured-output support so parsing never flakes. Judge
-definitions live in config and are reusable across criteria.
+model + rubric, answering with a score and a rationale as JSON. The verdict is
+parsed leniently — fenced blocks and surrounding prose are tolerated — and a
+reply that yields no score fails that criterion rather than the run. No
+provider structured-output API is used. Judge definitions live in config and
+are reusable across criteria.
 
 **Evaluating the autorater (meta-evals):** because a judge is just a
 prompt + model, evaling evaluates judges with its own machinery. Test cases carry
@@ -226,10 +230,10 @@ UX requirements:
 - Design principle: **the consumer is an LLM — responses must be token-frugal.**
   Summaries by default; drill-down on demand; pagination on anything unbounded.
 - Tools (v1):
-  - `run_eval(config_path, models?, variants?, cases?, label?, no_cache?, max_cost?)`
+  - `run_eval(config_path, models?, variants?, cases?, label?, no_cache?, max_cost_usd?)`
     — **blocking**: runs to completion, emitting MCP progress notifications, and
     returns the summary (run id, aggregate matrix, failure count, cost).
-  - `get_run(run_id, detail=summary|failures|full, filters?, page?)`.
+  - `get_run(run_id, detail=summary|failures|full, page?)`.
   - `get_case_result(run_id, variant, model, case_id)` — full detail for one cell.
   - `compare_runs(run_a, run_b)` — per-cell deltas, regressions highlighted.
   - `list_runs(limit?)`, `set_baseline(run_id)`.

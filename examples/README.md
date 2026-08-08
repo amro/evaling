@@ -36,13 +36,16 @@ evaling run
 
 ## Making them call a real model
 
-Each example's `eval.yaml` starts with a mock model:
+The five mock-backed examples start with a model like this one:
 
 ```yaml
 models:
   - id: mock-echo
     provider: mock
 ```
+
+(`no-look` names it `mock`; `support-triage` and `rag-pipeline` use `command`
+models instead, so there is no mock block to swap.)
 
 Swap in a real one and supply a key via the environment or a gitignored
 secrets file ([secrets.md](../docs/secrets.md)):

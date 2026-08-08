@@ -229,7 +229,7 @@ config = EvalConfig.model_validate(
 ```
 
 A config built this way has no file to resolve relative paths against, so
-prompt files, datasets, and attachments must be absolute.
+prompt files, datasets, and attachments should be absolute.
 
 ## Case sources
 

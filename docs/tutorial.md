@@ -614,7 +614,7 @@ evaling checks that the model supports the media type before sending, so an
 unsupported combination fails immediately with a clear message instead of a
 confusing provider error.
 
-Six complete, runnable examples live in [`examples/`](../examples/), all
+Seven complete, runnable examples live in [`examples/`](../examples/), all
 offline. [`support-triage/`](../examples/support-triage/) is the most
 realistic one — ticket classification across two prompt variants and three
 models, with a weighted scorecard and a Python scorer. The test suite runs

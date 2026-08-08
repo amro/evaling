@@ -261,14 +261,21 @@ class TestLinks:
 
 
 def heading_slugs(path: Path) -> set[str]:
-    """GitHub's anchor slugs for a file's headings."""
+    """GitHub's anchor slugs for a file's headings.
+
+    One hyphen per space, not one per run: a heading punctuated with an em dash
+    drops the dash and leaves two spaces, so GitHub emits a double hyphen.
+    Collapsing runs here made this checker generate a slug GitHub never does,
+    and every link to such a heading passed while resolving nowhere.
+    Underscores are kept, as GitHub keeps them.
+    """
     slugs = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.startswith("#"):
             continue
         title = line.lstrip("#").strip()
         slug = re.sub(r"[^\w\s-]", "", title.lower())
-        slugs.add(re.sub(r"[\s_]+", "-", slug).strip("-"))
+        slugs.add(re.sub(r"\s", "-", slug).strip("-"))
     return slugs
 
 

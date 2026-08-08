@@ -29,8 +29,9 @@ privacy:    # optional — no-look mode (see below)
 Relative paths inside the config (prompt files, case files, attachments)
 resolve relative to the config file's directory.
 
-A relative attachment path must also stay *under* that directory, and one
-named by a dataset must stay there however it is written. Datasets arrive from
+A relative attachment path must also stay under the file that declared it —
+the config for an inline case, the dataset file for a dataset row — and one
+named by a dataset or a case source must stay there however it is written. Datasets arrive from
 elsewhere, and evaling reads every attachment, sends it to a model API, and
 archives it — so `file://../../secrets.pdf` in a CSV is refused, and so is the
 same file named absolutely. An inline case in the config may use an absolute
@@ -100,7 +101,8 @@ Per-model options (all optional):
 - `api_key_env` — which environment variable holds the API key, for backends
   with their own key variables (e.g. `GEMINI_API_KEY` on an OpenAI-compatible
   endpoint). Providers default sensibly (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
-- `timeout_s` — per-model request timeout (wired by the HTTP providers).
+- `timeout_s` — per-model request timeout. HTTP providers default to 120s,
+  `command` to 300s.
 - `max_retries` — transient-failure retries for this model (attempts =
   retries + 1; default 2 retries).
 - `max_concurrency` — cap on in-flight requests **for this model**.

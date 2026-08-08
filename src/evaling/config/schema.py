@@ -81,7 +81,8 @@ class ModelSpec(StrictModel):
     # a config while looking like it belongs, and the config is serialized
     # verbatim into every run's snapshot.
     api_key_env: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
-    # Per-model request timeout in seconds (wired by HTTP providers).
+    # Per-model request timeout in seconds. Honoured by the HTTP providers
+    # and by `command`, which defaults to 300s rather than 120s.
     timeout_s: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     # Per-model retry count for transient failures (attempts = retries + 1).
     max_retries: int | None = Field(default=None, ge=0)

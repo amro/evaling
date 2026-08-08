@@ -23,8 +23,11 @@ from evaling import BaseCaseSource, Case, CasePage
 
 
 class ProdTickets(BaseCaseSource):
+    def __init__(self, region):
+        self.region = region
+
     def fetch(self, cursor, limit):
-        page = my_api.query(after=cursor, limit=limit)
+        page = my_api.query(region=self.region, after=cursor, limit=limit)
         return CasePage(
             cases=[Case(id=row["id"], vars={"ticket": row["body"]}) for row in page.rows],
             cursor=page.next_cursor,  # None means this was the last page
@@ -37,8 +40,8 @@ class ProdTickets(BaseCaseSource):
         my_api.disconnect()
 
 
-def make_source():
-    return ProdTickets()
+def make_source(region):  # receives **params from the config
+    return ProdTickets(region)
 ```
 
 Point the config at the factory:
@@ -82,8 +85,8 @@ A cursor that repeats is an error rather than an infinite loop.
 
 **An empty page is not the end** unless its cursor is `None`. Filtering inside
 your source empties a whole page whenever every row on it is filtered out, and
-the walk continues past it. A source that returns a thousand empty pages in a
-row while still promising more is treated as broken and raises.
+the walk continues past it. A source that returns more than a thousand empty
+pages in a row while still promising more is treated as broken and raises.
 
 Attachments named by a row are contained under the config's directory, the
 same as a dataset's. The source itself is your Python and is trusted, but the

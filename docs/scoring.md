@@ -59,7 +59,7 @@ judges:
 
 The judge's model must declare `role: judge` (or `role: both` if you also want
 it evaluated as a candidate) — see
-[role](configuration.md#role-what-a-model-is-here-for). Without it the config
+[role](configuration.md#role--what-a-model-is-here-for). Without it the config
 is rejected, because a model that only judges should not silently become a
 system under test.
 

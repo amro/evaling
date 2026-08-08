@@ -215,8 +215,11 @@ the error in the summary.
 
 ## Adding a provider
 
-Subclass `Provider` (or `HttpProvider` for HTTP APIs), declare which media kinds
-it accepts, implement `complete()`, and register it:
+Providers are not a runtime plugin point: the registry is private and the
+provider names a config may use are a closed set, so a new one means a change
+to evaling itself (see [CONTRIBUTING.md](../CONTRIBUTING.md)). The interface is
+small — subclass `Provider` (or `HttpProvider` for HTTP APIs), declare which
+media kinds it accepts, implement `complete()`, and register it:
 
 ```python
 from evaling.providers.http import HttpProvider
