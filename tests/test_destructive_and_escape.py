@@ -308,3 +308,73 @@ class TestASourceCannotReachOutsideTheProject:
             list((project / ".evaling").rglob("*.pdf")) if (project / ".evaling").is_dir() else []
         )
         assert not archived, f"the outside file was archived: {archived}"
+
+
+class TestSymlinksCannotWalkOutEither:
+    """Both gates `.resolve()` before the parent check, so a symlink is caught.
+
+    Nothing pinned that. A refactor moving the containment check ahead of the
+    resolve — an easy thing to do while tidying — reopens the escape silently,
+    and a symlink inside the project is the ordinary way to arrange one.
+    """
+
+    def project_with_link(self, tmp_path):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "secret.pdf").write_bytes(b"secret")
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "link.pdf").symlink_to(outside / "secret.pdf")
+        return project
+
+    def test_a_dataset_cannot_reach_out_through_a_symlink(self, tmp_path):
+        project = self.project_with_link(tmp_path)
+        (project / "cases.jsonl").write_text(
+            json.dumps({"id": "c1", "q": "a", "doc": "file://link.pdf"}) + "\n", encoding="utf-8"
+        )
+        (project / "eval.yaml").write_text(
+            CONFIG_HEAD + "cases: {file: cases.jsonl}\n" + SCORECARD, encoding="utf-8"
+        )
+        with pytest.raises(ConfigError, match="resolves outside"):
+            load_cases(load_config(project / "eval.yaml"))
+
+    def test_a_case_variable_cannot_reach_out_through_a_symlink(self, tmp_path):
+        project = self.project_with_link(tmp_path)
+        (project / "cases.jsonl").write_text(
+            json.dumps({"id": "c1", "q": "a", "doc": "link.pdf"}) + "\n", encoding="utf-8"
+        )
+        (project / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: [{text: "{{ q }}"}, {file: "{{ doc }}"}]}]\n'
+            "cases: {file: cases.jsonl}\n" + SCORECARD,
+            encoding="utf-8",
+        )
+        config = load_config(project / "eval.yaml")
+        [case] = load_cases(config)
+        with pytest.raises(ContentError, match="comes from case data"):
+            render_messages(config.variants[0].prompt, case, config.base_dir)
+
+    def test_a_case_variable_naming_a_file_inside_still_renders(self, tmp_path):
+        """The other side of that branch, which no test took.
+
+        A regression rejecting *all* case-variable media, not just escaping
+        ones, would have passed every containment test.
+        """
+        project = tmp_path / "project"
+        project.mkdir()
+        (project / "inside.pdf").write_bytes(b"fine")
+        (project / "cases.jsonl").write_text(
+            json.dumps({"id": "c1", "q": "a", "doc": "inside.pdf"}) + "\n", encoding="utf-8"
+        )
+        (project / "eval.yaml").write_text(
+            "models: [{id: m, provider: mock}]\n"
+            "variants:\n  - name: v1\n"
+            '    prompt: [{role: user, content: [{text: "{{ q }}"}, {file: "{{ doc }}"}]}]\n'
+            "cases: {file: cases.jsonl}\n" + SCORECARD,
+            encoding="utf-8",
+        )
+        config = load_config(project / "eval.yaml")
+        [case] = load_cases(config)
+        [message] = render_messages(config.variants[0].prompt, case, config.base_dir)
+        assert message.parts[1].path == (project / "inside.pdf").resolve()

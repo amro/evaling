@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+Tests for six paths the whole-project review found uncovered. No behaviour
+changed; each test was verified by reintroducing the failure it describes.
+
+- **Resuming a no-look run.** The highest-value gap: money and privacy in one
+  path, with no test. Records are stored with hashed ids, so a resume has to
+  hash the candidate key before comparing — the code comment records a shipped
+  bug where it did not, and every finished cell was re-run and re-billed. The
+  test counts provider calls, because `counts` and `totals` are cumulative
+  across a resume and so cannot tell "ran the remaining three" from "ran all
+  four again". Parametrized over no-look on and off, since the bug was
+  no-look only.
+
+- **The CLI/MCP parity guard read the wrong function.** It derived the MCP
+  argument set from `run_eval_tool`, but agents call the `run_eval` wrapper in
+  `build_server`, whose parameters are re-declared by hand. An option added to
+  the function and to the shared-option map but forgotten in the wrapper passed
+  every parity check while being unreachable over MCP. The set now comes from
+  what the server advertises.
+
+- **Judge retries and budget release.** Only matrix-model retries were tested.
+  A judge that retries must still count as one call and be billed once, and a
+  judge that never succeeds must free its budget slot without being mistaken
+  for an unpriced model — which would warn that `--max-cost` could not be
+  enforced and serialize the run.
+
+- **`cache clear --older-than` deletion.** Only the keep-fresh half was
+  asserted, so inverting the cutoff comparison — deleting everything recent,
+  keeping everything old — passed.
+
+- **`requests_per_minute` in a real run.** Every rate-limit test built a
+  `ModelLimiter` directly; nothing checked the config field reaches the limiter
+  a run uses, so `limiter_for` dropping it would have gone unnoticed.
+
+- **Symlink escape, in both containment gates.** Both resolve before checking,
+  so a symlink pointing outside is caught — but nothing pinned the ordering,
+  and moving the check ahead of the resolve reopens it silently. The
+  contained-and-legitimate branch is covered too: a regression rejecting all
+  case-variable media, not only escaping ones, would have passed.
+
+
 ## [0.2.3] - 2026-08-08
 
 From a whole-project review — the first since 0.2.0, and the first to look at

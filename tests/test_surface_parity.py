@@ -332,11 +332,19 @@ class TestEveryRunOptionIsClassified:
         }
 
     def mcp_arguments(self) -> set[str]:
-        import inspect
+        """What the server advertises, which is what an agent can actually send.
 
-        from evaling.mcp_server import run_eval_tool
+        Taken from the registered tool rather than from `run_eval_tool`: the
+        `run_eval` wrapper inside `build_server` re-declares the parameter list
+        by hand, so an option added to the underlying function and to
+        SHARED_OPTIONS but forgotten in the wrapper would satisfy every check
+        here while being unreachable over MCP.
+        """
+        from evaling.mcp_server import build_server
 
-        return set(inspect.signature(run_eval_tool).parameters) - MCP_PLUMBING
+        server = build_server()
+        [tool] = [t for t in asyncio.run(server.list_tools()) if t.name == "run_eval"]
+        return set(tool.input_schema.get("properties", {})) - MCP_PLUMBING
 
     def test_every_cli_flag_is_shared_or_explained(self):
         unclassified = self.cli_flags() - set(SHARED_OPTIONS) - set(CLI_ONLY_OPTIONS)

@@ -668,3 +668,89 @@ class TestRedactRecordDefaults:
         record = ResultRecord(variant="v", model="m", case_id="readable")
         redact_record(record, hash_case_ids=True)
         assert record.case_id == hash_case_id("readable")
+
+
+class TestResumingANoLookRun:
+    """The one path that is both money and privacy, and had no test.
+
+    Records are stored with whatever id no-look left on them, so the candidate
+    key has to be hashed the same way before it is compared. Comparing raw ids
+    against hashed ones matched nothing, and a resumed no-look run therefore
+    re-ran and re-billed every cell it had already finished.
+
+    Measured in provider calls. `counts` and `totals` are cumulative across a
+    resume by design, so neither can distinguish "ran three more" from "ran all
+    four again" — which is exactly the confusion the bug hid in.
+    """
+
+    def interrupt(self, run_path, keep=1):
+        """Rewind a finished run to look like a crash: partial results, running."""
+        results = run_path / "results.jsonl"
+        lines = results.read_text(encoding="utf-8").splitlines()
+        results.write_text("".join(line + "\n" for line in lines[:keep]), encoding="utf-8")
+        meta_path = run_path / "run.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta.update(status="running", finished_at=None, counts=None, totals=None)
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        return len(lines) - keep
+
+    @pytest.fixture
+    def counting_provider(self, monkeypatch):
+        from evaling.providers import _REGISTRY
+        from evaling.providers.base import Completion
+        from evaling.providers.mock import MockProvider
+
+        class Counting(MockProvider):
+            calls = 0
+
+            async def complete(self, request):
+                type(self).calls += 1
+                return Completion(text="ok", cost_usd=0.01)
+
+        Counting.calls = 0
+        monkeypatch.setitem(_REGISTRY, "mock", Counting)
+        return Counting
+
+    @pytest.mark.parametrize("no_look", [True, False])
+    def test_a_resume_calls_the_model_only_for_missing_cells(
+        self, tmp_path, counting_provider, no_look
+    ):
+        """Parametrized deliberately: the bug was no-look only.
+
+        With the ids compared raw, every stored cell looked absent, so the
+        resume called the model four times where the non-private run called it
+        three — the same run reporting the same totals either way.
+        """
+        settings = make_settings(tmp_path, cache=False)
+        config = private_config(tmp_path, no_look=no_look)
+        first = run_eval(config, settings)
+        assert first.counts["total"] == 4
+        missing = self.interrupt(first.path, keep=1)
+        assert missing == 3
+
+        counting_provider.calls = 0
+        run_eval(config, settings, resume_run_id=first.run_id)
+        assert counting_provider.calls == missing, (
+            f"the resume called the model {counting_provider.calls} times with {missing} "
+            "cells missing — a finished cell was re-run and re-billed"
+        )
+
+    def test_the_resumed_run_still_stores_hashed_ids_and_no_case_data(self, tmp_path):
+        """A resume must not be the hole in the privacy boundary."""
+        settings = make_settings(tmp_path)
+        config = private_config(tmp_path)
+        first = run_eval(config, settings)
+        self.interrupt(first.path, keep=1)
+        run_eval(config, settings, resume_run_id=first.run_id)
+
+        records = RunStore(settings.output_dir).load_results(first.run_id)
+        assert len(records) == 4
+        assert all(record.case_id.startswith("case-") for record in records), (
+            f"a resumed cell stored a raw id: {[r.case_id for r in records]}"
+        )
+        leaked = [
+            path
+            for path in settings.output_dir.rglob("*")
+            if path.is_file() and CANARY in path.read_text(encoding="utf-8", errors="ignore")
+        ]
+        assert not leaked, f"case data reached disk on resume: {leaked}"

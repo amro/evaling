@@ -387,6 +387,67 @@ class TestJudgeCallsAreGoverned:
             "the judge totals restarted from zero, so they describe the resume rather than the run"
         )
 
+    def test_a_judge_that_retries_is_counted_once_and_billed_once(self, tmp_path, monkeypatch):
+        """Only matrix-model retries were tested; the judge path has its own.
+
+        `_billed_call` counts before the attempt so a failed call still shows
+        as "something was called", then releases the budget slot with the cost
+        of whichever attempt succeeded. Counting inside the retry loop, or
+        releasing per attempt, would inflate both.
+        """
+
+        class Flaky(MockProvider):
+            attempts = 0
+
+            async def complete(self, request):
+                await asyncio.sleep(0)
+                if request.model.id != "judge":
+                    return Completion(text="answer", cost_usd=0.0)
+                type(self).attempts += 1
+                if type(self).attempts < 3:
+                    raise ProviderError("judge is warming up", retryable=True)
+                return Completion(text='{"score": 1.0}', cost_usd=0.02)
+
+        Flaky.attempts = 0
+        monkeypatch.setitem(_REGISTRY, "mock", Flaky)
+        result = run_eval(
+            self.config(tmp_path, cases=1, max_retries=3),
+            make_settings(tmp_path, concurrency=1),
+            model_filter=["m"],
+        )
+        assert Flaky.attempts == 3, "the judge did not actually retry"
+        assert result.counts["succeeded"] == 1
+        # One judge call, however many attempts it took, and the cost of the
+        # attempt that landed — not one per attempt.
+        assert result.totals["judge_calls"] == 1
+        assert result.totals["judge_cost_usd"] == pytest.approx(0.02)
+
+    def test_a_judge_that_never_succeeds_frees_its_budget_slot(self, tmp_path, monkeypatch):
+        """A failed call tells us nothing about price, so it must not be
+        mistaken for an unpriced one — that made --max-cost warn it could not
+        be enforced and serialize the run."""
+
+        class AlwaysFails(MockProvider):
+            async def complete(self, request):
+                await asyncio.sleep(0)
+                if request.model.id != "judge":
+                    return Completion(text="answer", cost_usd=0.01)
+                raise ProviderError("judge is down", retryable=False)
+
+        monkeypatch.setitem(_REGISTRY, "mock", AlwaysFails)
+        result = run_eval(
+            self.config(tmp_path, cases=3),
+            make_settings(tmp_path, concurrency=1),
+            model_filter=["m"],
+            max_cost_usd=1.0,
+        )
+        # Every cell ran and every judge failed its criterion. The run is not
+        # stopped, not serialized, and not warned about as unenforceable.
+        assert result.counts["total"] == 3
+        assert result.totals["judge_calls"] == 3
+        assert result.totals["judge_cost_usd"] == 0.0
+        assert not any("could not be enforced" in warning for warning in result.warnings)
+
     def test_judge_spend_is_reported(self, tmp_path, monkeypatch):
         """Enforcing it but not reporting it makes the run's own totals lie."""
 

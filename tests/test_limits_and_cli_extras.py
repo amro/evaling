@@ -147,6 +147,75 @@ class TestPerModelConcurrency:
         run_eval(config, make_settings(tmp_path, concurrency=4))
         assert 1 < Tracker.peak <= 4
 
+    def test_requests_per_minute_reaches_the_limiter_a_run_uses(self, tmp_path, monkeypatch):
+        """Every rpm test built a ModelLimiter directly; the wiring had none.
+
+        `limiter_for` passing None for requests_per_minute would leave the
+        config field inert and no test would notice — the limiter's behaviour
+        is covered, its connection to a run was not. Asserted on what the
+        engine constructs rather than on elapsed time: the real wait for 4
+        calls at 2/min is a minute.
+        """
+        import evaling.limits as limits_module
+
+        built: list[tuple] = []
+        real_init = limits_module.ModelLimiter.__init__
+
+        def recording_init(self, max_concurrency=None, requests_per_minute=None, **kwargs):
+            built.append((max_concurrency, requests_per_minute))
+            real_init(self, max_concurrency, requests_per_minute, **kwargs)
+
+        monkeypatch.setattr(limits_module.ModelLimiter, "__init__", recording_init)
+        monkeypatch.setitem(_REGISTRY, "mock", Tracker)
+        Tracker.reset()
+        config = make_config(
+            tmp_path,
+            models=[{"id": "m1", "provider": "mock", "requests_per_minute": 2}],
+            cases=[{"id": "c1", "vars": {"q": "a"}}],
+        )
+        run_eval(config, make_settings(tmp_path, concurrency=4))
+        assert (None, 2) in built, f"the run built limiters {built}, none carrying the rpm"
+
+    def test_a_rate_limited_model_actually_waits_in_a_run(self, tmp_path, monkeypatch):
+        """And the limiter the run built does hold calls back.
+
+        A virtual clock, so the minute passes instantly.
+        """
+        import evaling.limits as limits_module
+
+        clock = {"t": 1000.0}
+        slept: list[float] = []
+
+        async def fake_sleep(delay):
+            slept.append(delay)
+            clock["t"] += delay
+
+        real_init = limits_module.ModelLimiter.__init__
+
+        def virtual_init(self, max_concurrency=None, requests_per_minute=None, **kwargs):
+            kwargs.pop("now", None)
+            kwargs.pop("sleep", None)
+            real_init(
+                self,
+                max_concurrency,
+                requests_per_minute,
+                now=lambda: clock["t"],
+                sleep=fake_sleep,
+                **kwargs,
+            )
+
+        monkeypatch.setattr(limits_module.ModelLimiter, "__init__", virtual_init)
+        monkeypatch.setitem(_REGISTRY, "mock", Tracker)
+        Tracker.reset()
+        config = make_config(
+            tmp_path,
+            models=[{"id": "m1", "provider": "mock", "requests_per_minute": 2}],
+            cases=[{"id": f"c{i}", "vars": {"q": str(i)}} for i in range(4)],
+        )
+        run_eval(config, make_settings(tmp_path, concurrency=4))
+        assert slept, "4 calls at 2/min never waited"
+        assert clock["t"] - 1000.0 >= 60.0, "the window never advanced a full minute"
+
     @pytest.mark.parametrize("bad", [{"max_concurrency": 0}, {"requests_per_minute": 0}])
     def test_schema_rejects_nonsense_limits(self, bad):
         with pytest.raises(ValidationError):
@@ -197,6 +266,44 @@ class TestCacheCommand:
         result = self.cli(tmp_path, "cache", "clear", "--older-than", "7", "--yes")
         assert result.exit_code == 0
         assert cache.stats()["entries"] == before  # nothing is a week old yet
+
+    def test_older_than_removes_entries_past_the_cutoff(self, tmp_path):
+        """The other half: nothing proved an old entry is actually deleted.
+
+        Only the keep-fresh case was asserted, so inverting the comparison —
+        deleting everything recent and keeping everything old — passed.
+        """
+        import os
+        import time
+
+        self.seed(tmp_path)
+        cache = ResponseCache(tmp_path / "cache")
+        entries = list((tmp_path / "cache").rglob("*.json"))
+        assert entries, "nothing was cached, so nothing is being tested"
+
+        stale = time.time() - 30 * 86400
+        for path in entries:
+            os.utime(path, (stale, stale))
+
+        result = self.cli(tmp_path, "cache", "clear", "--older-than", "7", "--yes")
+        assert result.exit_code == 0
+        assert cache.stats()["entries"] == 0, "entries a month old survived a 7-day cutoff"
+
+    def test_older_than_deletes_only_what_is_past_the_cutoff(self, tmp_path):
+        """Both sides at once, so neither half can be satisfied by deleting all."""
+        import os
+        import time
+
+        self.seed(tmp_path)
+        entries = sorted((tmp_path / "cache").rglob("*.json"))
+        assert len(entries) >= 2, f"need two cached entries to tell the halves apart: {entries}"
+        stale = time.time() - 30 * 86400
+        os.utime(entries[0], (stale, stale))
+
+        assert self.cli(tmp_path, "cache", "clear", "--older-than", "7", "--yes").exit_code == 0
+        survivors = list((tmp_path / "cache").rglob("*.json"))
+        assert entries[0] not in survivors, "the stale entry was kept"
+        assert set(survivors) == set(entries[1:]), "a fresh entry was deleted"
 
 
 class TestValidateCommand:
