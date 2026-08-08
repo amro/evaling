@@ -38,6 +38,10 @@ class ScoreResult:
             or not 0.0 <= float(score) <= 1.0
         ):
             raise ScoringError(f"score must be a finite number in [0, 1], got {score!r}")
+        # A numpy bool, or a bare 1, reaches records and exports as a non-bool
+        # and reads as a different type downstream than every other cell's.
+        if not isinstance(self.passed, bool):
+            raise ScoringError(f"passed must be a bool, got {self.passed!r}")
 
 
 class Scorer(ABC):
@@ -67,6 +71,12 @@ def parse_json_lenient(text: str) -> Any:
         return json.loads(stripped)
     except json.JSONDecodeError as exc:
         first_error = exc
+    except RecursionError:
+        # json decodes containers recursively, so nesting deeper than the
+        # interpreter's stack raises here. RecursionError is not a
+        # JSONDecodeError, so every caller's handling was bypassed and a
+        # scorer reported the interpreter's message instead of "invalid JSON".
+        raise json.JSONDecodeError("JSON is nested too deeply to parse", stripped, 0) from None
 
     fence = _FENCED_BLOCK.search(stripped)
     if fence:

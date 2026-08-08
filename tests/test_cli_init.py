@@ -67,3 +67,33 @@ def test_init_refuses_overwrite_without_force():
 
         forced = runner.invoke(main, ["init", "--force"], env=ENV)
         assert forced.exit_code == 0
+
+
+def test_force_keeps_an_existing_gitignores_entries():
+    """A .gitignore usually predates evaling and covers the rest of the repo.
+
+    Every other scaffold file belongs to evaling, so replacing it is what
+    --force means. Replacing this one dropped the user's entries.
+    """
+    from pathlib import Path
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".gitignore").write_text("node_modules/\n*.log\n", encoding="utf-8")
+        assert runner.invoke(main, ["init", "--force"], env=ENV).exit_code == 0
+        gitignore = Path(".gitignore").read_text(encoding="utf-8")
+        assert "node_modules/" in gitignore, "the user's own entries were discarded"
+        assert "*.log" in gitignore
+        assert ".evaling/" in gitignore
+        assert ".evaling.secrets.yaml" in gitignore
+
+
+def test_force_does_not_duplicate_entries_it_already_added():
+    from pathlib import Path
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        assert runner.invoke(main, ["init"], env=ENV).exit_code == 0
+        assert runner.invoke(main, ["init", "--force"], env=ENV).exit_code == 0
+        gitignore = Path(".gitignore").read_text(encoding="utf-8")
+        assert gitignore.count(".evaling.secrets.yaml") == 1

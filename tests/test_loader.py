@@ -86,3 +86,27 @@ scorecard:
     )
     with pytest.raises(ConfigError, match=r"invalid config \(2 errors\):"):
         load_config(bad)
+
+
+def test_project_settings_reject_a_non_mapping_config(tmp_path):
+    """`load_config` already refuses these; the settings reader used to shrug.
+
+    It returned None for anything that was not a mapping, so `list` and `show`
+    silently fell back to the default directories — the "commands look in the
+    wrong directory" failure the function exists to prevent.
+    """
+    from evaling.config.loader import load_project_settings
+
+    bad = tmp_path / "eval.yaml"
+    bad.write_text("- just\n- a\n- list\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="expected a mapping"):
+        load_project_settings(bad)
+
+
+def test_project_settings_are_none_when_there_is_no_settings_block(tmp_path):
+    from evaling.config.loader import load_project_settings
+
+    plain = tmp_path / "eval.yaml"
+    plain.write_text("models: []\n", encoding="utf-8")
+    assert load_project_settings(plain) is None
+    assert load_project_settings(tmp_path / "absent.yaml") is None

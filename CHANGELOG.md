@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-07
+
+From a review of the modules earlier reviews had not reached: the Python
+scorer, the settings loader, the CLI display and scaffold.
+
+### Fixed
+
+- **A python scorer with an unimportable `file` crashed with a traceback.**
+  `file: grader.txt`, or a path with the `.py` omitted, produced
+  `AttributeError: 'NoneType' object has no attribute 'loader'` and exit 1
+  instead of a config error and exit 2. A non-string `function` did the same.
+
+- **`pass_at` is validated when the config loads.** It was resolved per cell
+  inside the scorer, so `pass_at: high` was not a config error but a failure in
+  every criterion: the run completed and reported "2/2 succeeded, 0 errors"
+  with every cell scored 0, the cause visible only in the stored record. A
+  value outside [0, 1] was accepted silently and made passing impossible.
+
+- **`sys.exit()` in a python scorer fails that criterion instead of ending the
+  run.** `SystemExit` is not an `Exception`, so it propagated out of the scorer
+  and stopped the matrix. Scripts adapted into scorers often still call it.
+
+- **Deeply nested output is reported as invalid JSON.** `json` decodes
+  containers recursively, so input nested past the interpreter's stack raised
+  `RecursionError` — not a `JSONDecodeError`, so every caller's handling was
+  bypassed and the criterion reported the interpreter's message.
+
+- **A `ScoreResult` with a non-bool `passed` is rejected.** `score` was checked
+  on that path and `passed` was not, so a `numpy.bool_` or a bare `1` reached
+  records and exports typed differently from every other cell.
+
+- **`evaling init --force` keeps an existing `.gitignore`.** It replaced the
+  file wholesale, discarding entries that had nothing to do with evaling. Every
+  other scaffold file belongs to evaling; this one usually predates it.
+
+- **A message role from a stored record can no longer crash `show`.** The role
+  label was the one string in the verbose block reaching rich unescaped.
+  Records are schema-constrained when written, but `show` reads them back
+  without revalidating, so a hand-edited or foreign `results.jsonl` raised
+  `MarkupError` from the command meant to inspect it.
+
+- **A project config that parses but is not a mapping is an error.** The
+  settings reader returned nothing for it, so `list` and `show` fell back to
+  the default directories — the "commands look in the wrong directory" failure
+  that function exists to prevent.
+
+### Changed
+
+- **The test suite ignores `EVALING_*` variables from the developer's shell.**
+  These are a settings layer, so an exported `EVALING_CONCURRENCY` reshaped
+  scheduling and `EVALING_OUTPUT_DIR` would have written test runs outside
+  their temporary directories. `conftest.py` already neutralized colors and
+  credentials as a mechanism rather than by convention; settings now match.
+
+- **Documented two consequences of how python scorers are loaded**: the file
+  cannot import its neighbours, and its classes cannot be pickled. Loading it
+  standalone is deliberate — an edit takes effect without a stale module, and
+  same-named files in different directories stay separate — but neither
+  limitation was written down. `docs/configuration.md`'s structure listing also
+  omitted `privacy:`.
+
+- **The JSON-start budget has tests.** Removing it restored the quadratic scan
+  its comment describes and the suite stayed green.
+
 ## [0.2.1] - 2026-08-07
 
 Everything here came out of a full-codebase review of the parts earlier

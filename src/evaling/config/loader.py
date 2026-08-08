@@ -43,6 +43,11 @@ def load_project_settings(path: str | Path) -> "Settings | None":
     if not path.is_file():
         return None
     data = read_yaml(path, ConfigError, missing=f"config file not found: {path}")
+    if data is not None and not isinstance(data, dict):
+        # Parseable but not a config. Returning None here sent `list` and
+        # `show` to the default directories, which is the "commands look in
+        # the wrong directory" failure this function exists to prevent.
+        raise ConfigError(f"{path}: expected a mapping at the top level, got {type(data).__name__}")
     if not isinstance(data, dict) or "settings" not in data:
         return None
     try:

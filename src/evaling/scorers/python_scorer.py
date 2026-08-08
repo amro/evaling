@@ -9,11 +9,26 @@ case: dict)`` and may return a bool, a number in [0, 1], or a mapping with
 import asyncio
 import importlib.util
 import inspect
+import math
 from numbers import Real
 
 from evaling.config.schema import Case
 from evaling.errors import EvalingError
 from evaling.scorers.base import Scorer, ScoreResult, ScoringError
+
+
+def _pass_at(params) -> float:
+    """The threshold a bare number must reach to pass, validated once."""
+    raw = params.get("pass_at", 1.0)
+    if isinstance(raw, bool) or not isinstance(raw, (str, Real)):
+        raise ScoringError(f"python scorer: 'pass_at' must be a number, got {raw!r}")
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ScoringError(f"python scorer: 'pass_at' must be a number, got {raw!r}") from None
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ScoringError(f"python scorer: 'pass_at' must be in [0, 1], got {raw!r}")
+    return value
 
 
 class PythonScorer(Scorer):
@@ -26,8 +41,24 @@ class PythonScorer(Scorer):
         if not path.is_file():
             raise ScoringError(f"python scorer: file not found: {path}")
         function = params.get("function", "score")
+        if not isinstance(function, str) or not function:
+            raise ScoringError(f"python scorer: 'function' must be a name, got {function!r}")
+
+        # Checked at construction, before any cell runs: an unusable pass_at
+        # otherwise resolves per cell inside score(), where the failure is one
+        # criterion's error rather than a config problem — a run whose every
+        # cell scored 0 still reported "succeeded, 0 errors".
+        self.pass_at = _pass_at(params)
 
         spec = importlib.util.spec_from_file_location(f"evaling_scorer_{path.stem}", path)
+        # No loader for anything Python cannot import as a module — a file
+        # named .txt, or a path with no suffix. Unchecked, module_from_spec
+        # raised AttributeError on None and came out as a traceback.
+        if spec is None or spec.loader is None:
+            raise ScoringError(
+                f"python scorer: {path} cannot be imported as Python. "
+                "The file must be a .py module."
+            )
         module = importlib.util.module_from_spec(spec)
         try:
             spec.loader.exec_module(module)
@@ -50,6 +81,11 @@ class PythonScorer(Scorer):
                     result = await result
         except EvalingError:
             raise  # already a clean user-facing message
+        except SystemExit as exc:
+            # A script adapted into a scorer often still calls sys.exit().
+            # That is not a BaseException the run should honour: it ends one
+            # criterion, like any other failure inside a scorer.
+            raise ScoringError(f"python scorer called sys.exit({exc.code!r})") from exc
         except Exception as exc:
             raise ScoringError(f"python scorer raised {type(exc).__name__}: {exc}") from exc
         return self._coerce(result)
@@ -63,12 +99,12 @@ class PythonScorer(Scorer):
             value = float(result)
             if not 0.0 <= value <= 1.0:
                 raise ScoringError(f"python scorer returned {value}, expected a score in [0, 1]")
-            return ScoreResult(value, value >= float(self.params.get("pass_at", 1.0)))
+            return ScoreResult(value, value >= self.pass_at)
         if isinstance(result, dict) and isinstance(result.get("score"), Real):
             value = float(result["score"])
             if not 0.0 <= value <= 1.0:
                 raise ScoringError(f"python scorer returned {value}, expected a score in [0, 1]")
-            passed = result.get("passed", value >= float(self.params.get("pass_at", 1.0)))
+            passed = result.get("passed", value >= self.pass_at)
             if not isinstance(passed, bool):
                 raise ScoringError("python scorer mapping 'passed' must be a bool")
             return ScoreResult(value, passed, result.get("detail"))

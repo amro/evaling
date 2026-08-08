@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from evaling.config import Case
-from evaling.scorers.base import ScoringError, parse_json_lenient
+from evaling.scorers.base import MAX_JSON_STARTS, ScoringError, parse_json_lenient
 from evaling.scorers.builtin import (
     ContainsScorer,
     ExactScorer,
@@ -102,6 +102,31 @@ class TestJson:
         # Regression: only exact fence-line/json/fence-line used to parse;
         # judges that add a preamble caused spurious criterion failures.
         assert parse_json_lenient(text) == {"score": 1}
+
+    def test_a_bracket_flood_is_bounded(self):
+        """Each start can scan the whole remaining text, so trying every one
+        is quadratic — 16 KB of "[" took five seconds and held a concurrency
+        slot. The budget was untested: removing it kept the suite green."""
+        import json as json_module
+        import time
+
+        started = time.perf_counter()
+        with pytest.raises(json_module.JSONDecodeError):
+            parse_json_lenient("[" * 20_000)
+        assert time.perf_counter() - started < 2.0, "the start budget is not being applied"
+
+    def test_json_past_the_budget_is_not_found(self):
+        """The bound is a real limit, not a formality — worth stating.
+
+        Output with the answer past the 64th bracket is pathological, and
+        finding it would cost every other cell the scan.
+        """
+        import json as json_module
+
+        buried = "[" * (MAX_JSON_STARTS + 5) + '{"score": 1}'
+        with pytest.raises(json_module.JSONDecodeError):
+            parse_json_lenient(buried)
+        assert parse_json_lenient("[" * (MAX_JSON_STARTS - 2) + '{"score": 1}') == {"score": 1}
 
     def test_unparseable_text_raises_original_error(self):
         import json as json_module

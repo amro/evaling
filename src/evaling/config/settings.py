@@ -80,7 +80,7 @@ def resolve_settings(
     # Before env and CLI, which are deliberately left alone.
     _anchor(values, base_dir)
 
-    values.update(_from_env(os.environ if env is None else env))
+    values.update(_from_env(env_map))
 
     for name, value in (cli or {}).items():
         if name not in Settings.model_fields:

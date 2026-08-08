@@ -23,6 +23,7 @@ cases:      # required — test cases (inline list or file reference)
 scorecard:  # required — how outputs are scored
 judges:     # optional — LLM judge definitions used by llm-judge scorers
 thresholds: # optional — pass/fail gates for CI
+privacy:    # optional — no-look mode (see below)
 ```
 
 Relative paths inside the config (prompt files, case files, attachments)

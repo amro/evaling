@@ -146,6 +146,24 @@ def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock")
     for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
+        if name == ".gitignore" and path.exists():
+            content = _merged_gitignore(path.read_text(encoding="utf-8"))
         path.write_text(content, encoding="utf-8", newline="\n")
         created.append(name)
     return created
+
+
+def _merged_gitignore(existing: str) -> str:
+    """evaling's entries added to a .gitignore, keeping what is already there.
+
+    Every other scaffold file belongs to evaling, so --force replacing it is
+    what was asked for. A .gitignore usually predates evaling and covers the
+    rest of the repo; replacing it wholesale would drop those entries, and the
+    file's whole job is to be complete.
+    """
+    have = {line.strip() for line in existing.splitlines()}
+    missing = [line for line in GITIGNORE.splitlines() if line.strip() and line.strip() not in have]
+    if not missing:
+        return existing
+    separator = "" if existing.endswith("\n") else "\n"
+    return existing + separator + "\n" + "\n".join(missing) + "\n"

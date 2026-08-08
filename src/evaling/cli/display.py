@@ -123,7 +123,11 @@ def cell_block(record: ResultRecord) -> Group:
     grid.add_column(overflow="fold")
 
     def row(label: str, body: str, note: str | None = None, style: str | None = None) -> None:
-        grid.add_row(f"{label} │", Text(body, style=style or ""))
+        # The label is escaped like the body. Roles are schema-constrained when
+        # a record is written, but `show` reads results.jsonl back without
+        # revalidating, so a hand-edited or foreign record could put markup
+        # here and crash the command that was meant to inspect it.
+        grid.add_row(Text(f"{label} │"), Text(body, style=style or ""))
         if note:
             grid.add_row("│", Text(note, style="dim"))
 

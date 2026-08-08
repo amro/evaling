@@ -7,6 +7,7 @@ about the two things that have historically gone wrong with printing model
 output: markup in it, and too much of it.
 """
 
+import io
 import json
 import re
 
@@ -142,6 +143,21 @@ class TestUntrustedOutput:
         )
         result = invoke(tmp_path, "-v", "run", config=config)
         assert result.exit_code == 0, result.output
+
+    def test_markup_in_a_stored_role_is_safe(self, tmp_path):
+        """`show` reads results.jsonl back without revalidating it.
+
+        Roles are schema-constrained when a record is written, so this needs a
+        hand-edited or foreign file — but the label was the one string in the
+        block reaching rich unescaped, and it crashed the command meant to
+        inspect the record.
+        """
+        record = ResultRecord(variant="v", model="m", case_id="c1")
+        record.messages = [{"role": "[/bold]x[red]", "parts": [{"type": "text", "text": "hi"}]}]
+        record.output = "fine"
+        console = Console(file=io.StringIO(), width=100, highlight=False)
+        console.print(display.cell_block(record))  # must not raise MarkupError
+        assert "[/bold]x[red]" in flat(console.file.getvalue())
 
 
 class TestBounding:

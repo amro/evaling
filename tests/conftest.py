@@ -100,6 +100,24 @@ def _credential_canary():
 
 
 @pytest.fixture(autouse=True)
+def _no_settings_from_the_environment(monkeypatch):
+    """A developer's own EVALING_* variables must not reach the suite.
+
+    These are a settings layer, above a config's `settings:` block, so an
+    exported one silently changes what tests run against: EVALING_CONCURRENCY
+    reshapes scheduling, and EVALING_OUTPUT_DIR sends a CLI test's runs
+    somewhere other than its tmp_path. EVALING_USER_CONFIG was already being
+    neutralized per-file, by each test that remembered to.
+    """
+    for name in list(os.environ):
+        if name.startswith("EVALING_") and name != CANARY_VAR:
+            monkeypatch.delenv(name, raising=False)
+    # Point the user-config layer at nothing, so a contributor's real
+    # ~/.config/evaling/config.yaml cannot supply defaults either.
+    monkeypatch.setenv("EVALING_USER_CONFIG", "/nonexistent")
+
+
+@pytest.fixture(autouse=True)
 def _no_credentials(monkeypatch, _credential_canary):
     """No test may see a real key, whatever the developer has exported.
 

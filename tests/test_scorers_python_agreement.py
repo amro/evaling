@@ -70,6 +70,49 @@ class TestPython:
         )
         assert score(scorer, "x").passed
 
+    @pytest.mark.parametrize("name", ["grader.txt", "grader"])
+    def test_a_file_python_cannot_import_is_a_message_not_a_traceback(self, tmp_path, name):
+        """`spec_from_file_location` returns a loaderless spec for these.
+
+        Unchecked, `module_from_spec` raised AttributeError on None and reached
+        the user as a traceback with exit 1, not a config error with exit 2.
+        """
+        base = write_scorer(tmp_path, "def score(output, case):\n    return True\n", name=name)
+        with pytest.raises(ScoringError, match="cannot be imported as Python"):
+            PythonScorer({"file": name}, base)
+
+    def test_a_non_string_function_name_is_a_message(self, tmp_path):
+        base = write_scorer(tmp_path, "def score(output, case):\n    return True\n")
+        with pytest.raises(ScoringError, match="'function' must be a name"):
+            PythonScorer({"file": "my_scorer.py", "function": 3}, base)
+
+    @pytest.mark.parametrize("bad", ["high", 5, -1, float("nan"), float("inf"), None])
+    def test_an_unusable_pass_at_fails_at_construction(self, tmp_path, bad):
+        """It used to resolve per cell, inside score().
+
+        A bad value there is one criterion's error, not a config problem, so
+        the run completed and reported "succeeded, 0 errors" with every cell
+        scored 0 — the failure visible only in the stored record.
+        """
+        base = write_scorer(tmp_path, "def score(output, case):\n    return 0.8\n")
+        with pytest.raises(ScoringError, match="pass_at"):
+            PythonScorer({"file": "my_scorer.py", "pass_at": bad}, base)
+
+    def test_a_usable_pass_at_still_works(self, tmp_path):
+        base = write_scorer(tmp_path, "def score(output, case):\n    return 0.8\n")
+        assert score(PythonScorer({"file": "my_scorer.py", "pass_at": 0.5}, base), "x").passed
+
+    def test_sys_exit_fails_the_criterion_rather_than_the_run(self, tmp_path):
+        """Scripts adapted into scorers still call sys.exit().
+
+        SystemExit is not an Exception, so it propagated out of the scorer and
+        ended the whole run mid-matrix.
+        """
+        body = "import sys\ndef score(output, case):\n    sys.exit(3)\n"
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        with pytest.raises(ScoringError, match=r"sys\.exit\(3\)"):
+            score(scorer, "x")
+
     def test_missing_file_fails_at_construction(self, tmp_path):
         with pytest.raises(ScoringError, match="file not found"):
             PythonScorer({"file": "ghost.py"}, tmp_path)
@@ -128,6 +171,22 @@ class TestPython:
         )
         scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
         with pytest.raises(ScoringError, match=r"finite number in \[0, 1\]"):
+            score(scorer, "x")
+
+    @pytest.mark.parametrize("passed", ["1", 1, None])
+    def test_a_direct_scoreresult_with_a_non_bool_passed_is_rejected(self, tmp_path, passed):
+        """`score` was validated on this path and `passed` was not.
+
+        A numpy bool or a bare 1 then reached records and exports with a
+        different type from every other cell's.
+        """
+        body = (
+            "from evaling.scorers.base import ScoreResult\n"
+            "def score(output, case):\n"
+            f"    return ScoreResult(score=1.0, passed={passed!r})\n"
+        )
+        scorer = PythonScorer({"file": "my_scorer.py"}, write_scorer(tmp_path, body))
+        with pytest.raises(ScoringError, match="passed must be a bool"):
             score(scorer, "x")
 
     def test_user_scoring_error_not_double_wrapped(self, tmp_path):
