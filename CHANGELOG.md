@@ -19,11 +19,12 @@ scorer, the settings loader, the CLI display and scaffold.
   `AttributeError: 'NoneType' object has no attribute 'loader'` and exit 1
   instead of a config error and exit 2. A non-string `function` did the same.
 
-- **`pass_at` is validated when the config loads.** It was resolved per cell
+- **`pass_at` is validated before any cell runs.** It was resolved per cell
   inside the scorer, so `pass_at: high` was not a config error but a failure in
   every criterion: the run completed and reported "2/2 succeeded, 0 errors"
   with every cell scored 0, the cause visible only in the stored record. A
-  value outside [0, 1] was accepted silently and made passing impossible.
+  value outside [0, 1] was accepted silently and made passing impossible, and
+  `pass_at: true` was read as 1.0 — all three are now refused.
 
 - **`sys.exit()` in a python scorer fails that criterion instead of ending the
   run.** `SystemExit` is not an `Exception`, so it propagated out of the scorer
@@ -32,7 +33,10 @@ scorer, the settings loader, the CLI display and scaffold.
 - **Deeply nested output is reported as invalid JSON.** `json` decodes
   containers recursively, so input nested past the interpreter's stack raised
   `RecursionError` — not a `JSONDecodeError`, so every caller's handling was
-  bypassed and the criterion reported the interpreter's message.
+  bypassed and the criterion reported the interpreter's message. All three
+  parse attempts are covered, not only the first: nesting that deep is likeliest
+  in the decorated output the fenced-block and embedded-JSON fallbacks exist
+  for.
 
 - **A `ScoreResult` with a non-bool `passed` is rejected.** `score` was checked
   on that path and `passed` was not, so a `numpy.bool_` or a bare `1` reached
@@ -51,7 +55,9 @@ scorer, the settings loader, the CLI display and scaffold.
 - **A project config that parses but is not a mapping is an error.** The
   settings reader returned nothing for it, so `list` and `show` fell back to
   the default directories — the "commands look in the wrong directory" failure
-  that function exists to prevent.
+  that function exists to prevent. Every command that reads project settings
+  now refuses it, `evaling mcp` included; `doctor` reports it as a problem and
+  carries on, as it does for any broken config.
 
 ### Changed
 

@@ -1023,7 +1023,7 @@ def mcp(app):
 @cli_errors
 def init(app, force, provider):
     """Scaffold a working example eval (offline by default, via the mock provider)."""
-    created = scaffold_project(Path.cwd(), force=force, provider=provider)
-    for path in created:
-        app.console.print(f"created [bold]{path}[/bold]")
+    for line in scaffold_project(Path.cwd(), force=force, provider=provider):
+        action, _, path = line.rpartition(" ")
+        app.console.print(f"{action} [bold]{path}[/bold]")
     app.say("\ntry it:  [bold]evaling run[/bold]")

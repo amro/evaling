@@ -97,3 +97,17 @@ def test_force_does_not_duplicate_entries_it_already_added():
         assert runner.invoke(main, ["init", "--force"], env=ENV).exit_code == 0
         gitignore = Path(".gitignore").read_text(encoding="utf-8")
         assert gitignore.count(".evaling.secrets.yaml") == 1
+
+
+def test_the_gitignore_action_is_reported_accurately():
+    """ "created" was printed even when the file was merged or untouched."""
+    from pathlib import Path
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path(".gitignore").write_text("node_modules/\n", encoding="utf-8")
+        merged = runner.invoke(main, ["init", "--force"], env=ENV)
+        assert "updated .gitignore" in merged.output, merged.output
+
+        again = runner.invoke(main, ["init", "--force"], env=ENV)
+        assert "left alone .gitignore" in again.output, again.output

@@ -119,9 +119,10 @@ def score(output: str, case: dict):
 A synchronous function runs in a thread, so a slow scorer doesn't stall the
 model calls already in flight.
 
-`pass_at` applies when the function returns a bare number: the cell passes at
-that value or above. It defaults to 1.0 and is checked when the config loads,
-so a wrong one is a config error rather than every cell scoring zero.
+`pass_at` decides the verdict whenever the function does not: a bare number
+passes at that value or above, and so does a mapping that omits `passed`. It
+defaults to 1.0, and is checked when the scorer is built — before any cell runs
+— so a wrong one is a config error rather than every cell scoring zero.
 
 The file is loaded on its own, not imported into a package. Two consequences
 worth knowing:

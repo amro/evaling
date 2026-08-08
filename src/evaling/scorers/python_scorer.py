@@ -85,7 +85,8 @@ class PythonScorer(Scorer):
             # A script adapted into a scorer often still calls sys.exit().
             # That is not a BaseException the run should honour: it ends one
             # criterion, like any other failure inside a scorer.
-            raise ScoringError(f"python scorer called sys.exit({exc.code!r})") from exc
+            code = "" if exc.code is None else repr(exc.code)
+            raise ScoringError(f"python scorer called sys.exit({code})") from exc
         except Exception as exc:
             raise ScoringError(f"python scorer raised {type(exc).__name__}: {exc}") from exc
         return self._coerce(result)

@@ -103,23 +103,35 @@ class TestJson:
         # judges that add a preamble caused spurious criterion failures.
         assert parse_json_lenient(text) == {"score": 1}
 
-    def test_a_bracket_flood_is_bounded(self):
-        """Each start can scan the whole remaining text, so trying every one
-        is quadratic — 16 KB of "[" took five seconds and held a concurrency
-        slot. The budget was untested: removing it kept the suite green."""
+    @pytest.mark.parametrize(
+        "decorate",
+        [
+            pytest.param(lambda flood: flood, id="bare"),
+            # These two reach the fallbacks, which had no guard of their own —
+            # and decorated output is exactly where a judge's nested JSON lands.
+            pytest.param(lambda flood: f"here you go: {flood}", id="after-prose"),
+            pytest.param(lambda flood: f"note\n```json\n{flood}\n```", id="inside-a-fence"),
+        ],
+    )
+    def test_nesting_too_deep_to_parse_is_reported_as_invalid_json(self, decorate):
+        """json decodes containers recursively, so this raises RecursionError.
+
+        That is not a JSONDecodeError, so it bypassed every caller's handling
+        and the criterion reported the interpreter's message.
+        """
         import json as json_module
-        import time
 
-        started = time.perf_counter()
         with pytest.raises(json_module.JSONDecodeError):
-            parse_json_lenient("[" * 20_000)
-        assert time.perf_counter() - started < 2.0, "the start budget is not being applied"
+            parse_json_lenient(decorate("[" * 100_000))
 
-    def test_json_past_the_budget_is_not_found(self):
-        """The bound is a real limit, not a formality — worth stating.
+    def test_json_past_the_start_budget_is_not_found(self):
+        """The budget is what keeps the scan from being quadratic.
 
-        Output with the answer past the 64th bracket is pathological, and
-        finding it would cost every other cell the scan.
+        Each start can scan the whole remaining text, so trying every one
+        cost five seconds on 16 KB of "[" and held a concurrency slot. This is
+        that bound's observable edge: raising MAX_JSON_STARTS fails here, which
+        is what makes the budget testable at all — timing a flood does not,
+        since a deep enough one now short-circuits as invalid JSON instead.
         """
         import json as json_module
 

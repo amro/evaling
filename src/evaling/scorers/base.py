@@ -67,31 +67,37 @@ def parse_json_lenient(text: str) -> Any:
     Raises the original JSONDecodeError when nothing parses.
     """
     stripped = text.strip()
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError as exc:
-        first_error = exc
-    except RecursionError:
-        # json decodes containers recursively, so nesting deeper than the
-        # interpreter's stack raises here. RecursionError is not a
-        # JSONDecodeError, so every caller's handling was bypassed and a
-        # scorer reported the interpreter's message instead of "invalid JSON".
-        raise json.JSONDecodeError("JSON is nested too deeply to parse", stripped, 0) from None
+
+    # json decodes containers recursively, so input nested deeper than the
+    # interpreter's stack raises RecursionError. That is not a JSONDecodeError,
+    # so it bypasses every caller's handling and surfaces the interpreter's
+    # message. Every parse attempt below can raise it, not only the first:
+    # deeply nested JSON is most likely in exactly the decorated output the
+    # fallbacks exist for.
+    def attempt(parse):
+        try:
+            return True, parse()
+        except json.JSONDecodeError as exc:
+            return False, exc
+        except RecursionError:
+            return False, json.JSONDecodeError("JSON is nested too deeply to parse", stripped, 0)
+
+    ok, result = attempt(lambda: json.loads(stripped))
+    if ok:
+        return result
+    first_error = result
 
     fence = _FENCED_BLOCK.search(stripped)
     if fence:
-        try:
-            return json.loads(fence.group(1).strip())
-        except json.JSONDecodeError:
-            pass
+        ok, result = attempt(lambda: json.loads(fence.group(1).strip()))
+        if ok:
+            return result
 
     decoder = json.JSONDecoder()
     for index in _candidate_starts(stripped):
-        try:
-            value, _ = decoder.raw_decode(stripped, index)
-            return value
-        except json.JSONDecodeError:
-            continue
+        ok, result = attempt(lambda index=index: decoder.raw_decode(stripped, index)[0])
+        if ok:
+            return result
 
     raise first_error
 

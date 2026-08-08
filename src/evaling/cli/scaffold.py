@@ -131,7 +131,12 @@ MODEL_BLOCKS = {
 
 
 def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock") -> list[str]:
-    """Write the example files under root; refuse to clobber without force."""
+    """Write the example files under root; refuse to clobber without force.
+
+    Returns one line per file, already worded for the reader: ".gitignore" is
+    merged rather than replaced, so reporting it as created would describe the
+    wrong thing.
+    """
     files = dict(FILES)
     if provider != "mock":
         files["eval.yaml"] = EVAL_YAML.replace(MODEL_BLOCKS["mock"], MODEL_BLOCKS[provider])
@@ -146,10 +151,13 @@ def scaffold_project(root: Path, *, force: bool = False, provider: str = "mock")
     for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
+        action = "created"
         if name == ".gitignore" and path.exists():
-            content = _merged_gitignore(path.read_text(encoding="utf-8"))
+            before = path.read_text(encoding="utf-8")
+            content = _merged_gitignore(before)
+            action = "updated" if content != before else "left alone"
         path.write_text(content, encoding="utf-8", newline="\n")
-        created.append(name)
+        created.append(f"{action} {name}")
     return created
 
 
@@ -165,5 +173,7 @@ def _merged_gitignore(existing: str) -> str:
     missing = [line for line in GITIGNORE.splitlines() if line.strip() and line.strip() not in have]
     if not missing:
         return existing
+    if not existing.strip():
+        return GITIGNORE
     separator = "" if existing.endswith("\n") else "\n"
     return existing + separator + "\n" + "\n".join(missing) + "\n"
