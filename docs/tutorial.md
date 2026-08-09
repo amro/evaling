@@ -309,7 +309,7 @@ models:
     provider: openai-compatible
     base_url: http://localhost:11434/v1     # Ollama; no key needed
 
-  - id: gemini-2.5-pro
+  - id: gemini-3.1-pro-preview
     provider: openai-compatible
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
     api_key_env: GEMINI_API_KEY

@@ -61,7 +61,7 @@ models:
     base_url: http://localhost:11434/v1     # Ollama
 
   # Gemini via its OpenAI-compatible endpoint
-  - id: gemini-2.5-flash
+  - id: gemini-3.1-flash-lite
     provider: openai-compatible
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
     api_key_env: GEMINI_API_KEY

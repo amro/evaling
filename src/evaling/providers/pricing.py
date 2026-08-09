@@ -137,6 +137,10 @@ PRICES: dict[str, Price] = {
     "gemini-3.1-pro-preview": Price(2.00, 12.00),  # >200k: $4.00 / $18.00
     # Text input; audio in costs $1.00.
     "gemini-3-flash-preview": Price(0.50, 3.00),
+    # The 2.5 models are closed to new Gemini API users (a call returns 404
+    # naming that), and kept for the same reason as Anthropic's retired ones:
+    # accounts that already had access can still call them, and a model missing
+    # from the table reports an unknown cost rather than a correct one.
     "gemini-2.5-pro": Price(1.25, 10.00),  # >200k: $2.50 / $15.00
     "gemini-2.5-flash": Price(0.30, 2.50),
     "gemini-2.5-flash-lite": Price(0.10, 0.40),

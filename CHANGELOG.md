@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Three Gemini examples named a model new users cannot call.**
+  `docs/providers.md`, `docs/secrets.md` and `docs/tutorial.md` showed
+  `gemini-2.5-flash` / `gemini-2.5-pro`; Google has closed the whole 2.5 line
+  to new API users, and a call returns 404 saying so. The examples now use 3.x
+  models, verified callable. The price table keeps its 2.5 entries — accounts
+  with existing access can still call them, and a model missing from the table
+  reports an unknown cost rather than a correct one.
+
 ### Changed
 
 Tests for six paths the whole-project review found uncovered. No behaviour
