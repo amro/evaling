@@ -316,6 +316,49 @@ class TestConfigSchemaResource:
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(config, self.schema())
 
+    def test_it_rejects_a_nested_key_too(self):
+        """'Unknown keys are rejected' is a claim about every level, not the top one."""
+        import jsonschema
+
+        config = yaml.safe_load(CONFIG)
+        config["models"][0]["comand"] = "./x.sh"
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(config, self.schema())
+
+    def test_every_nested_model_is_closed_except_scorer_params(self):
+        """The one model that accepts extras is the one whose extras mean something.
+
+        Asserted over the whole schema rather than at a sampled level: strictness
+        that holds at the top and lapses three levels down reads as enforced.
+        """
+        open_models = {
+            name: definition
+            for name, definition in self.schema()["$defs"].items()
+            if definition.get("type") == "object"
+            and definition.get("additionalProperties") is not False
+        }
+        assert set(open_models) == {"ScorerSpec"}, (
+            "these accept unknown keys and should not: " + ", ".join(sorted(open_models))
+        )
+
+    def test_a_config_can_satisfy_the_schema_and_still_not_load(self):
+        """The gap the description warns about, pinned as a fact rather than a worry.
+
+        `openai-compatible` without `base_url` is a model validator's business,
+        so the schema sees nothing wrong. If this ever starts failing, the
+        schema grew teeth and the warning can be revisited.
+        """
+        import jsonschema
+        from pydantic import ValidationError
+
+        from evaling.config.schema import EvalConfig
+
+        config = yaml.safe_load(CONFIG)
+        config["models"] = [{"id": "m", "provider": "openai-compatible"}]
+        jsonschema.validate(config, self.schema())
+        with pytest.raises(ValidationError, match="requires 'base_url'"):
+            EvalConfig.model_validate(config)
+
     def test_it_covers_every_top_level_key(self):
         from evaling.config.schema import EvalConfig
 
@@ -327,6 +370,17 @@ class TestConfigSchemaResource:
 
         assert __version__ in self.schema()["description"]
 
+    def test_it_admits_what_it_cannot_express(self):
+        """Cross-field rules are invisible to JSON Schema, so silence overclaims.
+
+        A config can satisfy every type and enum here and still be rejected by
+        `@model_validator`. The description has to say so, or an agent reads a
+        clean validation as permission to run.
+        """
+        description = self.schema()["description"]
+        assert "cross-field" in description
+        assert "evaling validate" in description
+
     def test_the_server_advertises_it(self, tmp_path):
         server = build_server(output_dir=str(tmp_path))
         resources = asyncio.run(server.list_resources())
@@ -336,12 +390,11 @@ class TestConfigSchemaResource:
         assert listed[CONFIG_SCHEMA_URI].description
 
     def test_reading_it_returns_the_schema(self, tmp_path):
+        """Whole schema, not its shape: property names alone match a hollow one."""
         server = build_server(output_dir=str(tmp_path))
         contents = list(asyncio.run(server.read_resource(CONFIG_SCHEMA_URI)))
         assert len(contents) == 1
-        assert json.loads(contents[0].content)["properties"].keys() == (
-            self.schema()["properties"].keys()
-        )
+        assert json.loads(contents[0].content) == self.schema()
 
     def test_the_instructions_point_at_it(self, tmp_path):
         """Nothing prompts a read unless the server says the resource is there."""

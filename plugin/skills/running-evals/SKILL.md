@@ -51,9 +51,12 @@ For the complete set of legal keys, providers, scorers and their parameters,
 read `references/config-reference.md`. The config rejects unknown keys, so a
 typo fails at load time rather than silently doing nothing.
 
-When the MCP server is connected, `evaling://config-schema` is the same
-information generated from the installed evaling — the authority if the two
-ever disagree. Reach it in Claude Code with `@evaling:evaling://config-schema`.
+When the MCP server is connected, its `evaling://config-schema` resource is the
+same information generated from the installed evaling. It is authoritative for
+key names, types and enums. It cannot express the loader's cross-field rules —
+a provider's required companion field, unique ids, an `llm-judge` naming a
+judge that exists — so this reference covers those and a config matching the
+schema can still be rejected. `evaling validate` settles it either way.
 
 Two facts worth knowing before writing a config, because they are the ones most
 often guessed wrong:

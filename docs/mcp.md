@@ -170,25 +170,6 @@ raw record; the MCP form is a summary with the total and the pinned baseline
 alongside it, because an agent asking "what runs are there" almost always
 wants those two next.
 
-## Resources
-
-| URI | What it is |
-|---|---|
-| `evaling://config-schema` | JSON Schema for `eval.yaml`, `application/json` |
-
-Generated from the config models of the running evaling, so it describes the
-schema actually enforced rather than one documented alongside it. An agent
-about to write or edit a config should read it first: the loader rejects
-unknown keys everywhere except scorer parameters, so a guessed key is a load
-error rather than a setting that quietly does nothing.
-
-In Claude Code, resources are reached with `@` — `@evaling:evaling://config-schema`
-— and appear in the autocomplete beside files. Other clients expose them their
-own way; every MCP client can list and read them.
-
-The server's instructions point at it too, so an agent that reads those knows
-it exists without being told.
-
 ### `run_eval`
 
 ```json
@@ -236,6 +217,33 @@ spending anything.
 
 Refused under [no-look mode](no-look.md): rendering a case is reading it, so
 there is nothing this tool could usefully return.
+
+## Resources
+
+| URI | What it is |
+|---|---|
+| `evaling://config-schema` | JSON Schema for `eval.yaml`, `application/json` |
+
+Generated from the config models of the running evaling, so its key names,
+types and enums are the ones actually enforced rather than a copy's. An agent
+about to write or edit a config should read it first: a mistyped top-level key
+is a load error rather than a setting that quietly does nothing. Mistyped
+*scorer* parameters are the exception — those are scorer-specific, so they pass
+through unread.
+
+It stops at what JSON Schema can say. The loader also enforces cross-field
+rules — a provider's required companion field, unique model ids and variant
+names, an `llm-judge` naming a judge that exists, the shape of
+`params.pricing` — none of which a schema can express. A config that validates
+against the resource can still be rejected, and `evaling validate` is what
+reports that without calling a model.
+
+How resources are surfaced is the client's business; every MCP client can list
+and read them. Claude Code puts them in the `@` autocomplete beside files,
+under the server's configured name.
+
+The server's instructions point at the resource too, so an agent that reads
+those knows it exists without being told.
 
 ## Argument names must match exactly
 

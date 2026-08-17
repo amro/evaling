@@ -45,9 +45,14 @@ an edit helped. render_prompt shows exactly what a case renders to without
 calling any model.
 
 Before writing or editing an eval.yaml, read the evaling://config-schema
-resource. It is generated from this evaling, so it is the schema actually
-enforced — and the config rejects unknown keys, which makes a guessed one a
-load error rather than a setting that quietly does nothing.
+resource. It is generated from this evaling, so its key names, types and enums
+are the ones actually enforced: a guessed top-level key is a load error rather
+than a setting that quietly does nothing. Guessed scorer parameters are the
+exception — those pass through and are ignored.
+
+The schema cannot express the loader's cross-field rules, so a config that
+matches it can still be rejected. `evaling validate` is the check that catches
+those, and it calls no model.
 """
 
 #: URI of the config schema resource.
@@ -426,12 +431,19 @@ def _unusable_mcp_message(err: ImportError) -> str:
 
 
 def config_schema_resource() -> dict[str, Any]:
-    """JSON Schema for eval.yaml, as the installed evaling enforces it.
+    """JSON Schema for eval.yaml, as far as JSON Schema can express it.
 
-    Generated from the config models rather than written beside them. A
-    hand-kept copy can describe a schema this version does not implement, and
-    an agent has no way to tell which of the two it is holding; a generated one
-    cannot disagree with the loader that will reject the file.
+    Generated from the config models rather than written beside them, so the
+    key names, types and enums are this version's rather than a copy's.
+
+    It is deliberately weaker than the loader, and says so in its description.
+    Pydantic emits nothing for ``@model_validator``, and the config leans on
+    those for every cross-field rule — a provider's required companion field,
+    unique ids, a judge a scorer names. So the schema is authoritative about
+    what a key is called and worthless about whether a valid-looking config
+    will load. Claiming otherwise would be the failure this resource exists to
+    prevent, one level up: an agent believing a description of the rules over
+    the rules.
     """
     from evaling.config.schema import EvalConfig
 
@@ -439,8 +451,16 @@ def config_schema_resource() -> dict[str, Any]:
     schema["title"] = "evaling eval.yaml"
     schema["description"] = (
         f"Configuration schema for evaling {__version__}. Unknown keys are rejected "
-        "everywhere except scorer parameters, so a typo fails at load time. Relative "
-        "paths resolve against the directory holding the config file."
+        "everywhere except scorer parameters, which are scorer-specific and pass "
+        "through, so a mistyped top-level key fails at load time while a mistyped "
+        "scorer parameter is ignored. Relative paths resolve against the directory "
+        "holding the config file. "
+        "This schema covers key names, types and enums only. The loader also enforces "
+        "cross-field rules that JSON Schema cannot express — a provider's required "
+        "companion field (base_url, command), unique model ids and variant names, an "
+        "llm-judge naming a judge that exists, the shape of params.pricing, at least "
+        "one case and one candidate model — so a config that validates here can still "
+        "be rejected. Run `evaling validate` to find out before spending anything."
     )
     return schema
 
@@ -466,7 +486,9 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         name="eval.yaml schema",
         description=(
             "JSON Schema for eval.yaml, generated from this evaling. Read it before "
-            "writing or editing a config: unknown keys are rejected at load time."
+            "writing or editing a config: a mistyped top-level key is a load error. "
+            "Covers key names, types and enums; the loader also enforces cross-field "
+            "rules this cannot express, which `evaling validate` checks."
         ),
         mime_type="application/json",
     )

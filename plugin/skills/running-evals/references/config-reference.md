@@ -4,10 +4,12 @@ Complete set of legal keys. Unknown keys are rejected at load time everywhere
 except scorer parameters, so a typo is a load error rather than a silent
 no-op. Relative paths resolve against the directory holding the config file.
 
-This file is written for reading. The MCP server also serves the same schema
-generated from the installed evaling, at `evaling://config-schema` — that one
-is the authority if the two ever disagree, since it comes from the code that
-will reject the config.
+The MCP server serves a generated JSON Schema at `evaling://config-schema`.
+Prefer it for key names, types and enums: it comes from the installed evaling,
+so it cannot be out of date. It stops there. Cross-field rules — noted below
+and enforced at load time — are not expressible in JSON Schema, so a config
+that validates against it can still be rejected. `evaling validate` is the
+check that covers both.
 
 ## Top-level keys
 
@@ -133,6 +135,26 @@ the completion is read from stdout. A non-zero exit becomes a cell error.
 | `llm-judge` | `judge` (required, a name from `judges`), `scale` (`1.0`), `pass_at` (`0.5`) | An autorater grades the output against a rubric. Billable: one model call per cell. |
 | `python` | `file` (required), `function` (`score`), `pass_at` (`1.0`) | Your own scoring function. |
 | `agreement` | `mode` (`exact` or `within`), `tolerance` (`0`), `field` (`score`) | How well a judge's verdict matches the case's `human_label`. For calibrating judges. |
+
+## Cross-field rules
+
+Checked at load time, and not expressible in JSON Schema — a config can satisfy
+every table above and still be rejected for one of these:
+
+- `openai-compatible` requires `base_url`; `command` requires `command`, and
+  `command` is invalid on any other provider.
+- `params.pricing` must carry finite, non-negative numeric `input` and
+  `output`. Validated before the run, because a bad rate would otherwise
+  surface after calls were billed.
+- Model ids, variant names and criterion names must each be unique.
+- An inline `cases` list must not be empty.
+- At least one model must have role `candidate` or `both`.
+- A judge must reference a model that exists, and that model must not be a
+  plain `candidate`. A model declared `judge` or `both` must actually be used
+  by some judge.
+- An `llm-judge` criterion must name a `judge` that exists.
+
+`evaling validate` reports these without calling a model.
 
 ### The python scorer contract
 

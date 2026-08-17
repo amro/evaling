@@ -11,11 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The MCP server serves the `eval.yaml` schema**, at
   `evaling://config-schema`. It is generated from the running evaling's config
-  models, so it describes the schema the loader actually enforces rather than
-  one maintained beside it, and an agent can tell which version produced it.
-  The server's instructions point at it, since nothing prompts a read
-  otherwise. This is the server's first resource; it previously exposed tools
-  only. See [docs/mcp.md](docs/mcp.md).
+  models, so its key names, types and enums are the ones the loader enforces
+  rather than a copy's, and an agent can tell which version produced it. The
+  server's instructions point at it, since nothing prompts a read otherwise.
+  This is the server's first resource; it previously exposed tools only.
+
+  The schema is deliberately weaker than the loader and says so. JSON Schema
+  cannot express a `@model_validator`, and the config relies on those for every
+  cross-field rule — a provider's required companion field, unique ids, an
+  `llm-judge` naming a judge that exists — so a config that validates can still
+  be rejected. `evaling validate` is what settles that, and a test pins one such
+  config so the caveat stays earned. See [docs/mcp.md](docs/mcp.md).
 
 - **A Claude Code plugin**, in `plugin/`, installable from this repository as
   its own marketplace. It bundles the MCP server — launched with `uvx`, so
