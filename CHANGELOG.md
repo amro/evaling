@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A Claude Code plugin**, in `plugin/`, installable from this repository as
+  its own marketplace. It bundles the MCP server — launched with `uvx`, so
+  nothing needs installing first — a `/evaling:init` command, and a skill
+  carrying the compare-against-baseline workflow and a complete `eval.yaml`
+  reference. See [docs/plugin.md](docs/plugin.md).
+
+  The reference exists because an agent given only the tool descriptions has to
+  brute-force the schema out of validation errors. Two test runs, one with the
+  published docs and one without, both eventually produced a working eval — the
+  one without took twice the tool calls and found `provider: command` only by
+  submitting an invalid provider name and reading the enum in the error. The
+  plugin ships the facts that cost the most to discover.
+
+  The reference is kept honest by tests: the provider list, scorer list and
+  top-level config keys are compared against the schema, and the version pin
+  against the version in this tree.
+
 ### Fixed
 
 - **Three Gemini examples named a model new users cannot call.**

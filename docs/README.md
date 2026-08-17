@@ -30,6 +30,7 @@
 | [CI recipes](ci.md) | Gating, baselines, cost ceilings, report artifacts |
 | [Evaluating judges](evaluating-judges.md) | Calibrating an autorater against human labels |
 | [MCP server](mcp.md) | Driving evaling from an agent |
+| [Claude Code plugin](plugin.md) | Installing evaling as a plugin: MCP server, command, and skill |
 | [Python API](python-api.md) | Using evaling as a library |
 | [No-look evals](no-look.md) | Evaluating data nobody is permitted to read |
 | [Troubleshooting](troubleshooting.md) | Symptoms, causes, fixes |

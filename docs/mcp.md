@@ -34,6 +34,10 @@ claude mcp add evaling -- evaling mcp
 
 Added from the project directory, so the server starts there.
 
+The [plugin](plugin.md) is the other route: it carries this server plus a
+command and a skill, and launches the server with `uvx`, so it works without
+evaling installed.
+
 ### Claude Desktop
 
 `claude_desktop_config.json` — macOS:

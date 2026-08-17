@@ -122,6 +122,8 @@ examples at every step.
   human labels (meta-evals).
 - [MCP server](docs/mcp.md) — drive evaling from an agent for hands-off prompt
   iteration.
+- [Claude Code plugin](docs/plugin.md) — install the MCP server, a command, and
+  the eval workflow as a plugin.
 - [Python API](docs/python-api.md) — use evaling as a library.
 - [Troubleshooting](docs/troubleshooting.md) — symptoms, causes, fixes.
 - [Architecture](docs/architecture.md) — how it's built, and why.

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "evaling",
+  "description": "The evaling plugin: compare prompt variants and models from Claude Code",
+  "owner": {
+    "name": "Amro Mousa"
+  },
+  "plugins": [
+    {
+      "name": "evaling",
+      "description": "Compare prompt variants and models from Claude Code. Runs an eval matrix, scores it, and gates on regressions against a pinned baseline.",
+      "author": {
+        "name": "Amro Mousa"
+      },
+      "category": "testing",
+      "source": "./plugin",
+      "homepage": "https://github.com/amro/evaling"
+    }
+  ]
+}
