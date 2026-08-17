@@ -51,6 +51,10 @@ For the complete set of legal keys, providers, scorers and their parameters,
 read `references/config-reference.md`. The config rejects unknown keys, so a
 typo fails at load time rather than silently doing nothing.
 
+When the MCP server is connected, `evaling://config-schema` is the same
+information generated from the installed evaling — the authority if the two
+ever disagree. Reach it in Claude Code with `@evaling:evaling://config-schema`.
+
 Two facts worth knowing before writing a config, because they are the ones most
 often guessed wrong:
 

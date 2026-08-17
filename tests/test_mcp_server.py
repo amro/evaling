@@ -14,10 +14,12 @@ from evaling.config import Settings, load_config
 from evaling.engine import run_eval, run_eval_async
 from evaling.errors import EvalingError
 from evaling.mcp_server import (
+    CONFIG_SCHEMA_URI,
     PAGE_SIZE,
     _unusable_mcp_message,
     build_server,
     compare_runs_tool,
+    config_schema_resource,
     get_case_result_tool,
     get_run_tool,
     installed_mcp_version,
@@ -288,6 +290,64 @@ class TestServerWiring:
         assert json.loads(result.content[0].text)["total"] == 1
 
 
+class TestConfigSchemaResource:
+    """The schema an agent reads before writing a config.
+
+    Generated from the models, so the interesting question is not whether it
+    exists but whether it agrees with the loader: a schema that accepts a
+    config `evaling run` would reject is worse than no schema, because it is
+    believed.
+    """
+
+    def schema(self) -> dict:
+        return config_schema_resource()
+
+    def test_it_describes_the_config_the_loader_accepts(self):
+        import jsonschema
+
+        jsonschema.validate(yaml.safe_load(CONFIG), self.schema())
+
+    def test_it_rejects_a_key_the_loader_would_reject(self):
+        """The description promises unknown keys fail; a schema that shrugs lies."""
+        import jsonschema
+
+        config = yaml.safe_load(CONFIG)
+        config["scorecrad"] = []  # the typo this is meant to catch
+        with pytest.raises(jsonschema.ValidationError):
+            jsonschema.validate(config, self.schema())
+
+    def test_it_covers_every_top_level_key(self):
+        from evaling.config.schema import EvalConfig
+
+        assert set(self.schema()["properties"]) == set(EvalConfig.model_fields)
+
+    def test_it_names_the_version_it_came_from(self):
+        """An agent holding a schema should be able to tell which evaling wrote it."""
+        from evaling import __version__
+
+        assert __version__ in self.schema()["description"]
+
+    def test_the_server_advertises_it(self, tmp_path):
+        server = build_server(output_dir=str(tmp_path))
+        resources = asyncio.run(server.list_resources())
+        listed = {str(resource.uri): resource for resource in resources}
+        assert CONFIG_SCHEMA_URI in listed
+        assert listed[CONFIG_SCHEMA_URI].mime_type == "application/json"
+        assert listed[CONFIG_SCHEMA_URI].description
+
+    def test_reading_it_returns_the_schema(self, tmp_path):
+        server = build_server(output_dir=str(tmp_path))
+        contents = list(asyncio.run(server.read_resource(CONFIG_SCHEMA_URI)))
+        assert len(contents) == 1
+        assert json.loads(contents[0].content)["properties"].keys() == (
+            self.schema()["properties"].keys()
+        )
+
+    def test_the_instructions_point_at_it(self, tmp_path):
+        """Nothing prompts a read unless the server says the resource is there."""
+        assert CONFIG_SCHEMA_URI in build_server(output_dir=str(tmp_path)).instructions
+
+
 class TestWhenMcpIsUnusable:
     """Three ways that import fails, each needing different instructions.
 
@@ -465,6 +525,18 @@ class TestOverTheProtocol:
         strictness = self.drive(project, body)
         permissive = [name for name, value in strictness.items() if value is not False]
         assert not permissive, f"these tools accept unknown arguments: {permissive}"
+
+    def test_the_config_schema_is_readable_over_the_protocol(self, project):
+        """Registered in-process is not the same as reachable by a client."""
+
+        async def body(session, init):
+            listed = await session.list_resources()
+            read = await session.read_resource(CONFIG_SCHEMA_URI)
+            return [str(r.uri) for r in listed.resources], read.contents[0].text
+
+        uris, payload = self.drive(project, body)
+        assert CONFIG_SCHEMA_URI in uris
+        assert "models" in json.loads(payload)["properties"]
 
     def test_an_unknown_argument_is_refused(self, project):
         """A misspelled argument must not read as a successful default run."""

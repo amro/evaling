@@ -43,7 +43,15 @@ then get_run(detail="failures") to see what broke and why. Use
 get_case_result for one cell's full output, and compare_runs to check whether
 an edit helped. render_prompt shows exactly what a case renders to without
 calling any model.
+
+Before writing or editing an eval.yaml, read the evaling://config-schema
+resource. It is generated from this evaling, so it is the schema actually
+enforced — and the config rejects unknown keys, which makes a guessed one a
+load error rather than a setting that quietly does nothing.
 """
+
+#: URI of the config schema resource.
+CONFIG_SCHEMA_URI = "evaling://config-schema"
 
 
 def _snip(text: str | None, limit: int = SNIPPET) -> str | None:
@@ -417,6 +425,26 @@ def _unusable_mcp_message(err: ImportError) -> str:
     return f"mcp {found} is installed but could not be loaded: {err}"
 
 
+def config_schema_resource() -> dict[str, Any]:
+    """JSON Schema for eval.yaml, as the installed evaling enforces it.
+
+    Generated from the config models rather than written beside them. A
+    hand-kept copy can describe a schema this version does not implement, and
+    an agent has no way to tell which of the two it is holding; a generated one
+    cannot disagree with the loader that will reject the file.
+    """
+    from evaling.config.schema import EvalConfig
+
+    schema = EvalConfig.model_json_schema()
+    schema["title"] = "evaling eval.yaml"
+    schema["description"] = (
+        f"Configuration schema for evaling {__version__}. Unknown keys are rejected "
+        "everywhere except scorer parameters, so a typo fails at load time. Relative "
+        "paths resolve against the directory holding the config file."
+    )
+    return schema
+
+
 def build_server(output_dir: str | None = None, config_path: str | None = None):
     """Register the tools on an MCP server (import is lazy: optional dep)."""
     # Bound once here so the tool wrappers below can take `config_path` as
@@ -432,6 +460,18 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
     # Without `version`, the server reports an empty one. An agent asking what
     # it is connected to should hear evaling's.
     server = MCPServer("evaling", version=__version__, instructions=INSTRUCTIONS)
+
+    @server.resource(
+        CONFIG_SCHEMA_URI,
+        name="eval.yaml schema",
+        description=(
+            "JSON Schema for eval.yaml, generated from this evaling. Read it before "
+            "writing or editing a config: unknown keys are rejected at load time."
+        ),
+        mime_type="application/json",
+    )
+    def config_schema() -> dict[str, Any]:
+        return config_schema_resource()
 
     @server.tool(description=run_eval_tool.__doc__)
     async def run_eval(

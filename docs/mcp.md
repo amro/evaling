@@ -170,6 +170,25 @@ raw record; the MCP form is a summary with the total and the pinned baseline
 alongside it, because an agent asking "what runs are there" almost always
 wants those two next.
 
+## Resources
+
+| URI | What it is |
+|---|---|
+| `evaling://config-schema` | JSON Schema for `eval.yaml`, `application/json` |
+
+Generated from the config models of the running evaling, so it describes the
+schema actually enforced rather than one documented alongside it. An agent
+about to write or edit a config should read it first: the loader rejects
+unknown keys everywhere except scorer parameters, so a guessed key is a load
+error rather than a setting that quietly does nothing.
+
+In Claude Code, resources are reached with `@` — `@evaling:evaling://config-schema`
+— and appear in the autocomplete beside files. Other clients expose them their
+own way; every MCP client can list and read them.
+
+The server's instructions point at it too, so an agent that reads those knows
+it exists without being told.
+
 ### `run_eval`
 
 ```json

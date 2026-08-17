@@ -4,6 +4,11 @@ Complete set of legal keys. Unknown keys are rejected at load time everywhere
 except scorer parameters, so a typo is a load error rather than a silent
 no-op. Relative paths resolve against the directory holding the config file.
 
+This file is written for reading. The MCP server also serves the same schema
+generated from the installed evaling, at `evaling://config-schema` — that one
+is the authority if the two ever disagree, since it comes from the code that
+will reject the config.
+
 ## Top-level keys
 
 | Key | Required | Purpose |

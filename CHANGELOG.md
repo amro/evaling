@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The MCP server serves the `eval.yaml` schema**, at
+  `evaling://config-schema`. It is generated from the running evaling's config
+  models, so it describes the schema the loader actually enforces rather than
+  one maintained beside it, and an agent can tell which version produced it.
+  The server's instructions point at it, since nothing prompts a read
+  otherwise. This is the server's first resource; it previously exposed tools
+  only. See [docs/mcp.md](docs/mcp.md).
+
 - **A Claude Code plugin**, in `plugin/`, installable from this repository as
   its own marketplace. It bundles the MCP server — launched with `uvx`, so
   nothing needs installing first — a `/evaling:init` command, and a skill
