@@ -7,8 +7,8 @@ from evaling.providers.pricing import PRICES, PRICING_AS_OF, estimate_cost, pric
 
 
 def test_known_model_cost():
-    # 1M in @ $3 + 1M out @ $15
-    assert estimate_cost("claude-sonnet-5", 1_000_000, 1_000_000) == pytest.approx(18.0)
+    # 1M in @ $2 + 1M out @ $10
+    assert estimate_cost("claude-sonnet-5", 1_000_000, 1_000_000) == pytest.approx(12.0)
 
 
 def test_small_usage_precision():

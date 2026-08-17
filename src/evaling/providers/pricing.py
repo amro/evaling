@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 #: When the built-in table was last checked against published pricing.
-PRICING_AS_OF = "2026-08-07"
+PRICING_AS_OF = "2026-08-17"
 
 
 @dataclass(frozen=True)
@@ -68,11 +68,11 @@ PRICES: dict[str, Price] = {
     "claude-opus-4-5": Price(5.00, 25.00),
     "claude-opus-4-1": Price(15.00, 75.00),
     "claude-opus-4": Price(15.00, 75.00),
-    # Sonnet 5 is $2/$10 under introductory pricing through 2026-08-31, then
-    # $3/$15. The standard rate is the one here: an estimate that is high for
-    # a few weeks beats one that silently under-counts every run after them,
-    # and nothing in evaling knows what day it is at estimate time.
-    "claude-sonnet-5": Price(3.00, 15.00),
+    # $2/$10 launched as introductory pricing through 2026-08-31; Anthropic has
+    # since made it the standard rate and cancelled the rise to $3/$15. This
+    # table carried the $3/$15 until 2026-08-17 on the assumption the increase
+    # would happen, which read 50% high.
+    "claude-sonnet-5": Price(2.00, 10.00),
     "claude-sonnet-4-6": Price(3.00, 15.00),
     "claude-sonnet-4-5": Price(3.00, 15.00),
     "claude-sonnet-4": Price(3.00, 15.00),
@@ -93,6 +93,9 @@ PRICES: dict[str, Price] = {
     # has to be listed or it reports an unknown cost.
     "gpt-5.3-chat-latest": Price(1.75, 14.00),
     "gpt-5.3-codex": Price(1.75, 14.00),
+    # Unversioned alias for the current flagship chat model, and priced as one
+    # rather than as the 5.2/5.3 entries above.
+    "chat-latest": Price(5.00, 30.00),
     "gpt-5.2": Price(1.75, 14.00),
     "gpt-5.2-pro": Price(21.00, 168.00),
     "gpt-5.2-chat-latest": Price(1.75, 14.00),
@@ -129,6 +132,10 @@ PRICES: dict[str, Price] = {
     # estimate for a threshold almost nobody crosses would make the number
     # useless for the runs people actually have. Past ~200k input tokens per
     # call, set `params.pricing` to the long-prompt tier.
+    # 3.7 and 3.6 Flash are both promoted to $0.75/$3.75 through 2026-12-31,
+    # reverting to the standard rate below. The table carries standard rates,
+    # so these read high while the promotion runs rather than low after it.
+    "gemini-3.7-flash": Price(1.50, 7.50),
     "gemini-3.6-flash": Price(1.50, 7.50),
     "gemini-3.5-flash": Price(1.50, 9.00),
     "gemini-3.5-flash-lite": Price(0.30, 2.50),

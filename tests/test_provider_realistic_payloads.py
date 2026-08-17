@@ -99,7 +99,7 @@ class TestAnthropicRealisticShapes:
         assert completion.text == "The Treaty of Ghent ended the War of 1812."
         assert completion.input_tokens == 2095
         assert completion.output_tokens == 503
-        assert completion.cost_usd == pytest.approx(2095 * 3e-6 + 503 * 15e-6)
+        assert completion.cost_usd == pytest.approx(2095 * 2e-6 + 503 * 10e-6)
 
     def test_multiple_text_blocks_are_joined(self, tmp_path):
         payload = dict(ANTHROPIC_FULL)

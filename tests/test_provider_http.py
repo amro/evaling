@@ -100,8 +100,8 @@ class TestAnthropic:
         assert completion.text == "the answer"
         assert completion.input_tokens == 100
         assert completion.output_tokens == 50
-        # 100 in @ $3/Mtok + 50 out @ $15/Mtok
-        assert completion.cost_usd == pytest.approx(0.00105)
+        # 100 in @ $2/Mtok + 50 out @ $10/Mtok
+        assert completion.cost_usd == pytest.approx(0.0007)
 
     def test_default_max_tokens_supplied(self, tmp_path):
         provider = build(
