@@ -51,10 +51,14 @@ The plugin carries the same version as evaling itself. Plugin 0.2.3 is
 evaling 0.2.3, so the version you see in `claude plugin list` is the version
 you are running, with no second number to reconcile.
 
-What it *launches* is a compatible range rather than that exact version — a
-plugin release for every patch would churn every install to no purpose. Both
-the shared version and the range are checked by the test suite, so a release
-that updates one and forgets the other fails CI.
+What it launches is that version or any later patch, so a fix reaches you
+without waiting for a plugin update. The lower bound moves on every release,
+which is what makes an update actually arrive: `uvx` reuses an environment that
+already satisfies the requirement rather than looking for something newer, so a
+bound left behind would leave you on the evaling you happened to install first.
+
+Both the shared version and the bound are checked by the test suite, so a
+release that updates one and forgets the other fails CI.
 
 ## Installing the server without the plugin
 

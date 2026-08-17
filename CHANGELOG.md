@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-08-17
+
 ### Added
 
 - **The MCP server serves the `eval.yaml` schema**, at
@@ -44,6 +46,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version and its launch pin against the version in this tree.
 
 ### Fixed
+
+- **Claude Sonnet 5 was priced 50% high.** The table carried $3/$15 on the
+  stated assumption that the $2/$10 introductory rate would end on 2026-08-31.
+  Anthropic has since made $2/$10 the standard price and cancelled the
+  increase, so every Sonnet 5 estimate read high. Now $2/$10, and the caveat in
+  `docs/cli.md` that named this bias is gone with it.
+
+- **`gemini-3.7-flash` and OpenAI's `chat-latest` were missing from the price
+  table**, so both reported an *unknown* cost rather than a stale one — the
+  worse of the two answers, since a run then cannot be budgeted at all.
+  `gemini-3.7-flash` carries the same end-of-2026 promotion note as 3.6.
+
+- **The plugin's skill named two commands that do not exist.** It said
+  `evaling diff` (the command is `evaling compare`) and `evaling baseline
+  <run-id>` (the form is `evaling baseline set <run-id>`) — an agent following
+  the CLI fallback would have run neither. The doc-integrity tests only checked
+  that every real command is documented, never that a documented one is real,
+  and did not read `plugin/` at all. Both directions are now checked, across
+  docs and plugin markdown alike.
+
+- **The plugin described the mock provider's behaviour backwards.** It claimed
+  `provider: mock` cannot vary its answer per case; the default echoes the
+  *rendered* last user message, so it does vary — it just is not reasoning
+  about anything. The advice was right and the stated mechanism was not.
+
+- **The plugin's launch pin never advanced**, so a user whose `uvx` cache
+  already satisfied `>=0.2.3` would have kept that evaling indefinitely while
+  reading a skill describing a newer one. The lower bound now moves every
+  release — it is both the capability guarantee and the only upgrade signal
+  plugin users get — and a test fails if it does not match the shipped version.
+
+- **`/evaling:init` assumed `evaling` was on the PATH**, which the plugin
+  explicitly does not require, and pre-approved unscoped `Bash`. It now falls
+  back to the `uvx` form and scopes its tool grant to `evaling` and `uvx`.
 
 - **The `command` provider's stdin shape was documented for media parts only.**
   `docs/providers.md` described what a media part carries but never said what a

@@ -71,10 +71,21 @@ misreports itself.
 The plugin carries the same version, so a user reads one number rather than
 two. A test compares it against `__version__`, as with `pyproject`.
 
-When the *minor* moves, the launch pin in `plugin/.mcp.json` moves with it —
-`evaling[mcp]>=0.2.0,<0.3` becomes `>=0.3.0,<0.4`. A patch release leaves it
-alone; the pin already covers it. A test fails if the pin no longer covers the
-version being shipped.
+```json
+// plugin/.mcp.json
+"evaling[mcp]>=0.2.0,<0.3"
+```
+
+The launch pin's **lower bound moves every release**, patch ones included, and
+a test fails if it does not equal the version being shipped. That is not
+tidiness. The plugin is distributed from this repository while the server comes
+from PyPI through `uvx`, which reuses a cached environment that already
+satisfies the requirement instead of resolving afresh. Leave the bound behind
+and a user keeps whatever evaling they already had, reading a skill that
+describes a newer one — and never receives a fix, since the bound is the only
+upgrade signal they get.
+
+The upper bound is the next minor, so it changes only when the minor does.
 
 In `CHANGELOG.md`, retitle `## [Unreleased]` as `## [0.2.0] - YYYY-MM-DD` and
 leave a fresh empty `## [Unreleased]` above it.
@@ -118,9 +129,19 @@ uv venv /tmp/check && uv pip install --python /tmp/check/bin/python evaling
 cd $(mktemp -d) && /tmp/check/bin/evaling init && /tmp/check/bin/evaling run
 ```
 
-The test suite runs against the working tree; this is the only thing that
-exercises the built artifact — wrong packaging, a missing data file, a broken
-entry point. Worth the thirty seconds.
+Then the plugin's entry point, which is a different artifact — the `mcp` extra,
+resolved and launched the way the plugin does it:
+
+```sh
+uvx --from 'evaling[mcp]==<new version>' evaling mcp </dev/null
+```
+
+It should exit quietly on closed stdin. A traceback means the extra is broken
+for every plugin user, and nothing above would have caught it: the suite runs
+against the working tree, and the plain install does not pull `mcp` in.
+
+Together these are the only things that exercise what was actually built —
+wrong packaging, a missing data file, a broken entry point. Worth the minute.
 
 ## Notes
 

@@ -94,12 +94,17 @@ class TestManifests:
 
 
 class TestVersions:
-    """The plugin carries evaling's version, and ships evaling's code.
+    """The plugin carries evaling's version, and launches that version or newer.
 
-    One version number across both, so "which evaling does this plugin give
-    me" is answered by reading the plugin's version rather than by opening
-    .mcp.json. The pin stays a range: a plugin release per patch would churn
-    every install for nothing.
+    The lower bound is not decoration. The plugin ships from this repository
+    while the server comes from PyPI through uvx, which reuses a cached
+    environment that already satisfies the requirement rather than resolving
+    afresh — so a bound left behind lets a user keep an evaling too old for the
+    skill that ships beside it, indefinitely. Raising it every release is both
+    the capability guarantee and the only upgrade signal plugin users get.
+
+    The upper bound stays at the next minor, so a patch release is picked up
+    without waiting for anything.
     """
 
     def test_the_manifest_carries_evalings_version(self):
@@ -125,7 +130,10 @@ class TestVersions:
             return tuple(pieces[:3])
 
         current = parts(__version__)
-        assert parts(lower.group(1)) <= current, f"{spec} excludes {__version__}"
+        assert parts(lower.group(1)) == current, (
+            f"{spec} does not require {__version__}: a user on an older evaling would "
+            "keep it, and the plugin describes this version's server"
+        )
         assert current < parts(upper.group(1)), f"{spec} excludes {__version__}"
 
 
