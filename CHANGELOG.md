@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The `command` provider's stdin shape was documented for media parts only.**
+  `docs/providers.md` described what a media part carries but never said what a
+  text part looks like, and used `text` a few lines later for the unrelated
+  output key — so a script author could reasonably read `text` as an output
+  key alone. The payload now has a worked example, and a test compares the
+  documented part keys against what `serialize_messages` actually writes.
+
 - **Three Gemini examples named a model new users cannot call.**
   `docs/providers.md`, `docs/secrets.md` and `docs/tutorial.md` showed
   `gemini-2.5-flash` / `gemini-2.5-pro`; Google has closed the whole 2.5 line

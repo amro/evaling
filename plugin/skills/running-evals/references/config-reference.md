@@ -111,9 +111,9 @@ per variant.
 
 The `command` contract: `command` is a single shell string, run with the
 working directory set to the config's directory. The rendered request arrives
-on stdin as JSON — `messages[]` each with `role` and `parts[]`, a text part
-being `{"text": "..."}` — and the completion is read from stdout. A non-zero
-exit becomes a cell error.
+on stdin as JSON — `messages[]` each with `role` and `parts[]`, every part
+carrying a `type`, a text part being `{"type": "text", "text": "..."}` — and
+the completion is read from stdout. A non-zero exit becomes a cell error.
 
 ## Scorer types
 

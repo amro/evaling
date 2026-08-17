@@ -9,6 +9,7 @@ Three classes of rot, each cheap to catch and expensive to find by hand:
 """
 
 import ast
+import json
 import re
 import subprocess
 import sys
@@ -408,6 +409,50 @@ class TestExamplesAreReal:
         for path in (REPO / "README.md", REPO / "docs" / "tutorial.md"):
             for name in re.findall(r"examples/([a-z-]+)", path.read_text(encoding="utf-8")):
                 assert (REPO / "examples" / name).is_dir(), f"{path.name}: no examples/{name}"
+
+
+class TestCommandProviderPayload:
+    """The documented stdin shape, checked against the one actually written.
+
+    Prose describing a wire format is the kind that rots invisibly: a script
+    written against it fails at the first cell, long after the doc was read.
+    """
+
+    def documented_parts(self) -> list[dict]:
+        """Every message part in the payload example in providers.md."""
+        for _, block in code_blocks(REPO / "docs" / "providers.md", "json"):
+            payload = json.loads(block)
+            if isinstance(payload, dict) and "messages" in payload:
+                return [part for message in payload["messages"] for part in message["parts"]]
+        pytest.fail("providers.md has no command-provider payload example")
+
+    def test_text_parts_carry_the_keys_the_example_shows(self):
+        from evaling.render import RenderedMessage, RenderedText
+        from evaling.storage import serialize_messages
+
+        sent = serialize_messages([RenderedMessage("user", (RenderedText("hi"),))])
+        documented = [part for part in self.documented_parts() if "text" in part]
+        assert documented, "the example shows no text part"
+        for part in documented:
+            assert set(part) == set(sent[0]["parts"][0]), (
+                "providers.md describes text-part keys the provider does not send"
+            )
+
+    def test_media_parts_carry_the_keys_the_example_shows(self, tmp_path):
+        from evaling.content import MediaRef
+        from evaling.render import RenderedMessage
+        from evaling.storage import serialize_messages
+
+        image = tmp_path / "a.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+        media = MediaRef(kind="image", path=image, media_type="image/png", sha256="abc")
+        sent = serialize_messages([RenderedMessage("user", (media,))])
+        for part in self.documented_parts():
+            if "text" in part:
+                continue
+            assert set(part) == set(sent[0]["parts"][0]), (
+                "providers.md describes media-part keys the provider does not send"
+            )
 
 
 class TestInstallInstructions:

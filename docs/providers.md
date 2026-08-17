@@ -97,11 +97,24 @@ config value — no case or template data is ever interpolated into it — but
 treat it like any other command you commit to a repo.
 
 The stdin payload is `{"model": ..., "params": {...}, "messages": [...]}`, where
-each message has `role` and `parts`; media parts carry their resolved path,
-media type, and content hash so your script can read the files.
+each message has `role` and `parts`. Every part carries a `type` to switch on:
+a text part is `{"type": "text", "text": "..."}`, and a media part is its kind
+plus the resolved path, media type, and content hash, so your script can read
+the files:
+
+```json
+{"model": "my-agent", "params": {}, "messages": [
+  {"role": "system", "parts": [{"type": "text", "text": "You classify tickets."}]},
+  {"role": "user", "parts": [
+    {"type": "text", "text": "What is in this screenshot?"},
+    {"type": "image", "media_type": "image/png", "sha256": "…", "source": "shots/a.png"}
+  ]}
+]}
+```
 
 stdout is used verbatim as the response — unless it's a JSON object with a
-`text` key, which lets a script report usage too:
+`text` key. That is the *output* key, unrelated to the text parts above, and it
+lets a script report usage too:
 
 ```json
 {"text": "the answer", "input_tokens": 120, "output_tokens": 45, "cost_usd": 0.002}
