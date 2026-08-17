@@ -146,7 +146,7 @@ every table above and still be rejected for one of these:
 - `params.pricing` must carry finite, non-negative numeric `input` and
   `output`. Validated before the run, because a bad rate would otherwise
   surface after calls were billed.
-- Model ids, variant names and criterion names must each be unique.
+- Model ids, variant names, criterion names and case ids must each be unique.
 - An inline `cases` list must not be empty.
 - At least one model must have role `candidate` or `both`.
 - A judge must reference a model that exists, and that model must not be a

@@ -134,6 +134,43 @@ class TestCliDocsMatchReality:
         missing = [name for name in self.commands() if f"`evaling {name}" not in text]
         assert not missing, f"undocumented commands in docs/cli.md: {missing}"
 
+    def subcommands(self, command: str) -> list[str]:
+        """A group's subcommands; empty for a plain command."""
+        help_text = self.help_for(command)
+        if "Commands:" not in help_text:
+            return []
+        section = help_text.split("Commands:")[1]
+        return [line.split()[0] for line in section.splitlines() if line.strip()]
+
+    def test_prose_never_names_a_command_that_does_not_exist(self):
+        """The reverse of the check above, and the direction that misleads.
+
+        An undocumented command is an omission a reader survives. An invented
+        one is an instruction that fails when followed — and the plugin's
+        markdown is followed by an agent, so it is scanned here too rather
+        than trusted.
+        """
+        known = set(self.commands())
+        groups = {name: self.subcommands(name) for name in known}
+        pages = DOCS + sorted(REPO.glob("plugin/**/*.md"))
+        wrong = []
+        for path in pages:
+            text = path.read_text(encoding="utf-8")
+            for command, rest in re.findall(r"`evaling ([a-z][a-z-]*)([^`]*)`", text):
+                if command not in known:
+                    wrong.append(f"{path.name}: 'evaling {command}' is not a command")
+                    continue
+                # A group needs its subcommand: `evaling baseline set <id>`,
+                # never `evaling baseline <id>`. A bare mention of the group is
+                # fine — that is prose about the command, not an invocation.
+                following = rest.split()
+                if groups[command] and following and following[0] not in groups[command]:
+                    wrong.append(
+                        f"{path.name}: 'evaling {command} {following[0]}' — "
+                        f"{command} takes {'|'.join(groups[command])}"
+                    )
+        assert not wrong, "prose names commands the CLI does not have: " + "; ".join(wrong)
+
     def test_every_flag_is_documented(self):
         text = (REPO / "docs" / "cli.md").read_text(encoding="utf-8")
         undocumented = []

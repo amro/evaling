@@ -1,7 +1,7 @@
 ---
 description: Scaffold an evaling project and author an eval.yaml for a stated task
 argument-hint: [what you want to evaluate]
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, "Bash(evaling *)", "Bash(uvx *)"]
 ---
 
 Set up an evaling project in the current directory and write a working
@@ -14,6 +14,11 @@ Follow the `running-evals` skill. Work in this order:
 1. **Scaffold.** Run `evaling init` for the commented config, `.gitignore` and
    secrets example. Do not overwrite an existing `eval.yaml` — if one is
    present, read it and extend it instead.
+
+   The plugin runs the MCP server through `uvx` and does not require evaling on
+   your PATH, so `evaling` may not be a command here. If it is not, use
+   `uvx --from 'evaling[mcp]' evaling init` and the same form for every
+   `evaling` command below. Do not install evaling to work around this.
 
 2. **Establish what is being compared.** If the task above does not say, ask.
    An eval needs at least two variants to be worth running; a single prompt

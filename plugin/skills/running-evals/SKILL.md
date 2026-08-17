@@ -16,8 +16,8 @@ The tool is reached two ways, and both are equivalent:
 - **MCP tools**, if the server is connected: `run_eval`, `get_run`,
   `get_case_result`, `compare_runs`, `list_runs`, `set_baseline`,
   `render_prompt`.
-- **The CLI**: `evaling run`, `evaling show`, `evaling diff`, `evaling list`,
-  `evaling baseline`, `evaling validate`.
+- **The CLI**: `evaling run`, `evaling show`, `evaling compare`, `evaling list`,
+  `evaling baseline set`, `evaling validate`.
 
 Prefer the MCP tools when they are available — they return structured results
 rather than rendered tables. Fall back to the CLI otherwise.
@@ -28,10 +28,10 @@ A single run is a measurement, not an answer. The discipline that makes evaling
 useful is the comparison:
 
 1. **Establish a baseline.** Run the current prompt, then pin it:
-   `set_baseline` (or `evaling baseline <run-id>`).
+   `set_baseline` (or `evaling baseline set <run-id>`).
 2. **Change one thing.** A variant's prompt, a model, a parameter — one, so the
    result attributes to something.
-3. **Run again**, then **`compare_runs`** (`evaling diff`) against the baseline.
+3. **Run again**, then **`compare_runs`** (`evaling compare`) against the baseline.
    Read which cases moved, not just the aggregate: a score that holds steady
    while half the cases flip in each direction is not a stable prompt.
 4. **Re-pin only on a real improvement.** The baseline is the claim you are
@@ -78,10 +78,11 @@ model or spending anything.
 Ordinary runs call a real provider and cost money. Two setups avoid that, and
 they are not interchangeable:
 
-- **`provider: mock`** returns a fixed string or echoes the last user message.
-  Use it to check that a config loads and prompts render. It cannot produce a
-  different answer per case, so every variant scores identically and the
-  comparison is vacuous.
+- **`provider: mock`** returns a fixed string, or by default echoes the
+  rendered last user message — so its output does vary with the case, but only
+  by repeating the prompt back. Use it to check that a config loads and prompts
+  render. It is not reasoning about anything, so scores from a mock run say
+  nothing about whether a prompt is any good.
 - **`provider: command`** shells out to a local program: evaling writes the
   rendered request to its stdin as JSON and reads the completion from its
   stdout. This is the way to run a real, differentiated eval offline — against
