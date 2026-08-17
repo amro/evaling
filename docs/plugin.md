@@ -47,9 +47,14 @@ pass `config_path` to the tools that accept it.
 
 ## Versioning
 
-The plugin pins a compatible range of evaling rather than tracking whatever is
-newest, so an install keeps working when a release lands. The pin is checked
-against the version in the tree by the test suite.
+The plugin carries the same version as evaling itself. Plugin 0.2.3 is
+evaling 0.2.3, so the version you see in `claude plugin list` is the version
+you are running, with no second number to reconcile.
+
+What it *launches* is a compatible range rather than that exact version — a
+plugin release for every patch would churn every install to no purpose. Both
+the shared version and the range are checked by the test suite, so a release
+that updates one and forgets the other fails CI.
 
 ## Installing the server without the plugin
 

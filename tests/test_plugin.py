@@ -5,9 +5,10 @@ schema. If a provider or scorer is added and the reference is not, the agent
 is authoritatively told the wrong thing — worse than telling it nothing. These
 tests fail when the two drift.
 
-The version pin in .mcp.json gets the same treatment: it decides which evaling
-a plugin user actually runs, and a pin that no longer covers the shipped
-version means the plugin installs something other than this code.
+Versions get the same treatment. The plugin's version tracks evaling's, and
+the pin in .mcp.json decides which evaling a plugin user actually runs — a pin
+that no longer covers the shipped version means the plugin installs something
+other than this code.
 """
 
 import json
@@ -92,8 +93,18 @@ class TestManifests:
         assert evaling["args"][-2:] == ["evaling", "mcp"]
 
 
-class TestVersionPin:
-    """The pin has to cover the version in this tree, or it ships something else."""
+class TestVersions:
+    """The plugin carries evaling's version, and ships evaling's code.
+
+    One version number across both, so "which evaling does this plugin give
+    me" is answered by reading the plugin's version rather than by opening
+    .mcp.json. The pin stays a range: a plugin release per patch would churn
+    every install for nothing.
+    """
+
+    def test_the_manifest_carries_evalings_version(self):
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        assert manifest["version"] == __version__
 
     def spec(self) -> str:
         servers = json.loads(MCP_CONFIG.read_text(encoding="utf-8"))

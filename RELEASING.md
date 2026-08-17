@@ -63,6 +63,19 @@ Both, and they must agree — `pyproject` is what PyPI publishes under, while
 them, so forgetting one fails CI rather than shipping a package that
 misreports itself.
 
+```json
+// plugin/.claude-plugin/plugin.json
+"version": "0.2.0"
+```
+
+The plugin carries the same version, so a user reads one number rather than
+two. A test compares it against `__version__`, as with `pyproject`.
+
+When the *minor* moves, the launch pin in `plugin/.mcp.json` moves with it —
+`evaling[mcp]>=0.2.0,<0.3` becomes `>=0.3.0,<0.4`. A patch release leaves it
+alone; the pin already covers it. A test fails if the pin no longer covers the
+version being shipped.
+
 In `CHANGELOG.md`, retitle `## [Unreleased]` as `## [0.2.0] - YYYY-MM-DD` and
 leave a fresh empty `## [Unreleased]` above it.
 

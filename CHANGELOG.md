@@ -22,9 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   submitting an invalid provider name and reading the enum in the error. The
   plugin ships the facts that cost the most to discover.
 
+  The plugin carries evaling's own version rather than a separate one, so
+  there is a single number to reason about. `RELEASING.md` covers the bump.
+
   The reference is kept honest by tests: the provider list, scorer list and
-  top-level config keys are compared against the schema, and the version pin
-  against the version in this tree.
+  top-level config keys are compared against the schema, and both the plugin
+  version and its launch pin against the version in this tree.
 
 ### Fixed
 
