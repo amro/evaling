@@ -114,11 +114,16 @@ only_mutate = [
 # stale the first time a test file was added — 17 survivors turned out to be
 # a function whose tests simply were not selected.
 # mutmut runs from a copy of the project, so anything the tests read has to
-# be copied alongside the source: test_docs reads docs/ and the top-level
-# markdown, test_e2e runs the worked examples.
+# be copied alongside the source: test_docs reads docs/, the top-level markdown
+# and the plugin's markdown, test_plugin reads the plugin and marketplace
+# manifests, test_e2e runs the worked examples. Omitting one does not skip a
+# test — it fails the unmutated suite, which aborts the whole run before any
+# mutant is tried.
 also_copy = [
     "docs",
     "examples",
+    "plugin",
+    ".claude-plugin",
     "README.md",
     "CONTRIBUTING.md",
     "RELEASING.md",

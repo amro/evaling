@@ -448,6 +448,43 @@ class TestExamplesAreReal:
                 assert (REPO / "examples" / name).is_dir(), f"{path.name}: no examples/{name}"
 
 
+class TestMutationSandboxSeesWhatTestsRead:
+    """mutmut runs the suite from a copy of the project, not the project.
+
+    Anything a test reads has to be in `also_copy` or it is simply absent
+    there. That does not skip the test — it fails the unmutated baseline, which
+    aborts the run before a single mutant is tried, and the next scheduled run
+    is the first anyone hears of it. Adding a test that reads a new directory
+    is exactly when this breaks, so the check lives beside the tests.
+    """
+
+    def also_copy(self) -> set[str]:
+        import tomllib
+
+        config = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+        return set(config["tool"]["mutmut"]["also_copy"])
+
+    def referenced(self) -> set[str]:
+        """Top-level repo entries the test suite reaches for."""
+        names = set()
+        for path in sorted(REPO.glob("tests/*.py")):
+            text = path.read_text(encoding="utf-8")
+            names.update(re.findall(r'REPO / "([^"/]+)"', text))
+            names.update(m.split("/")[0] for m in re.findall(r'REPO\.glob\("([^"]+)"', text))
+        # This file states those patterns as literals, so scanning it matches
+        # its own regexes. A real entry name has no metacharacters in it.
+        names = {name for name in names if re.fullmatch(r"[A-Za-z0-9_.-]+", name)}
+        # mutmut copies the source and the tests itself.
+        return names - {"src", "tests", "pyproject.toml"}
+
+    def test_every_directory_the_tests_read_is_copied(self):
+        missing = sorted(self.referenced() - self.also_copy())
+        assert not missing, (
+            "these are read by tests but absent from [tool.mutmut] also_copy, "
+            f"which aborts the mutation run: {missing}"
+        )
+
+
 class TestCommandProviderPayload:
     """The documented stdin shape, checked against the one actually written.
 

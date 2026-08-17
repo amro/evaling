@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The weekly mutation run aborted before testing anything.** mutmut runs the
+  suite from a copy of the project, so a directory a test reads has to be in
+  `also_copy`; `plugin/` and `.claude-plugin/` were not, added in 0.2.4. The
+  unmutated baseline failed, which ends the run before a single mutant is tried
+  — and the workflow's own guard was what reported it, since mutmut exits 0 in
+  that case. Both directories are copied now, and a test compares `also_copy`
+  against the paths the suite actually reads, so the next omission fails at
+  commit time rather than on the next schedule.
+
 ## [0.2.4] - 2026-08-17
 
 ### Added
