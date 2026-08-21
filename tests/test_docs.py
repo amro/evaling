@@ -459,7 +459,10 @@ class TestMutationSandboxSeesWhatTestsRead:
     """
 
     def also_copy(self) -> set[str]:
-        import tomllib
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:  # tomllib landed in 3.11; the project still supports 3.10.
+            import tomli as tomllib
 
         config = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
         return set(config["tool"]["mutmut"]["also_copy"])
