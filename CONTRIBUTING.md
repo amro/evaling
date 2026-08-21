@@ -23,13 +23,19 @@ uv tool install --force .
 
 ## The checks CI runs
 
-Run these before pushing — they're the whole gate:
+Run these before pushing:
 
 ```sh
 uv run ruff check .          # lint
 uv run ruff format --check . # formatting
 uv run pytest                # tests
+uv run --python 3.10 --group dev --isolated pytest -m "not perf"
 ```
+
+The first three run on whatever Python you have. The fourth runs the oldest one
+supported, which is the half of the matrix a local run otherwise misses: a
+`tomllib` import added in a test passed on 3.13 and failed every 3.10 job for
+four days. It costs about a minute.
 
 `ruff format` also formats Python inside markdown code fences, so a docs-only
 change can still fail formatting. Running the exact commands above avoids
