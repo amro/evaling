@@ -52,6 +52,9 @@ dev = [
     "pytest>=8",
     "pytest-cov>=5",
     "ruff>=0.8",
+    # tomllib is 3.11+, and a test reads this file. Declared rather than left
+    # to whichever dependency happens to pull it in on 3.10.
+    "tomli>=2; python_version < '3.11'",
 ]
 
 [build-system]

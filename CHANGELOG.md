@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the paths the suite actually reads, so the next omission fails at
   commit time rather than on the next schedule.
 
+  That guard then broke Python 3.10, which the project supports: it read
+  `pyproject.toml` with `tomllib`, added in 3.11. The suite was run on 3.13
+  only, so CI's 3.10 job was the first to say so. The import is now conditional
+  and `tomli` is declared for 3.10 rather than left to whichever dependency
+  happened to supply it.
+
 ## [0.2.4] - 2026-08-17
 
 ### Added
