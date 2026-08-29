@@ -312,7 +312,7 @@ class TestMechanisms:
             assert CANARY not in record.error
             assert "RuntimeError" in record.error  # still diagnostic
 
-    def test_judge_rationales_are_dropped_but_other_details_kept(self, tmp_path):
+    def test_a_python_scorers_detail_survives_redaction(self, tmp_path):
         scorer = tmp_path / "scorer.py"
         scorer.write_text(
             "def score(output, case):\n"

@@ -426,6 +426,28 @@ class TestResumeRefusesADifferentMatrix:
         with pytest.raises(StorageError, match="different matrix"):
             run_eval(config, settings, resume_run_id=first.run_id, variant_filter=["v1"])
 
+    def test_swapping_one_model_for_another_is_refused(self, project):
+        """The models half of the guard: identities, not counts.
+
+        Narrowing the models also changes the cell count, so the size branch
+        fires and the identity comparison is never reached. A same-size swap is
+        what isolates it — and nothing else exercised that.
+        """
+        (project / "eval.yaml").write_text(
+            CONFIG.replace(
+                "models: [{id: mock, provider: mock}]\n",
+                "models: [{id: mock, provider: mock}, {id: mock2, provider: mock}]\n",
+            ),
+            encoding="utf-8",
+        )
+        settings, config, first = self.interrupted(project, model_filter=["mock"])
+        with pytest.raises(StorageError) as caught:
+            run_eval(config, settings, resume_run_id=first.run_id, model_filter=["mock2"])
+        # The refusal fires on any difference, so asserting the exception alone
+        # would pass with the models never compared. The message is what says
+        # the identity check ran.
+        assert "models ['mock'] → ['mock2']" in str(caught.value)
+
     def test_the_message_names_what_changed(self, project):
         settings, config, first = self.interrupted(project, sample=5)
         with pytest.raises(StorageError) as caught:

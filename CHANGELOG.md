@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Four tests renamed or repaired to match what they check.** Two were just
+  misnamed. Two were not checking what their names promised, and repairing them
+  closed real gaps: the atomic-write test passed against a plain `write_text`,
+  and now fails a rename mid-write; and the resume guard's model half was never
+  exercised, because narrowing the models changes the cell count and the size
+  branch fires first — a same-size swap, asserting the message, is what
+  isolates it.
+
 ### Removed
 
 - **34 tests that could not fail, or that a sibling already caught.** An audit

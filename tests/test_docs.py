@@ -409,8 +409,11 @@ class TestCommandProviderPayload:
             )
 
 
-class TestInstallInstructions:
-    def test_version_matches_the_package(self):
+class TestTheModuleEntryPoint:
+    """Not a docs check: `python -m evaling` is the documented invocation, and
+    this is the only test that runs it as a process."""
+
+    def test_it_runs_and_reports_the_packages_version(self):
         from evaling import __version__
 
         output = subprocess.run(
@@ -419,4 +422,5 @@ class TestInstallInstructions:
             text=True,
             cwd=REPO,
         )
+        assert output.returncode == 0, output.stderr
         assert __version__ in output.stdout

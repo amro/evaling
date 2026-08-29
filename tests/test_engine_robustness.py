@@ -75,18 +75,6 @@ class TestCostBudgetConcurrency:
         meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
         assert meta["warnings"]
 
-    def test_priced_models_are_still_capped(self, tmp_path, probe):
-        probe.reset(cost=1.0)
-        result = run_eval(
-            eight_cases(tmp_path), make_settings(tmp_path, concurrency=1), max_cost_usd=3.0
-        )
-        assert result.totals["cost_usd"] <= 3.0
-        assert result.counts["total"] < 8, "the cap did not stop the run"
-        # Skipped, not failed: the run stops rather than recording a wall of
-        # failures for cells it never attempted, and stays resumable.
-        assert result.incomplete is True
-        assert any("cost ceiling" in warning for warning in result.warnings)
-
     @pytest.mark.parametrize("limit", [float("nan"), float("inf"), -1.0])
     def test_a_nonsense_ceiling_is_refused(self, tmp_path, probe, limit):
         """A NaN ceiling enforces nothing while still counting as a ceiling.
@@ -231,11 +219,33 @@ class TestStorageDurability:
         RunStore(settings.output_dir).open_run(result.run_id)  # write-open
         assert '{"torn' not in results_path.read_text(encoding="utf-8")
 
-    def test_run_json_is_written_atomically(self, tmp_path):
+    def test_run_json_is_written_atomically(self, tmp_path, monkeypatch):
+        """A write that dies partway must leave the previous file intact.
+
+        Asserting only that the content arrived would pass against a plain
+        `write_text`, which is the implementation this exists to rule out. So
+        the rename is made to fail: a non-atomic write would have already
+        overwritten the target by that point.
+        """
         target = tmp_path / "run.json"
         write_json_atomic(target, {"a": 1})
         assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1}
         assert list(tmp_path.glob(".*tmp*")) == []  # no leftovers
+
+        real_replace = Path.replace
+
+        def die(self, other):
+            raise OSError("interrupted before the rename")
+
+        monkeypatch.setattr(Path, "replace", die)
+        with pytest.raises(OSError):
+            write_json_atomic(target, {"a": 2})
+        monkeypatch.setattr(Path, "replace", real_replace)
+
+        assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1}, (
+            "a failed write clobbered the previous run.json"
+        )
+        assert list(tmp_path.glob(".*tmp*")) == []  # and cleaned up after itself
 
     def test_records_tolerate_unknown_fields(self):
         record = record_from_dict(

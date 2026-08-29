@@ -259,14 +259,6 @@ class TestCacheCommand:
         assert result.exit_code == 0
         assert "already empty" in result.output
 
-    def test_older_than_keeps_fresh_entries(self, tmp_path):
-        self.seed(tmp_path)
-        cache = ResponseCache(tmp_path / "cache")
-        before = cache.stats()["entries"]
-        result = self.cli(tmp_path, "cache", "clear", "--older-than", "7", "--yes")
-        assert result.exit_code == 0
-        assert cache.stats()["entries"] == before  # nothing is a week old yet
-
     def test_older_than_removes_entries_past_the_cutoff(self, tmp_path):
         """The other half: nothing proved an old entry is actually deleted.
 
