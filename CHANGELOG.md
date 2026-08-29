@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **34 tests that could not fail, or that a sibling already caught.** An audit
+- **41 tests that could not fail, or that a sibling already caught.** An audit
   mutated the code under each candidate and kept only the tests that noticed.
   Some were vacuous rather than merely redundant: one globbed a directory no
   code writes to, one took five items from a generator and asserted it got

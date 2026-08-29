@@ -170,13 +170,6 @@ class TestIncrementalAggregation:
         assert empty["overall"] == {"cases": 0, "score": 0.0, "pass_rate": 0.0, "errors": 0}
         assert empty["matrix"] == []
 
-    def test_group_arithmetic(self):
-        aggregator = Aggregator()
-        for record in [self.make("a", "m", 1.0, True), self.make("a", "m", 0.0, False)]:
-            aggregator.add(record)
-        overall = aggregator.result()["overall"]
-        assert overall == {"cases": 2, "score": 0.5, "pass_rate": 0.5, "errors": 0}
-
 
 class TestTemplateCompilation:
     def test_a_template_compiles_once_however_often_it_renders(self):

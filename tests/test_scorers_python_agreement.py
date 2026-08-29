@@ -98,10 +98,6 @@ class TestPython:
         with pytest.raises(ScoringError, match="pass_at"):
             PythonScorer({"file": "my_scorer.py", "pass_at": bad}, base)
 
-    def test_a_usable_pass_at_still_works(self, tmp_path):
-        base = write_scorer(tmp_path, "def score(output, case):\n    return 0.8\n")
-        assert score(PythonScorer({"file": "my_scorer.py", "pass_at": 0.5}, base), "x").passed
-
     def test_sys_exit_fails_the_criterion_rather_than_the_run(self, tmp_path):
         """Scripts adapted into scorers still call sys.exit().
 

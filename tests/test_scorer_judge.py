@@ -82,11 +82,6 @@ def test_judge_score_clamped():
     assert run_score(build_judge(judge_config(verdict))).score == 1.0
 
 
-def test_judge_fenced_json_tolerated():
-    verdict = '```json\n{"score": 1}\n```'
-    assert run_score(build_judge(judge_config(verdict))).passed
-
-
 def test_judge_non_json_raises():
     with pytest.raises(ScoringError, match="did not return JSON"):
         run_score(build_judge(judge_config("It looks great!")))
@@ -163,9 +158,6 @@ class TestAJudgeCannotInflateItsScore:
     def test_a_non_finite_score_is_refused(self, verdict):
         with pytest.raises(ScoringError, match="finite numeric"):
             run_score(build_judge(judge_config(verdict)))
-
-    def test_an_ordinary_score_is_unaffected(self):
-        assert run_score(build_judge(judge_config('{"score": 0.75}'))).score == 0.75
 
     @pytest.mark.parametrize("value", ["wide", None, [1]])
     def test_a_non_numeric_scale_is_a_message(self, value):

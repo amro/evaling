@@ -16,7 +16,7 @@ from click.testing import CliRunner
 
 from evaling.calibrate import CalibrationError, build_cases, load_labels
 from evaling.cli import main
-from evaling.config import EvalConfig, Settings, load_config
+from evaling.config import Settings, load_config
 from evaling.engine import run_eval
 from evaling.storage import RunStore
 
@@ -185,26 +185,6 @@ class TestPairingOutputsWithRatings:
 
 
 class TestTheGeneratedProject:
-    def test_it_writes_a_runnable_config(self, rated):
-        path, result = rated
-        out = path / "calib"
-        assert (
-            invoke(
-                path,
-                "calibrate",
-                "--from-run",
-                "latest",
-                "--labels",
-                str(path / "labels.csv"),
-                "--out",
-                str(out),
-            ).exit_code
-            == 0
-        )
-
-        config = yaml.safe_load((out / "eval.yaml").read_text(encoding="utf-8"))
-        EvalConfig.model_validate(config)  # the schema is the arbiter
-
     def test_it_validates_end_to_end(self, rated):
         """Generated and then immediately checked the way a reader would."""
         path, _ = rated
