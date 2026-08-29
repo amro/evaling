@@ -201,12 +201,6 @@ class TestItWorksWhenNothingElseDoes:
         assert report.sections["models"][0]["api_key_found"] is True
         assert not [p for p in report.problems if "ANTHROPIC_API_KEY" in p]
 
-    def test_it_exits_1_on_findings_so_a_script_can_use_it(self, tmp_path):
-        result = CliRunner().invoke(
-            main, ["-c", str(tmp_path / "nope.yaml"), "doctor"], env=ENV, catch_exceptions=False
-        )
-        assert result.exit_code == 1
-
 
 class TestSecretsAreDescribedNotPrinted:
     @pytest.fixture

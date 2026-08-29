@@ -19,7 +19,7 @@ from evaling.providers import _REGISTRY
 from evaling.providers.base import Completion
 from evaling.providers.mock import MockProvider
 from evaling.report import render_run_html
-from evaling.scoring import Aggregator, aggregate
+from evaling.scoring import Aggregator
 from evaling.storage import ResultRecord, RunStore
 from evaling.templating import _compile, render_text
 from helpers import make_config, make_settings
@@ -169,7 +169,6 @@ class TestIncrementalAggregation:
         empty = Aggregator().result()
         assert empty["overall"] == {"cases": 0, "score": 0.0, "pass_rate": 0.0, "errors": 0}
         assert empty["matrix"] == []
-        assert empty == aggregate([])
 
     def test_group_arithmetic(self):
         aggregator = Aggregator()

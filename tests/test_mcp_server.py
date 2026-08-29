@@ -90,16 +90,6 @@ class TestRunEval:
         assert result["counts"]["total"] == 1
         assert result.get("failure_count") is None
 
-    def test_runs_inside_an_event_loop(self, project):
-        # The MCP server calls this from a running loop; run_eval() would
-        # raise there, so the tool must use run_eval_async.
-        async def go():
-            return await run_eval_tool(
-                config_path=str(project / "eval.yaml"), output_dir=runs_dir(project)
-            )
-
-        assert asyncio.run(go())["counts"]["total"] == 2
-
 
 class TestGetRun:
     def finished(self, project):

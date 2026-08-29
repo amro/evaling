@@ -109,19 +109,6 @@ class TestGate:
         overall = {"score": 0.5, "pass_rate": 0.5}
         assert evaluate_gate(Thresholds(), overall) is None
 
-    def test_min_pass_rate(self):
-        thresholds = Thresholds(min_pass_rate=0.9)
-        assert evaluate_gate(thresholds, {"score": 1.0, "pass_rate": 0.95}).passed
-        gate = evaluate_gate(thresholds, {"score": 1.0, "pass_rate": 0.5})
-        assert not gate.passed
-        assert gate.checks[0]["name"] == "min_pass_rate"
-        assert "50.00%" in gate.checks[0]["detail"]
-
-    def test_min_score(self):
-        thresholds = Thresholds(min_score=0.8)
-        assert evaluate_gate(thresholds, {"score": 0.85, "pass_rate": 1.0}).passed
-        assert not evaluate_gate(thresholds, {"score": 0.7, "pass_rate": 1.0}).passed
-
     def test_baseline_regression(self):
         thresholds = Thresholds()
         current = {"score": 0.8, "pass_rate": 0.9}

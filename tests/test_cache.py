@@ -41,20 +41,6 @@ def test_key_changes_with_prompt(tmp_path):
     )
 
 
-def test_key_changes_with_params(tmp_path):
-    cache = ResponseCache(tmp_path)
-    messages = rendered(tmp_path=tmp_path)
-    assert cache.key_for(spec(), messages) != cache.key_for(
-        spec(params={"max_tokens": 99}), messages
-    )
-
-
-def test_key_changes_with_model_id(tmp_path):
-    cache = ResponseCache(tmp_path)
-    messages = rendered(tmp_path=tmp_path)
-    assert cache.key_for(spec(), messages) != cache.key_for(spec(id="m2"), messages)
-
-
 def test_media_key_depends_on_content_not_path(tmp_path):
     cache = ResponseCache(tmp_path)
     (tmp_path / "a.png").write_bytes(b"same")

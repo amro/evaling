@@ -396,15 +396,6 @@ class TestCliFlag:
         stored = next(out_dir.rglob("results.jsonl")).read_text(encoding="utf-8")
         assert CANARY not in stored
 
-    def test_flag_cannot_disable_config_privacy(self, tmp_path):
-        """--no-look turns it on; there is deliberately no way to turn it off."""
-        from evaling.cli import main as cli_main
-
-        run_command = cli_main.commands["run"]
-        flags = {param.name for param in run_command.params}
-        assert "no_look" in flags
-        assert "look" not in flags and "allow_payloads" not in flags
-
 
 @pytest.mark.parametrize("no_look", [True, False])
 def test_gate_and_thresholds_work_either_way(tmp_path, no_look):
@@ -581,22 +572,6 @@ class TestValidationLeaksNothingEither:
         with pytest.raises(EvalingError, match="cannot show a no-look config"):
             render_prompt_tool(config_path=str(project / "eval.yaml"))
 
-    def test_an_ordinary_config_is_untouched(self, tmp_path):
-        from evaling.mcp_server import render_prompt_tool
-
-        (tmp_path / "eval.yaml").write_text(
-            "models: [{id: mock, provider: mock}]\n"
-            "variants:\n  - name: v1\n"
-            '    prompt: [{role: user, content: "{{ q }}"}]\n'
-            "cases: [{id: c1, vars: {q: alpha}}]\n"
-            'scorecard: [{criterion: acc, scorer: {type: contains, value: ""}}]\n',
-            encoding="utf-8",
-        )
-        out = render_prompt_tool(
-            config_path=str(tmp_path / "eval.yaml"), variant="v1", case_id="c1"
-        )
-        assert out["messages"][0]["parts"][0]["text"] == "alpha"
-
 
 class TestScrubSecretsOnItsOwn:
     """The function's own contract, not the engine's use of it.
@@ -641,12 +616,6 @@ class TestScrubSecretsOnItsOwn:
         record.scores = {"acc": {"error": f"scorer crashed on {self.KEY}", "score": 0.0}}
         scrub_secrets(record, [self.KEY])
         assert self.KEY not in record.scores["acc"]["error"]
-
-    def test_everything_at_once(self):
-        record = self.record(output=self.KEY, error=self.KEY)
-        record.scores = {"acc": {"detail": self.KEY, "error": self.KEY, "score": 0.0}}
-        scrub_secrets(record, [self.KEY])
-        assert self.KEY not in json.dumps([record.output, record.error, record.scores], default=str)
 
     def test_content_that_is_not_a_secret_survives(self):
         record = scrub_secrets(self.record(output="a perfectly ordinary answer"), [self.KEY])

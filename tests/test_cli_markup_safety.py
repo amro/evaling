@@ -71,13 +71,6 @@ def test_hostile_identifiers_render(tmp_path):
     assert "[bold]v[/bold]" in listed.output  # shown literally, not applied
 
 
-def test_error_message_keeps_its_brackets(tmp_path):
-    # The remediation hint is the whole point of the message.
-    result = cli(tmp_path, "export", "nonexistent-run", "--format", "json")
-    assert result.exit_code == 2
-    assert "nonexistent-run" in result.output
-
-
 def test_mcp_hint_survives_when_extra_missing(tmp_path, monkeypatch):
     import builtins
 

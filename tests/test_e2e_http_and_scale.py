@@ -141,19 +141,6 @@ class TestScale:
         keys = [record.key for record in store.iter_results(result.run_id)]
         assert len(keys) == 500 and len(set(keys)) == 500
 
-    @pytest.mark.slow
-    def test_large_run_streams_without_materializing(self, tmp_path):
-        cases = [{"id": f"c{i}", "vars": {"q": str(i)}} for i in range(200)]
-        settings = make_settings(tmp_path)
-        result = run_eval(make_config(tmp_path, cases=cases), settings)
-        store = RunStore(settings.output_dir)
-
-        # iter_results is a generator: taking 5 must not build all 200 records
-        stream = store.iter_results(result.run_id)
-        first_five = [next(stream) for _ in range(5)]
-        assert len(first_five) == 5
-        stream.close()
-
 
 class TestResumeAfterRealKill:
     @pytest.mark.slow

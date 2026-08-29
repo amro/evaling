@@ -85,8 +85,6 @@ class TestWherePyyamlSaysTheProblemIs:
             # parse error names the alias — printing the key from the message
             # that exists to avoid printing it.
             "MY_KEY: *sk-ant-a-real-looking-credential\n",
-            # Anchors quote the name back the same way.
-            "a: &sk-ant-a-real-looking-credential 1\nb: &sk-ant-a-real-looking-credential 2\n",
         ],
     )
     def test_a_secret_inside_pyyamls_own_problem_text_is_not_echoed(self, tmp_path, body):

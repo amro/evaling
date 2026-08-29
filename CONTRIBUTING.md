@@ -167,21 +167,12 @@ provider. `tests/test_suite_isolation.py` covers the guards themselves.
 tree passing on its own, so `git bisect` stays useful.
 
 **Docs change with the code.** README, the relevant page under `docs/`, and
-`CHANGELOG.md`. This isn't ceremony — the docs are tested (see below), so
-stale docs fail CI.
+`CHANGELOG.md`. A stale doc fails the suite, so this is not ceremony: run the
+checks above before pushing a docs-only change.
 
-## The docs are tested
-
-`tests/test_docs.py` enforces what review usually misses:
-
-- YAML examples in the docs must validate against the real config schema
-- every command and flag must appear in `docs/cli.md`
-- relative links must resolve
-- `examples/` referenced from the README and tutorial must exist
-
-The examples in `examples/` are themselves run end to end by
-`tests/test_e2e.py`, against the mock provider. Adding an example directory
-with an `eval.yaml` is enough to get it covered.
+The examples in `examples/` are run end to end by `tests/test_e2e.py`, against
+the mock provider. Adding an example directory with an `eval.yaml` is enough to
+get it covered.
 
 ## Adding a provider
 

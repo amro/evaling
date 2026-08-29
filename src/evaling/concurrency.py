@@ -8,36 +8,11 @@ from collections.abc import (
     Awaitable,
     Callable,
     Iterable,
-    Sequence,
 )
 from contextlib import asynccontextmanager
 from typing import TypeVar
 
 T = TypeVar("T")
-
-
-async def bounded_gather(factories: Sequence[Callable[[], Awaitable[T]]], limit: int) -> list[T]:
-    """Run awaitable factories with at most ``limit`` in flight.
-
-    Results come back in input order. The first exception propagates; note
-    that ``asyncio.gather`` does *not* cancel the others, so they run to
-    completion. Callers needing per-item error capture should catch inside the
-    factory. Only used for small fixed collections — see
-    :func:`consume_bounded` for anything sized by user data.
-
-    Materializes one task per factory, so this is only appropriate for small
-    fixed collections. For a matrix sized by user data, use
-    :func:`consume_bounded`.
-    """
-    if limit < 1:
-        raise ValueError("limit must be >= 1")
-    semaphore = asyncio.Semaphore(limit)
-
-    async def run(factory: Callable[[], Awaitable[T]]) -> T:
-        async with semaphore:
-            return await factory()
-
-    return await asyncio.gather(*(run(factory) for factory in factories))
 
 
 class KeyedLocks:
@@ -77,7 +52,7 @@ async def consume_bounded(
 ) -> None:
     """Run factories from an iterable, at most ``limit`` in flight, streaming results.
 
-    Unlike :func:`bounded_gather`, this never holds more than ``limit`` tasks
+    Never holds more than ``limit`` tasks
     or results at once: a fixed pool of workers pulls from the iterable, and
     each result is handed to ``handle`` and then dropped. Peak memory becomes a
     function of the concurrency limit rather than of the number of items, which

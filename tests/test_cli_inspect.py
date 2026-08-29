@@ -250,10 +250,6 @@ class TestRunListingStaysUsable:
         """A clipped "$12.3…" reads as far less than $12.35."""
         assert "$12.3456" in self.render(80)
 
-    def test_wide_terminals_are_unaffected(self):
-        out = self.render(160)
-        assert "20260730T011532113-6245" in out and "$12.3456" in out
-
 
 class TestEmptyOptionValuesAreRefused:
     """An unset shell variable must not read as "use the default".

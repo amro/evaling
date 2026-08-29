@@ -165,8 +165,6 @@ limiter tests inject a virtual clock; concurrency tests measure real peak
 in-flight calls rather than asserting on implementation details.
 
 The examples in [`examples/`](../examples/) are run end to end on every
-commit, so they can't drift from the code. The docs are tested too — YAML
-examples are validated against the schema, links are resolved, and
-`docs/cli.md` is checked against the real `--help` output.
+commit, so they can't drift from the code.
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) to run any of it.

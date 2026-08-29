@@ -20,12 +20,6 @@ def complete(spec, request):
     return asyncio.run(provider.complete(request))
 
 
-def test_echoes_last_user_message(tmp_path):
-    spec, request = make_request(tmp_path=tmp_path)
-    completion = complete(spec, request)
-    assert completion.text == "hello there"
-
-
 def test_echo_picks_last_user_message(tmp_path):
     messages = [
         Message(role="user", content="first"),

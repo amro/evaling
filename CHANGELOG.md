@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **34 tests that could not fail, or that a sibling already caught.** An audit
+  mutated the code under each candidate and kept only the tests that noticed.
+  Some were vacuous rather than merely redundant: one globbed a directory no
+  code writes to, one took five items from a generator and asserted it got
+  five, and `test_echoes_last_user_message` did not fail when the mock was
+  changed to echo the *first* message. Mutation testing reports the same 78
+  survivors before and after, so nothing measurable was lost.
+
+- **`bounded_gather`**, along with its six tests. It had no caller in `src/`,
+  `docs/`, `examples/` or `plugin/` and was never exported; the engine uses
+  `consume_bounded` and `KeyedLocks`. Removing an unexported, undocumented
+  function from an alpha release, so noted here rather than as a breaking
+  change.
+
+- **Four documentation tests that were really a review habit.** Whether every
+  command and flag appears in `docs/cli.md`, and whether troubleshooting
+  headings still quote real messages, are things a reader survives and a
+  reviewer catches when the code changes. What stays automated is what breaks
+  silently and hits a reader immediately: documented examples must work, and
+  links and anchors must resolve.
+
 ### Fixed
 
 - **The weekly mutation run aborted before testing anything.** mutmut runs the

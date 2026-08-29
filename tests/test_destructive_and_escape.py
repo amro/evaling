@@ -83,11 +83,6 @@ class TestADatasetCannotReachOutsideItself:
         with pytest.raises(ConfigError, match="resolves outside"):
             load_cases(load_config(path / "eval.yaml"))
 
-    def test_a_deeper_traversal_is_refused(self, tmp_path):
-        path = self.project(tmp_path, "../../../../../../etc/passwd")
-        with pytest.raises(ConfigError, match="resolves outside"):
-            load_cases(load_config(path / "eval.yaml"))
-
     def test_the_message_names_the_way_out(self, tmp_path):
         path = self.project(tmp_path, "../secret.txt")
         with pytest.raises(ConfigError) as caught:

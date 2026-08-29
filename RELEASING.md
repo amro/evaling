@@ -149,9 +149,8 @@ wrong packaging, a missing data file, a broken entry point. Worth the minute.
 changes go in the minor position (0.1 → 0.2) and are called out at the top of
 the changelog section, since that is the only warning anyone gets.
 
-**The docs are tested**, so a stale claim fails CI rather than shipping. If a
-doc says something that is true only before or only after a release, it has to
-move in the release commit itself.
+**A doc that is true only before or only after a release** moves in the release
+commit itself.
 
 ## One-time setup, for reference
 

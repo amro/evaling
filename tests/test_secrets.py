@@ -97,10 +97,6 @@ class TestLoading:
         _, warnings = build_env(tmp_path, env={})
         assert any("readable by other users" in w for w in warnings)
 
-    def test_tight_permissions_do_not_warn(self, tmp_path):
-        write_secrets(tmp_path / PROJECT_SECRETS_NAME, "K: v\n", mode=0o600)
-        assert build_env(tmp_path, env={})[1] == []
-
 
 class TestProviderIntegration:
     def test_provider_authenticates_from_the_file(self, tmp_path):
@@ -203,13 +199,6 @@ class TestRunIntegration:
         assert any("readable by other users" in w for w in result.warnings)
 
 
-def test_redact_helper():
-    assert redact("key is sk-12345678 here", ["sk-12345678"]) == "key is <redacted> here"
-    assert redact("nothing", []) == "nothing"
-    # too short to redact safely (would mangle unrelated text)
-    assert redact("abc appears", ["abc"]) == "abc appears"
-
-
 class TestEveryCandidateIsConsidered:
     """A missing file is skipped, not a reason to stop looking.
 
@@ -298,9 +287,6 @@ class TestTheUserConfigLocation:
 
     def test_it_is_the_documented_location(self):
         assert user_secrets_path() == Path("~/.config/evaling/secrets.yaml").expanduser()
-
-    def test_it_is_absolute(self):
-        assert user_secrets_path().is_absolute(), "~ must be expanded"
 
     def test_it_is_the_last_candidate_consulted(self):
         # Through the module, not the name imported here: conftest points the

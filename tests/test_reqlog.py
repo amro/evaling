@@ -77,10 +77,6 @@ class TestWhatItWrites:
         for line in log.read_text(encoding="utf-8").splitlines():
             json.loads(line)
 
-    def test_nothing_is_written_without_the_flag(self, project):
-        run_eval(load_config(project / "eval.yaml"), settings_for(project))
-        assert not list(project.glob("*.jsonl"))
-
     def test_each_run_starts_a_fresh_log(self, project):
         """A log that accumulates across runs is unreadable, and the question
         is always about the run you just made."""
@@ -279,12 +275,6 @@ class TestItNeverBreaksARun:
         log.record(model="after")
         written = [entry["model"] for entry in entries(project / "trace.jsonl")]
         assert written == ["before", "after"], "the log stopped working after one failure"
-
-    def test_an_unserializable_entry_is_still_a_line(self, project):
-        log = RequestLog(project / "trace.jsonl")
-        log.record(model="m", weird=object())
-        written = entries(project / "trace.jsonl")
-        assert len(written) == 1
 
     def test_an_unusual_value_is_rendered_rather_than_dropped(self, project):
         """`default=str` is what keeps a Path or a datetime in the trace.

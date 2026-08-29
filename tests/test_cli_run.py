@@ -254,10 +254,6 @@ class TestAReservedLabelIsRefusedBeforeTheRunStarts:
         assert result.exit_code == 2
         assert "reserved as a run reference" in result.output
 
-    def test_latest_too(self, tmp_path):
-        result = invoke(tmp_path, *run_args(tmp_path, "--label", "latest"))
-        assert result.exit_code == 2
-
     def test_the_run_never_appears_to_start(self, tmp_path):
         result = invoke(tmp_path, *run_args(tmp_path, "--label", "baseline"))
         assert "requests" not in result.output, "the run announced itself before refusing"
