@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 #: When the built-in table was last checked against published pricing.
-PRICING_AS_OF = "2026-08-17"
+PRICING_AS_OF = "2026-09-04"
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,8 @@ class Price:
 PRICES: dict[str, Price] = {
     # -- Anthropic --------------------------------------------------------
     # Cloud platforms bill their own rates; the figure here is first-party.
+    "claude-fable-5-1": Price(10.00, 50.00),
+    "claude-mythos-5-1": Price(10.00, 50.00),
     "claude-fable-5": Price(10.00, 50.00),
     "claude-mythos-5": Price(10.00, 50.00),
     "claude-opus-5": Price(5.00, 25.00),
@@ -79,7 +81,9 @@ PRICES: dict[str, Price] = {
     "claude-haiku-4-5": Price(1.00, 5.00),
     "claude-haiku-3-5": Price(0.80, 4.00),
     # -- OpenAI -----------------------------------------------------------
-    "gpt-5.6-sol": Price(5.00, 30.00),
+    "gpt-6-astra": Price(10.00, 50.00),
+    # Cut from $5.00/$30.00 on the card between 2026-08-17 and 2026-09-04.
+    "gpt-5.6-sol": Price(4.00, 20.00),
     "gpt-5.6-terra": Price(2.00, 12.00),
     "gpt-5.6-luna": Price(0.20, 1.20),
     "gpt-5.5": Price(5.00, 30.00),
@@ -132,9 +136,11 @@ PRICES: dict[str, Price] = {
     # estimate for a threshold almost nobody crosses would make the number
     # useless for the runs people actually have. Past ~200k input tokens per
     # call, set `params.pricing` to the long-prompt tier.
-    # 3.7 and 3.6 Flash are both promoted to $0.75/$3.75 through 2026-12-31,
-    # reverting to the standard rate below. The table carries standard rates,
-    # so these read high while the promotion runs rather than low after it.
+    # 3.8, 3.7 and 3.6 Flash are all promoted to $0.75/$3.75 through
+    # 2026-12-31, reverting to the standard rate below. The table carries
+    # standard rates, so these read high while the promotion runs rather than
+    # low after it ends.
+    "gemini-3.8-flash": Price(1.50, 7.50),
     "gemini-3.7-flash": Price(1.50, 7.50),
     "gemini-3.6-flash": Price(1.50, 7.50),
     "gemini-3.5-flash": Price(1.50, 9.00),

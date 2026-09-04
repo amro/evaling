@@ -11,6 +11,12 @@ def test_known_model_cost():
     assert estimate_cost("claude-sonnet-5", 1_000_000, 1_000_000) == pytest.approx(12.0)
 
 
+def test_a_rate_that_was_cut_is_the_new_one():
+    """gpt-5.6-sol went from $5/$30 to $4/$20; nothing pinned it, so the stale
+    figure sat in the table for two weeks reading double on output."""
+    assert estimate_cost("gpt-5.6-sol", 1_000_000, 1_000_000) == pytest.approx(24.0)
+
+
 def test_small_usage_precision():
     assert estimate_cost("claude-opus-5", 1000, 500) == pytest.approx(1000 * 5e-6 + 500 * 25e-6)
 

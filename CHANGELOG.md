@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`gpt-5.6-sol` was priced at its old rate.** OpenAI cut it from $5.00/$30.00
+  to $4.00/$20.00, so estimates read 25% high on input and double on output.
+  Nothing pinned the figure, so a test now does.
+
+### Added
+
+- **Four models the rate cards carry and the table did not**, each of which
+  reported an *unknown* cost rather than a stale one — the worse answer, since
+  a run with one cannot be budgeted at all: `claude-fable-5-1`,
+  `claude-mythos-5-1`, `gpt-6-astra` and `gemini-3.8-flash`. The Gemini entry
+  carries the same end-of-2026 promotion note as 3.7 and 3.6.
+
 ### Changed
 
 - **Four tests renamed or repaired to match what they check.** Two were just

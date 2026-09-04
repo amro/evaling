@@ -129,9 +129,9 @@ magnitude for deciding, and `--max-cost` as the thing that actually holds.
 Known biases, in both directions. The character approximation assumes roughly
 four characters per token, and the newest Claude models use a tokenizer that
 produces around 30% more tokens for the same text — so the input half reads
-low for those. Gemini's 3.7 and 3.6 Flash models are priced at their standard
-rate, not the promotion running until the end of 2026, so their estimates read
-high until it ends. Gemini's Pro models are priced at their short-prompt tier, so an eval
+low for those. Gemini's 3.8, 3.7 and 3.6 Flash models are priced at their
+standard rate, not the promotion running until the end of 2026, so their
+estimates read high until it ends. Gemini's Pro models are priced at their short-prompt tier, so an eval
 whose prompts run past ~200k input tokens reads low. Set `params.pricing` on a
 model to override the table with the rate you are actually paying.
 
