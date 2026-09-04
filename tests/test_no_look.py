@@ -13,7 +13,8 @@ from click.testing import CliRunner
 
 from evaling.cli import main
 from evaling.config import EvalConfig
-from evaling.engine import run_eval
+from evaling.config.errors import ConfigError
+from evaling.engine import run_eval, select_matrix
 from evaling.errors import EvalingError
 from evaling.export import export_run
 from evaling.privacy import hash_case_id, redact_record, scrub_secrets
@@ -331,6 +332,49 @@ class TestMechanisms:
         # A Python scorer's detail is written by the user, who decides what is
         # safe to emit — so it survives.
         assert result.records[0].scores["mine"]["detail"] == "missing_field: postal_code"
+
+
+class TestCaseFilteringDoesNotLeakIds:
+    """A no-look user only ever sees hashed ids, so `--case` needs them to work.
+
+    The raw ids were listed in full whenever a filter did not match — and under
+    no-look no raw id a user could type ever matches, so this fired on the
+    normal path, printing every id into a terminal or a CI log.
+    """
+
+    def config(self, **privacy):
+        return EvalConfig.model_validate(
+            {
+                "models": [{"id": "m", "provider": "mock"}],
+                "variants": [{"name": "v", "prompt": [{"role": "user", "content": "x"}]}],
+                "cases": [
+                    {"id": "alice@corp.example", "vars": {}},
+                    {"id": "bob@corp.example", "vars": {}},
+                ],
+                "scorecard": [{"criterion": "c", "scorer": {"type": "contains", "value": ""}}],
+                "privacy": {"no_look": True, **privacy},
+            }
+        )
+
+    def test_an_unknown_case_does_not_list_the_real_ids(self):
+        with pytest.raises(ConfigError) as caught:
+            select_matrix(self.config(), cases=["nope"])
+        message = str(caught.value)
+        assert "alice@corp.example" not in message
+        assert "bob@corp.example" not in message
+        assert "case-" in message, "the hashed ids are what a no-look user can act on"
+
+    def test_a_hashed_id_selects_its_case(self):
+        """Otherwise the only ids a no-look user has cannot filter anything."""
+        config = self.config()
+        hashed = hash_case_id("alice@corp.example")
+        _, _, cases = select_matrix(config, cases=[hashed])
+        assert [case.id for case in cases] == ["alice@corp.example"]
+
+    def test_raw_ids_still_work_when_ids_are_kept(self):
+        config = self.config(keep_case_ids=True)
+        _, _, cases = select_matrix(config, cases=["alice@corp.example"])
+        assert [case.id for case in cases] == ["alice@corp.example"]
 
 
 class TestRedactRecordDirectly:

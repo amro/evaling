@@ -1317,14 +1317,24 @@ def select_matrix(
         )
     case_list = load_cases(config)
     if cases:
+        # Under no-look the only ids a user has ever seen are the hashed ones,
+        # so a raw id can never match and this listing always fired — printing
+        # every raw id into a terminal or CI log, which is the disclosure the
+        # mode exists to prevent. Accept either form, and echo back only the
+        # form the user is entitled to see.
+        shown = {_reported_case_id(case.id or "", config.privacy): case for case in case_list}
         known = {case.id for case in case_list}
-        unknown = sorted(set(cases) - known)
+        unknown = sorted(name for name in set(cases) if name not in known and name not in shown)
         if unknown:
             raise ConfigError(
-                f"unknown case id(s): {', '.join(unknown)} (available: {', '.join(sorted(known))})"
+                f"unknown case id(s): {', '.join(unknown)} (available: {', '.join(sorted(shown))})"
             )
         wanted = set(cases)
-        case_list = [case for case in case_list if case.id in wanted]
+        case_list = [
+            case
+            for case in case_list
+            if case.id in wanted or _reported_case_id(case.id or "", config.privacy) in wanted
+        ]
 
     return variant_specs, model_specs, sample_cases(case_list, sample, sample_seed)
 
