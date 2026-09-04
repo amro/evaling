@@ -1,6 +1,6 @@
 {
   "evaling": {
     "command": "uvx",
-    "args": ["--from", "evaling[mcp]>=0.2.5,<0.3", "evaling", "mcp"]
+    "args": ["--from", "evaling[mcp]>=0.2.6,<0.3", "evaling", "mcp"]
   }
 }

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-09-04
+
+### Fixed
+
+- **Every MCP tool error lost its message on mcp 2.1.** That release replaced
+  the text of any exception that is not a `ToolError` with a bare
+  `Error executing tool <name>`, so an agent asking for a run that does not
+  exist — or hitting any other failure — learned nothing about why. The extra
+  allows `mcp>=2.0,<3`, so a fresh `evaling[mcp]` install resolved 2.1.1 and
+  got this; 0.2.5 shipped with it. evaling's own errors are now raised as
+  `ToolError`, which both 2.0 and 2.1 pass through intact. The conversion has
+  to happen inside the tool: by the time the SDK's `call_tool` returns, the
+  exception has already been swallowed.
+
+### Changed
+
+- **CI runs the MCP tests against the newest `mcp` the extra permits**, not
+  only the pinned one. The lockfile pins a single version while users resolve
+  whatever is newest, so an upstream release could break every install while CI
+  stayed green — which is exactly what happened. The job is
+  `continue-on-error`: a broken upstream release is news, not a red build.
+
 ## [0.2.5] - 2026-09-04
 
 ### Security
