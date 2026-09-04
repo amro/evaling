@@ -15,10 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pypa/gh-action-pypi-publish@release/v1` — all mutable tags. Whoever can move
   a tag could have had the next release run their code holding a publishing
   credential. Each pin records the ref it came from, and a test fails if one
-  reverts to a tag or loses its comment. The weekly pricing workflow is pinned
-  for the same reason — it runs with three provider API keys. The rest stay on
-  tags deliberately: they hold no credentials, so the same compromise costs a
-  red build rather than a release.
+  reverts to a tag or loses its comment. The other workflows stay on tags
+  deliberately: they hold no credentials, so the same compromise costs a red
+  build rather than a release.
 
 ### Fixed
 
@@ -28,12 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **A weekly coverage check** (`tools/check_model_coverage.py` and a workflow)
-  that lists each provider's models and reports any the price table misses. It
-  checks coverage only and says so in its own output: rates live in HTML cards,
-  and scraping one would replace an honest "unknown" with a possibly wrong
-  number — the direction that under-counts spend. `tools/known-unpriced.txt`
-  records the models evaling deliberately does not price, with the reason.
+- **`tools/check_model_coverage.py`**, a release-time check that lists each
+  provider's models and reports any the price table misses — the models that
+  report an *unknown* cost, so a run using them cannot be budgeted. Run by hand
+  with your own keys, as `RELEASING.md` step 1 describes; deliberately not a
+  scheduled job, since that would mean holding three provider keys as
+  repository secrets for a check that runs a few times a year.
+
+  It checks coverage only, and says so in its own output: rates live in HTML
+  cards, and scraping one would replace an honest "unknown" with a possibly
+  wrong number — the direction that under-counts spend.
+  `tools/known-unpriced.txt` records the models evaling deliberately does not
+  price, with the reason.
 
 - **Every config field now carries a description**, so the schema served at
   `evaling://config-schema` says what a field is *for* rather than only what

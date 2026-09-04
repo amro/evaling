@@ -51,10 +51,14 @@ ANTHROPIC_API_KEY=… OPENAI_API_KEY=… GEMINI_API_KEY=… \
   uv run python tools/check_model_coverage.py
 ```
 
-A weekly workflow runs the same thing and opens an issue when it finds
-something. It cannot check whether a *rate* is right — that is the comparison
-above, and no tool does it, because a scraped number would replace an honest
-"unknown" with a possibly wrong one.
+Run it with your own keys; listing models generates no tokens, so it costs
+nothing. It is deliberately not automated: a weekly job would mean keeping
+three provider keys as repository secrets, which is a standing exposure for a
+check that runs a few times a year.
+
+It cannot check whether a *rate* is right — that is the comparison above, and
+no tool does it, because a scraped number would replace an honest "unknown"
+with a possibly wrong one.
 
 Then check `docs/cli.md`'s estimate caveats. They name specific biases, and a
 bias that has expired is a stale claim like any other.

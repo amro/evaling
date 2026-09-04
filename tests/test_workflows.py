@@ -23,12 +23,12 @@ def uses(path: Path) -> list[str]:
 #: Workflows that run with a credential, so a moved tag would hand someone
 #: else that credential. The rest stay on tags deliberately: a compromise
 #: there costs a red build.
-CREDENTIALED = ("publish.yml", "pricing.yml")
+CREDENTIALED = ("publish.yml",)
 
 
 @pytest.mark.parametrize("name", CREDENTIALED)
 class TestCredentialedWorkflowsPinImmutableRefs:
-    """`publish.yml` can publish to PyPI; `pricing.yml` holds three API keys.
+    """`publish.yml` runs with id-token: write and can publish as evaling.
 
     A tag is mutable, so `@v1` is a standing grant to whoever can move it.
     """

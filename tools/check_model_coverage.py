@@ -10,6 +10,10 @@ WHY COVERAGE IS WORTH CHECKING: a model absent from the table reports an
 and `--max-cost` cannot hold. New models appear between releases; four had
 accumulated by 2026-09-04.
 
+Run by hand at release time (RELEASING.md step 1), with your own keys. Not a
+scheduled job: automating it would mean holding three provider keys as
+repository secrets year-round for a check that runs a few times a year.
+
 The provider model lists are structured APIs, not pages, so this part is
 reliable. The judgement it cannot make is which listed models evaling should
 price at all — the lists carry image, audio, embedding and research models
