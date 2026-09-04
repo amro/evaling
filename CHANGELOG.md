@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`publish.yml` pins its actions to commit SHAs.** That workflow runs with
+  `id-token: write` and can publish to PyPI as evaling, and it referenced
+  `actions/checkout@v7`, `astral-sh/setup-uv@v10.0.1` and
+  `pypa/gh-action-pypi-publish@release/v1` — all mutable tags. Whoever can move
+  a tag could have had the next release run their code holding a publishing
+  credential. Each pin records the ref it came from, and a test fails if one
+  reverts to a tag or loses its comment. The other workflows stay on tags
+  deliberately: they hold no credentials, so the same compromise costs a red
+  build rather than a release.
+
 ### Fixed
 
 - **`gpt-5.6-sol` was priced at its old rate.** OpenAI cut it from $5.00/$30.00
