@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A note on moving aliases in `docs/providers.md`.** Names like
+  `gemini-flash-latest` track whatever is current, so the table carries no rate
+  and evaling reports their cost as unknown. Documented as deliberate: a
+  recorded rate for a moving name goes stale silently and under-counts once the
+  alias moves to a costlier model, which is when `--max-cost` most needs to
+  hold.
+
 - **Four models the rate cards carry and the table did not**, each of which
   reported an *unknown* cost rather than a stale one — the worse answer, since
   a run with one cannot be budgeted at all: `claude-fable-5-1`,

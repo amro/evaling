@@ -188,7 +188,7 @@ models:
       pricing: {input: 0.0, output: 0.0}   # USD per million tokens
 ```
 
-Three things the built-in rates deliberately do not know:
+Four things the built-in rates deliberately do not know:
 
 - **Discounted rates.** They are standard, first-party, non-batch, non-cached
   rates. Batch processing, cached input, and the cloud platforms' own pricing
@@ -200,6 +200,13 @@ Three things the built-in rates deliberately do not know:
   endpoint serving something under a published name — a local model you called
   `gemini-2.5-pro`, a broker reselling one — is priced as though it were that
   model. Set `pricing` on those.
+- **What a moving alias points at today.** Names like `gemini-flash-latest`
+  track whatever is current, and what that is changes without notice, so the
+  table carries no rate for them and evaling reports their cost as unknown.
+  That is deliberate: a recorded rate for a moving name goes stale silently and
+  in the dangerous direction — it under-counts spend once the alias moves to a
+  costlier model, which is exactly when `--max-cost` needs to hold. Name the
+  concrete model id you mean, or set `pricing`.
 
 A config `pricing` block always wins over the built-in table, so you can
 correct a stale rate without waiting for a release. Rates must be non-negative
