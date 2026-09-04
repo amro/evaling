@@ -1,0 +1,43 @@
+# Models a provider offers that evaling deliberately does not price.
+#
+# Anything here reports an unknown cost, which is the honest answer when we
+# cannot source a rate. Anything NOT here and not in PRICES is a finding from
+# tools/check_model_coverage.py — price it, or add it here with the reason.
+
+# -- Not text models, or not callable through evaling ---------------------
+# Base completion models: no chat interface, so evaling cannot call them.
+babbage-002
+davinci-002
+gpt-3.5-turbo-instruct
+gpt-3.5-turbo-instruct-0914
+
+# Gemma is open-weights and usually self-hosted, so the operator sets the
+# rate. Priced with params.pricing, like any local model.
+gemma-4-26b-a4b-it
+gemma-4-31b-it
+
+# -- Moving aliases -------------------------------------------------------
+# These track whatever is current, so any rate recorded for them goes stale
+# silently and under-counts once the alias moves to a costlier model. See the
+# note in docs/providers.md.
+gemini-flash-latest
+gemini-flash-lite-latest
+gemini-pro-latest
+gpt-4
+gpt-4-turbo
+gpt-5-chat-latest
+gpt-5.1-chat-latest
+
+# -- Offered but absent from the published rate card ----------------------
+# The card is the only source for a rate, so a model missing from it cannot be
+# priced without guessing. Re-check at each release: when one appears on the
+# card, move it into PRICES.
+gpt-5-codex
+gpt-5.1-codex
+gpt-5.1-codex-max
+gpt-5.2-codex
+gpt-3.5-turbo-16k
+gpt-4o-search-preview
+gpt-4o-mini-search-preview
+gemini-3.1-flash-lite-preview
+gemini-3.1-pro-preview-customtools

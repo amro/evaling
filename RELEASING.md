@@ -43,6 +43,19 @@ Where a model's rate depends on something evaling doesn't know at estimate
 time — Gemini's Pro models charge more above ~200k input tokens — the table
 takes the tier ordinary evals fall in and names the other in a comment.
 
+`tools/check_model_coverage.py` does the *coverage* half mechanically — it
+lists each provider's models and reports any the table does not price:
+
+```sh
+ANTHROPIC_API_KEY=… OPENAI_API_KEY=… GEMINI_API_KEY=… \
+  uv run python tools/check_model_coverage.py
+```
+
+A weekly workflow runs the same thing and opens an issue when it finds
+something. It cannot check whether a *rate* is right — that is the comparison
+above, and no tool does it, because a scraped number would replace an honest
+"unknown" with a possibly wrong one.
+
 Then check `docs/cli.md`'s estimate caveats. They name specific biases, and a
 bias that has expired is a stale claim like any other.
 

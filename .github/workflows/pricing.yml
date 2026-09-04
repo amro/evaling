@@ -1,0 +1,70 @@
+name: Pricing
+
+# Weekly check that every model a provider offers has a rate in the table.
+#
+# It checks COVERAGE, not correctness. Rates live only in HTML rate cards, and
+# scraping one into the table would replace an honest "unknown" with a possibly
+# wrong number — the direction that under-counts spend. Comparing rates is a
+# human step in RELEASING.md and stays there.
+#
+# Coverage is worth automating because it is structured: all three providers
+# expose a models API, and a model missing from the table reports an unknown
+# cost, so a run using it cannot be budgeted at all.
+#
+# Needs ANTHROPIC_API_KEY, OPENAI_API_KEY and GEMINI_API_KEY as repository
+# secrets. Listing models costs nothing — no tokens are generated. Providers
+# without a secret are reported as unchecked rather than passing quietly.
+on:
+  schedule:
+    - cron: "0 7 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+
+      - name: Models offered but not priced
+        id: check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: uv run python tools/check_model_coverage.py | tee coverage.txt
+
+      # An issue rather than a red run: this is a triage queue, and a failing
+      # weekly job trains people to ignore it. Reuses one open issue so a
+      # standing gap does not accumulate a new one every Tuesday.
+      - name: Open or update an issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = "```\n" + fs.readFileSync('coverage.txt', 'utf8') + "\n```";
+            const title = 'Models offered but not priced';
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'pricing',
+            });
+            const existing = open.data.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['pricing'],
+              });
+            }

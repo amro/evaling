@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A weekly coverage check** (`tools/check_model_coverage.py` and a workflow)
+  that lists each provider's models and reports any the price table misses. It
+  checks coverage only and says so in its own output: rates live in HTML cards,
+  and scraping one would replace an honest "unknown" with a possibly wrong
+  number — the direction that under-counts spend. `tools/known-unpriced.txt`
+  records the models evaling deliberately does not price, with the reason.
+
 - **Every config field now carries a description**, so the schema served at
   `evaling://config-schema` says what a field is *for* rather than only what
   type it is. All 53 were bare; a test fails if a new one arrives without one.
