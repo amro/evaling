@@ -335,7 +335,9 @@ async def _run_eval_impl(
     # Seeded from what the run has already spent on judges. finalize()
     # overwrites the total rather than adding to it, so starting from zero
     # made a resumed run report only its second half's judge cost.
-    prior_judge_cost = _prior_judge_total(store, resume_run_id, "judge_cost_usd")
+    prior_spend = _prior_spend(store, resume_run_id)
+    prior_judge_cost = prior_spend["judge_cost_usd"]
+    prior_unattributed = prior_spend["unattributed_cost_usd"]
 
     budget = _CostBudget(
         max_cost_usd,
@@ -346,12 +348,22 @@ async def _run_eval_impl(
         # run, and a resume continues that run — leaving judges out let every
         # resume spend the ceiling afresh, so a heavily judged eval stopped
         # and resumed three times cost three ceilings.
+        # Every dollar the earlier segments spent: recorded cells, judges
+        # (which are not cells and leave no record), and cells that paid for a
+        # candidate call and were then dropped when a judge hit the ceiling.
+        # Leave any of them out and each resume spends the ceiling afresh.
         spent=(sum(r.cost_usd for r in prior_records if r.cost_usd and not r.cached) or 0.0)
-        + prior_judge_cost,
+        + prior_judge_cost
+        + prior_unattributed,
     )
     limiters = {model.id: limiter_for(model) for model in config.models}
 
     judge_spend = [prior_judge_cost]
+    #: Money already paid by cells whose record was deliberately dropped —
+    #: the candidate call completed and billed, then the cost ceiling refused
+    #: the judge. Without this the spend disappears from every ledger: the run
+    #: reports less than it cost, and each resume pays it again.
+    unattributed_spend = [prior_unattributed]
     # Counted alongside the spend, and cumulative for the same reason: both
     # describe the run, which a resume continues rather than replaces.
     judge_calls = [int(_prior_judge_total(store, resume_run_id, "judge_calls"))]
@@ -409,6 +421,13 @@ async def _run_eval_impl(
             finally:
                 if completion is not None and completion.cost_usd:
                     judge_spend[0] += completion.cost_usd
+                    # Persisted as it happens: finalize() never runs for a
+                    # killed process, and a resume that cannot see this spends
+                    # the ceiling again.
+                    writer.record_spend(
+                        judge_cost_usd=judge_spend[0],
+                        unattributed_cost_usd=unattributed_spend[0],
+                    )
                 await budget.release(
                     completion.cost_usd if completion else None, failed=completion is None
                 )
@@ -457,10 +476,22 @@ async def _run_eval_impl(
         try:
             await _execute_cell(record, variant_name, model, case)
         except BudgetExhausted:
-            # Never attempted, so it leaves no trace: writing a record would
-            # count it as a failure in the aggregates and, worse, mark it done
-            # for a later resume — which is how the first version of this fix
-            # left one cell permanently failed instead of all of them.
+            # Never *finished*, so it leaves no record: writing one would count
+            # it as a failure in the aggregates and, worse, mark it done for a
+            # later resume — which is how the first version of this fix left
+            # one cell permanently failed instead of all of them.
+            #
+            # But a cell refused at its judge has already made and paid for its
+            # candidate call. Dropping the record must not drop the money with
+            # it, or the ceiling stops holding across resumes.
+            if record.cost_usd and not record.cached:
+                # The in-run budget already counted this call when it
+                # completed; what is missing is a durable record of it.
+                unattributed_spend[0] += record.cost_usd
+                writer.record_spend(
+                    judge_cost_usd=judge_spend[0],
+                    unattributed_cost_usd=unattributed_spend[0],
+                )
             budget_gone[0] = True
             stop_early[0] = True
             return None
@@ -627,6 +658,7 @@ async def _run_eval_impl(
 
     tally.judge_cost_usd = judge_spend[0]
     tally.judge_calls = judge_calls[0]
+    tally.unattributed_cost_usd = unattributed_spend[0]
     counts, totals = tally.counts, tally.totals
     records = retained if retain else []
 
@@ -797,6 +829,24 @@ def _known_credentials(providers: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
 
 
+def _prior_spend(store: RunStore, resume_run_id: str | None) -> dict[str, float]:
+    """Spend the run being resumed already made and no record carries.
+
+    Judge calls are not cells, and a cell dropped at the cost ceiling leaves
+    no record on purpose, so neither appears in results.jsonl. Both are
+    written to spend.json as they happen — a killed process never reaches
+    finalize(), and reading only the finalized totals lost everything an
+    interrupted run had spent.
+    """
+    if resume_run_id is None:
+        return {"judge_cost_usd": 0.0, "unattributed_cost_usd": 0.0}
+    spend = store.load_spend(resume_run_id)
+    return {
+        "judge_cost_usd": float(spend.get("judge_cost_usd") or 0.0),
+        "unattributed_cost_usd": float(spend.get("unattributed_cost_usd") or 0.0),
+    }
+
+
 def _prior_judge_total(store: RunStore, resume_run_id: str | None, field: str) -> float:
     """A judge total already recorded on the run being resumed.
 
@@ -877,6 +927,9 @@ class _RunTally:
         self.input_tokens = self.output_tokens = 0
         self.cost_usd = 0.0
         self.judge_cost_usd = 0.0
+        #: Paid by cells whose record was dropped at the cost ceiling. Part of
+        #: what the run cost, but attributable to no cell.
+        self.unattributed_cost_usd = 0.0
         #: Judge calls this run actually made. Not derivable from cost — an
         #: unpriced judge model bills nothing and is still a call — and not
         #: from the cell counts, since a judge is not a cell. It exists so a
@@ -915,8 +968,9 @@ class _RunTally:
             "output_tokens": self.output_tokens,
             # What the run actually cost, cells plus judges. Per-cell costs sum
             # to cost_usd - judge_cost_usd, because a judge is not a cell.
-            "cost_usd": round(self.cost_usd + self.judge_cost_usd, 10),
+            "cost_usd": round(self.cost_usd + self.judge_cost_usd + self.unattributed_cost_usd, 10),
             "judge_cost_usd": round(self.judge_cost_usd, 10),
+            "unattributed_cost_usd": round(self.unattributed_cost_usd, 10),
             "judge_calls": self.judge_calls,
         }
 

@@ -321,7 +321,11 @@ def run(
         live = {"cost": 0.0, "failed": 0}
 
         def on_result(record):
-            live["cost"] += record.cost_usd or 0.0
+            # A cached cell made no call. The final totals line and the cell
+            # header both exclude it, so counting it here read as overspend on
+            # a cache-heavy run.
+            if not record.cached:
+                live["cost"] += record.cost_usd or 0.0
             live["failed"] += 1 if record.error else 0
             label_bits = []
             if live["cost"]:

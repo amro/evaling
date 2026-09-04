@@ -307,6 +307,26 @@ class RunStore:
         runs.sort(key=lambda meta: (meta.get("created_ns") or 0, meta["id"]))
         return runs
 
+    def load_spend(self, run_id: str) -> dict[str, float]:
+        """Spend recorded during a run, whether or not it reached finalize().
+
+        Falls back to the run's totals, which is where this lived before
+        spend.json existed and is all a run written by an older evaling has.
+        """
+        path = self.output_dir / run_id / "spend.json"
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = {}
+            if isinstance(data, dict):
+                return {k: float(v or 0.0) for k, v in data.items()}
+        totals = self.load_meta(run_id).get("totals") or {}
+        return {
+            "judge_cost_usd": float(totals.get("judge_cost_usd") or 0.0),
+            "unattributed_cost_usd": float(totals.get("unattributed_cost_usd") or 0.0),
+        }
+
     def load_meta(self, run_id: str) -> dict[str, Any]:
         return self.open_run(run_id, for_write=False).meta
 
@@ -382,6 +402,21 @@ class RunWriter:
     def append_result(self, record: ResultRecord) -> None:
         with self.results_path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(asdict(record), sort_keys=True) + "\n")
+
+    @property
+    def spend_path(self) -> Path:
+        return self.path / "spend.json"
+
+    def record_spend(self, **amounts: float) -> None:
+        """Persist spend that no result record carries.
+
+        Judge calls are not cells, and a cell refused a judge by the cost
+        ceiling is dropped on purpose — so neither leaves anything in
+        results.jsonl. Until this existed both lived only in memory until
+        `finalize()`, which meant a killed run forgot them and a resume both
+        under-reported the total and re-spent the ceiling.
+        """
+        write_json_atomic(self.spend_path, {k: round(v, 10) for k, v in amounts.items()})
 
     def completed_keys(self) -> set[tuple[str, str, str]]:
         """Keys of already-recorded results (for resume)."""

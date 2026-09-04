@@ -13,7 +13,7 @@ import pytest
 from evaling.cache import ResponseCache
 from evaling.config import Case, EvalConfig, Message, ModelSpec
 from evaling.config.errors import ConfigError
-from evaling.engine import run_eval
+from evaling.engine import _prior_spend, run_eval
 from evaling.providers import _REGISTRY
 from evaling.providers.base import Completion, ProviderError
 from evaling.providers.mock import MockProvider
@@ -264,6 +264,96 @@ class TestStorageDurability:
         result = run_eval(make_config(tmp_path), settings)
         meta = json.loads((result.path / "run.json").read_text(encoding="utf-8"))
         assert meta["format_version"] >= 1
+
+
+class TestSpendNoRecordCarries:
+    """Money a run made that no result record accounts for.
+
+    Two kinds: a judge call, which is not a cell, and a cell whose candidate
+    call completed and billed before the ceiling refused its judge — that
+    record is dropped on purpose so a resume retries the cell. Both used to
+    live only in memory until finalize(), so a run reported less than it cost
+    and every resume spent the ceiling afresh. One reproduction billed three
+    calls against a $0.50 ceiling while reporting $0.00.
+    """
+
+    def judged_config(self, tmp_path, cost):
+        (tmp_path / "rubric.yaml").write_text("- role: user\n  content: 'g'\n", encoding="utf-8")
+        config = EvalConfig.model_validate(
+            {
+                "models": [
+                    {"id": "cand", "provider": "mock", "params": {"cost": cost}},
+                    {
+                        "id": "judge",
+                        "provider": "mock",
+                        "role": "judge",
+                        "params": {"cost": cost, "response": '{"score": 1}'},
+                    },
+                ],
+                "variants": [{"name": "v", "prompt": [{"role": "user", "content": "{{ q }}"}]}],
+                "cases": [{"id": "c1", "vars": {"q": "a"}}, {"id": "c2", "vars": {"q": "b"}}],
+                "judges": {"j": {"model": "judge", "rubric": "rubric.yaml"}},
+                "scorecard": [{"criterion": "q", "scorer": {"type": "llm-judge", "judge": "j"}}],
+            }
+        )
+        config._base_dir = tmp_path  # noqa: SLF001
+        return config
+
+    def test_a_cell_refused_at_its_judge_still_reports_what_it_paid(self, tmp_path):
+        settings = make_settings(tmp_path)
+        config = self.judged_config(tmp_path, cost=0.60)
+        result = run_eval(config, settings, max_cost_usd=0.50)
+        meta = RunStore(settings.output_dir).load_meta(result.run_id)
+        assert meta["totals"]["cost_usd"] == pytest.approx(0.60), (
+            "the candidate call was made and billed; dropping its record must not "
+            "drop the money with it"
+        )
+        assert meta["totals"]["unattributed_cost_usd"] == pytest.approx(0.60)
+
+    def test_a_resume_does_not_pay_that_cost_again(self, tmp_path):
+        """The ceiling is a ceiling on the run, so it must survive the resume."""
+        settings = make_settings(tmp_path)
+        config = self.judged_config(tmp_path, cost=0.60)
+        first = run_eval(config, settings, max_cost_usd=0.50)
+
+        calls = []
+        original = MockProvider.complete
+
+        async def counted(self, request):
+            calls.append(self.spec.id)
+            return await original(self, request)
+
+        MockProvider.complete = counted
+        try:
+            run_eval(config, settings, resume_run_id=first.run_id, max_cost_usd=0.50)
+        finally:
+            MockProvider.complete = original
+        assert calls == [], f"the ceiling was already spent, yet the resume called {calls}"
+
+    def test_spend_is_on_disk_before_the_run_finishes(self, tmp_path):
+        """finalize() never runs for a killed process, so it cannot be the record."""
+        settings = make_settings(tmp_path)
+        config = self.judged_config(tmp_path, cost=0.60)
+        result = run_eval(config, settings, max_cost_usd=0.50)
+        spend = RunStore(settings.output_dir).load_spend(result.run_id)
+        assert spend["unattributed_cost_usd"] == pytest.approx(0.60)
+
+    def test_a_killed_runs_judge_spend_survives_into_the_resume(self, tmp_path):
+        """The primary resume case: a process killed mid-flight never finalizes."""
+        settings = make_settings(tmp_path)
+        config = self.judged_config(tmp_path, cost=0.01)
+        first = run_eval(config, settings)
+        store = RunStore(settings.output_dir)
+        judged = store.load_spend(first.run_id)["judge_cost_usd"]
+        assert judged > 0, "the fixture must actually call a judge"
+
+        # Emulate a kill: totals are what finalize() wrote, so blank them and
+        # put the run back to running. spend.json is what should carry through.
+        meta = store.load_meta(first.run_id)
+        meta.update(status="running", totals=None)
+        write_json_atomic(settings.output_dir / first.run_id / "run.json", meta)
+
+        assert _prior_spend(store, first.run_id)["judge_cost_usd"] == pytest.approx(judged)
 
 
 class TestJudgeCallsAreGoverned:
