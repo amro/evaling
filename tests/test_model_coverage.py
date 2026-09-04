@@ -40,11 +40,51 @@ class TestWhatCountsAsAModelWeShouldPrice:
         assert not coverage.is_text_model(model_id)
 
     @pytest.mark.parametrize(
-        "model_id", ["claude-opus-4-5-20251101", "gpt-4o-2024-05-13", "claude-haiku-4-5-20251001"]
+        ("model_id", "expected"),
+        [
+            ("claude-opus-4-5-20251101", "claude-opus-4-5"),
+            ("gpt-4o-2024-05-13", "gpt-4o"),
+            ("claude-haiku-4-5-20251001", "claude-haiku-4-5"),
+            ("gpt-5.2", "gpt-5.2"),
+        ],
     )
-    def test_dated_snapshots_are_skipped(self, model_id):
-        """A snapshot prices as the base id it pins, so it is not a gap."""
-        assert not coverage.is_text_model(model_id)
+    def test_a_dated_snapshot_reduces_to_the_model_it_pins(self, model_id, expected):
+        assert coverage.base_id(model_id) == expected
+
+
+class TestSnapshotsDoNotHideAGap:
+    """Lookup is by exact id, so a snapshot is not priced by its base.
+
+    Excluding snapshots outright therefore hid genuinely unpriced models —
+    and Anthropic's models API lists dated ids, so a new Claude release was
+    invisible to this check. They now collapse onto the base instead, which
+    keeps the output short without losing the finding.
+    """
+
+    def test_a_snapshot_of_a_priced_model_is_not_a_finding(self):
+        found = coverage.unpriced(
+            ["claude-opus-4-5-20251101"], priced={"claude-opus-4-5"}, ignored=set()
+        )
+        assert found == []
+
+    def test_a_snapshot_of_an_unpriced_model_is_reported_under_its_base(self):
+        found = coverage.unpriced(
+            ["claude-opus-4-9-20261101"], priced={"claude-opus-4-5"}, ignored=set()
+        )
+        assert found == ["claude-opus-4-9"], "a new model must not hide behind its date"
+
+    def test_several_snapshots_of_one_model_report_once(self):
+        found = coverage.unpriced(
+            ["gpt-9-2026-01-01", "gpt-9-2026-06-01"], priced=set(), ignored=set()
+        )
+        assert found == ["gpt-9"]
+
+    def test_a_snapshot_priced_in_its_own_right_is_not_a_finding(self):
+        """gpt-4o-2024-05-13 is priced above its base, so it is listed exactly."""
+        found = coverage.unpriced(
+            ["gpt-4o-2024-05-13"], priced={"gpt-4o-2024-05-13"}, ignored=set()
+        )
+        assert found == []
 
 
 class TestFindings:

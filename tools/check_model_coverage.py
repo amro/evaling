@@ -85,8 +85,11 @@ def openai(key: str) -> list[str]:
 
 
 def gemini(key: str) -> list[str]:
+    # Header rather than ?key=, so the credential stays out of anything that
+    # logs a URL.
     data = _get(
-        f"https://generativelanguage.googleapis.com/v1beta/models?key={key}&pageSize=1000", {}
+        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
+        {"x-goog-api-key": key},
     )
     return [m["name"].split("/")[-1] for m in data.get("models", [])]
 
@@ -98,17 +101,40 @@ PROVIDERS = {
 }
 
 
+#: A dated snapshot pins one release of a base model, e.g.
+#: claude-opus-4-5-20251101 or gpt-4o-2024-05-13.
+SNAPSHOT_SUFFIX = re.compile(r"-\d{4}-\d{2}-\d{2}$|-\d{6,8}$")
+
+
 def is_text_model(model_id: str) -> bool:
     """Whether an id looks like something evaling could call and price."""
-    lowered = model_id.lower()
-    if any(marker in lowered for marker in NOT_TEXT):
-        return False
-    # Dated snapshots price the same as the base id they pin.
-    return not re.search(r"-\d{4}-\d{2}-\d{2}$|-\d{6,8}$", lowered)
+    return not any(marker in model_id.lower() for marker in NOT_TEXT)
+
+
+def base_id(model_id: str) -> str:
+    """A dated snapshot reduced to the model it pins; anything else unchanged.
+
+    Lookup is by exact id, so a snapshot is not priced by its base — but the
+    table deliberately carries base ids, and reporting every dated variant
+    separately would bury the finding. So a snapshot counts as covered when its
+    base is, and is reported under the base name when it is not.
+    """
+    return SNAPSHOT_SUFFIX.sub("", model_id)
 
 
 def unpriced(listed: list[str], priced: set[str], ignored: set[str]) -> list[str]:
-    return sorted(m for m in listed if is_text_model(m) and m not in priced and m not in ignored)
+    """Models offered but neither priced nor deliberately skipped.
+
+    Snapshots collapse onto their base, so a new dated release of an unpriced
+    model is reported once under the name you would add to the table.
+    """
+    known = priced | ignored
+    missing = {
+        base_id(m)
+        for m in listed
+        if is_text_model(m) and m not in known and base_id(m) not in known
+    }
+    return sorted(missing)
 
 
 def load_ignored() -> set[str]:
@@ -121,8 +147,12 @@ def load_ignored() -> set[str]:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     from evaling.providers.pricing import PRICES, PRICING_AS_OF
+
+    # In CI a deleted or expired secret would otherwise disable the check
+    # silently: every run green, nobody reading the log.
+    require_all = "--require-all" in (argv if argv is not None else sys.argv[1:])
 
     priced, ignored = set(PRICES), load_ignored()
     print(f"price table: {len(priced)} models, checked against the cards on {PRICING_AS_OF}")
@@ -155,6 +185,12 @@ def main() -> int:
         print(
             "\nPrice them from the rate card (RELEASING.md step 1), or add them to "
             f"{IGNORE_FILE.name} if evaling should not price them."
+        )
+        return 1
+    if skipped and require_all:
+        print(
+            "\nFailing because a provider could not be checked and --require-all is set. "
+            "A missing key disables coverage for that provider entirely."
         )
         return 1
     if skipped and not findings:

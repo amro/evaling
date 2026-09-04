@@ -128,6 +128,7 @@ also_copy = [
     "plugin",
     ".claude-plugin",
     ".github",
+    "tools",
     "README.md",
     "CONTRIBUTING.md",
     "RELEASING.md",

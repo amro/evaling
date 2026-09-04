@@ -245,6 +245,22 @@ under the server's configured name.
 The server's instructions point at the resource too, so an agent that reads
 those knows it exists without being told.
 
+## Prompts
+
+| Name | What it does |
+|---|---|
+| `set_up_eval` | Scaffolds a project and drafts an `eval.yaml` for a task you describe |
+
+Takes an optional `task` argument naming what you want to evaluate. It carries
+the workflow rather than doing the work: read the schema first, compare at
+least two variants, prefer a deterministic scorer where the task admits one,
+and validate before spending anything.
+
+Clients surface prompts their own way — Claude Code lists them as
+`/mcp__evaling__set_up_eval`. The plugin ships the same workflow as
+`/evaling:init`, so plugin users have it either way; this exists so everyone
+else does too.
+
 ## Argument names must match exactly
 
 An argument a tool doesn't declare is refused, and the error names what it does

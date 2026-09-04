@@ -9,9 +9,9 @@ name: Publish
 # comment after each SHA is the human-readable ref it came from, and Dependabot
 # updates SHA pins the same way it updates tags.
 #
-# The other workflows stay on tags on purpose: they hold no credentials and
-# cannot publish, so the same compromise costs a red build rather than a
-# malicious release.
+# `pricing.yml` is pinned for the same reason — it runs with three provider API
+# keys in its environment. The rest stay on tags on purpose: they hold no
+# credentials, so the same compromise costs a red build.
 #
 # Trusted publishing (OIDC), not an API token: PyPI verifies the request came
 # from this repository and this workflow, so there is no long-lived credential

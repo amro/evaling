@@ -15,9 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pypa/gh-action-pypi-publish@release/v1` — all mutable tags. Whoever can move
   a tag could have had the next release run their code holding a publishing
   credential. Each pin records the ref it came from, and a test fails if one
-  reverts to a tag or loses its comment. The other workflows stay on tags
-  deliberately: they hold no credentials, so the same compromise costs a red
-  build rather than a release.
+  reverts to a tag or loses its comment. The weekly pricing workflow is pinned
+  for the same reason — it runs with three provider API keys. The rest stay on
+  tags deliberately: they hold no credentials, so the same compromise costs a
+  red build rather than a release.
 
 ### Fixed
 

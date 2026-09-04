@@ -84,7 +84,8 @@ class ModelSpec(StrictModel):
     id: str = Field(
         min_length=1,
         description="Identifier for this model, and the API model name unless `params.model` "
-        "overrides it. Must be unique, and is what the built-in price table is keyed on.",
+        "overrides it. Must be unique. Pricing is looked up by the effective API model name, so "
+        "`params.model` decides it where set.",
     )
     provider: ProviderName = Field(description="Which adapter talks to this model.")
     base_url: str | None = Field(
@@ -152,9 +153,11 @@ class ModelSpec(StrictModel):
     )
     params: dict[str, Any] = Field(
         default_factory=dict,
-        description="Passed to the provider verbatim (`temperature`, `max_tokens`, …), so "
-        "evaling does not validate them. Two are read by evaling itself: `model` overrides the "
-        "API model name, and `pricing` overrides the built-in rate.",
+        description="Passed to the provider verbatim (`temperature`, `top_p`, …), so evaling "
+        "does not validate them — a parameter a model rejects comes back as a provider error. "
+        "Three are read by evaling itself: `model` overrides the API model name, `pricing` "
+        "overrides the built-in rate and is validated at load, and `max_tokens` bounds the "
+        "pre-run cost estimate.",
     )
 
     @model_validator(mode="after")
@@ -356,7 +359,8 @@ class EvalConfig(StrictModel):
     )
     variants: list[VariantSpec] = Field(
         min_length=1,
-        description="The prompts being compared. Two or more, or there is nothing to compare.",
+        description="The prompts being compared. At least one is required; comparing anything "
+        "needs two.",
     )
     cases: CaseFileRef | CaseSourceRef | list[Case] = Field(
         description="The inputs to run against: a list of cases, {file: path} for a dataset, or "

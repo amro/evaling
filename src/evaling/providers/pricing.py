@@ -148,6 +148,7 @@ PRICES: dict[str, Price] = {
     # Text input; audio in costs $0.50.
     "gemini-3.1-flash-lite": Price(0.25, 1.50),
     "gemini-3.1-pro-preview": Price(2.00, 12.00),  # >200k: $4.00 / $18.00
+    "gemini-3.1-pro-preview-customtools": Price(2.00, 12.00),  # >200k: $4.00 / $18.00
     # Text input; audio in costs $1.00.
     "gemini-3-flash-preview": Price(0.50, 3.00),
     # The 2.5 models are closed to new Gemini API users (a call returns 404

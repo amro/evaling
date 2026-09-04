@@ -349,8 +349,12 @@ class TestMutationSandboxSeesWhatTestsRead:
         names = set()
         for path in sorted(REPO.glob("tests/*.py")):
             text = path.read_text(encoding="utf-8")
-            names.update(re.findall(r'REPO / "([^"/]+)"', text))
-            names.update(m.split("/")[0] for m in re.findall(r'REPO\.glob\("([^"]+)"', text))
+            # Any name for the repo root, not just REPO: test_model_coverage
+            # called it ROOT, and this check missed `tools/` as a result.
+            names.update(re.findall(r'\b(?:REPO|ROOT)\s*/\s*"([^"/]+)"', text))
+            names.update(
+                m.split("/")[0] for m in re.findall(r'\b(?:REPO|ROOT)\.glob\("([^"]+)"', text)
+            )
         # This file states those patterns as literals, so scanning it matches
         # its own regexes. A real entry name has no metacharacters in it.
         names = {name for name in names if re.fullmatch(r"[A-Za-z0-9_.-]+", name)}

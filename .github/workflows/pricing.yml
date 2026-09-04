@@ -12,7 +12,10 @@ name: Pricing
 # cost, so a run using it cannot be budgeted at all.
 #
 # Needs ANTHROPIC_API_KEY, OPENAI_API_KEY and GEMINI_API_KEY as repository
-# secrets. Listing models costs nothing — no tokens are generated. Providers
+# secrets, which is why its actions are pinned to commit SHAs like publish.yml:
+# a moved tag here supplies the binary that later runs with three API keys in
+# its environment. --require-all fails the check if a secret is missing, so a
+# deleted one cannot disable coverage quietly. Listing models costs nothing — no tokens are generated. Providers
 # without a secret are reported as unchecked rather than passing quietly.
 on:
   schedule:
@@ -27,26 +30,35 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
       - run: uv sync --group dev
 
       - name: Models offered but not priced
         id: check
+        # Without `shell: bash` this runs under `bash -e {0}`, which has no
+        # pipefail, so `tee` swallows a non-zero exit and the issue below never
+        # opens. continue-on-error keeps a standing gap from turning every
+        # Tuesday red — the issue is the signal, not the run status.
+        shell: bash
+        continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: uv run python tools/check_model_coverage.py | tee coverage.txt
+        run: uv run python tools/check_model_coverage.py --require-all | tee coverage.txt
 
-      # An issue rather than a red run: this is a triage queue, and a failing
-      # weekly job trains people to ignore it. Reuses one open issue so a
+      # An issue rather than a red run: this is a triage queue, and a weekly
+      # job that is always red trains people to ignore it. Reuses one open issue so a
       # standing gap does not accumulate a new one every Tuesday.
       - name: Open or update an issue
-        if: failure()
-        uses: actions/github-script@v7
+        # The check's own outcome, not the job's: an earlier step failing is a
+        # broken workflow rather than a pricing finding, and coverage.txt would
+        # not exist to read.
+        if: steps.check.outcome == 'failure'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
