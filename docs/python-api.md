@@ -59,7 +59,7 @@ result = await run_eval_async(config)
 | `path` | `Path` | The run directory |
 | `records` | `list[ResultRecord]` | One per cell |
 | `counts` | `dict` | `total`, `succeeded`, `failed`, `cached` |
-| `totals` | `dict` | Token counts, `cost_usd` (cells + judges), `judge_cost_usd` |
+| `totals` | `dict` | Token counts, `cost_usd` (cells, judges, and spend no cell carries), `judge_cost_usd`, `unattributed_cost_usd` |
 | `aggregates` | `dict` | `overall` plus per variant × model |
 | `gate` | `GateResult \| None` | `None` when no thresholds are configured |
 | `warnings` | `list[str]` | Non-fatal issues, e.g. loose secrets-file permissions |

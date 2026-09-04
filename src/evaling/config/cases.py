@@ -18,7 +18,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from evaling.config.errors import ConfigError
-from evaling.config.schema import Case, EvalConfig
+from evaling.config.schema import Case, EvalConfig, Privacy
 from evaling.textfile import read_text
 
 RESERVED_FIELDS = frozenset({"id", "expected", "human_label", "files"})
@@ -37,7 +37,7 @@ def load_cases(config: EvalConfig) -> list[Case]:
     else:
         dataset = config.base_dir / config.cases.file
         cases = _load_dataset(dataset)
-    return _assign_ids(cases)
+    return _assign_ids(cases, config.privacy)
 
 
 def _load_dataset(path: Path) -> list[Case]:
@@ -167,13 +167,20 @@ def _resolve_attachment(raw: str, base_dir: Path, *, may_reach_outside: bool) ->
     return str(resolved)
 
 
-def _assign_ids(cases: list[Case]) -> list[Case]:
+def _assign_ids(cases: list[Case], privacy: Privacy | None = None) -> list[Case]:
     final: list[Case] = []
     seen: set[str] = set()
     for index, case in enumerate(cases, start=1):
         case_id = case.id or f"case-{index}"
         if case_id in seen:
-            raise ConfigError(f"duplicate case id: {case_id!r}")
+            # Named as the user may see it: under no-look the raw id is the
+            # thing being protected, and this reaches a terminal or CI log.
+            shown = case_id
+            if privacy is not None and privacy.no_look and not privacy.keep_case_ids:
+                from evaling.privacy import hash_case_id
+
+                shown = hash_case_id(case_id)
+            raise ConfigError(f"duplicate case id: {shown!r}")
         seen.add(case_id)
         final.append(case if case.id else case.model_copy(update={"id": case_id}))
     return final

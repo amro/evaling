@@ -35,6 +35,35 @@ def run_args(tmp_path, *extra):
     return ("run", str(tmp_path / "eval.yaml"), *extra)
 
 
+def test_a_cached_run_does_not_report_spend_while_it_runs(tmp_path):
+    """The live line and the final total must agree.
+
+    A cached cell made no call, and the totals line and the per-cell header
+    both exclude it — the progress label did not, so a cache-heavy rerun
+    appeared to spend the original price again while reporting $0.00.
+    """
+    (tmp_path / "eval.yaml").write_text(
+        "models: [{id: m, provider: mock, params: {cost: 0.25}}]\n"
+        'variants: [{name: v, prompt: [{role: user, content: "{{ q }}"}]}]\n'
+        "cases: [{id: c1, vars: {q: a}}, {id: c2, vars: {q: b}}]\n"
+        'scorecard: [{criterion: c, scorer: {type: contains, value: ""}}]\n',
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    first = runner.invoke(main, ["-c", str(tmp_path / "eval.yaml"), "run"], catch_exceptions=False)
+    assert first.exit_code == 0
+    assert "$0.5000" in first.output, (
+        "the first run really did spend; otherwise this proves nothing"
+    )
+
+    second = runner.invoke(main, ["-c", str(tmp_path / "eval.yaml"), "run"], catch_exceptions=False)
+    assert second.exit_code == 0
+    assert "2 cached" in second.output
+    assert "$0.5000" not in second.output, (
+        "the progress line counted cached cells as spend, disagreeing with the total"
+    )
+
+
 def test_run_happy_path(tmp_path):
     result = invoke(tmp_path, *run_args(tmp_path))
     assert result.exit_code == 0, result.output

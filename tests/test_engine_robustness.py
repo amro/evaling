@@ -338,6 +338,32 @@ class TestSpendNoRecordCarries:
         spend = RunStore(settings.output_dir).load_spend(result.run_id)
         assert spend["unattributed_cost_usd"] == pytest.approx(0.60)
 
+    def test_a_killed_runs_judge_call_count_survives_too(self, tmp_path):
+        """The count had the same shape as the money: only finalize wrote it."""
+        settings = make_settings(tmp_path)
+        config = self.judged_config(tmp_path, cost=0.01)
+        first = run_eval(config, settings)
+        store = RunStore(settings.output_dir)
+        calls = store.load_spend(first.run_id)["judge_calls"]
+        assert calls > 0, "the fixture must actually call a judge"
+
+        meta = store.load_meta(first.run_id)
+        meta.update(status="running", totals=None)
+        write_json_atomic(settings.output_dir / first.run_id / "run.json", meta)
+
+        assert _prior_spend(store, first.run_id)["judge_calls"] == calls
+
+    def test_a_hand_edited_spend_file_does_not_stop_a_resume(self, tmp_path):
+        """evaling only ever writes floats; a person is the way a string gets in."""
+        settings = make_settings(tmp_path)
+        config = self.judged_config(tmp_path, cost=0.01)
+        first = run_eval(config, settings)
+        store = RunStore(settings.output_dir)
+        (settings.output_dir / first.run_id / "spend.json").write_text(
+            '{"judge_cost_usd": "oops"}', encoding="utf-8"
+        )
+        assert _prior_spend(store, first.run_id)["judge_cost_usd"] >= 0.0
+
     def test_a_killed_runs_judge_spend_survives_into_the_resume(self, tmp_path):
         """The primary resume case: a process killed mid-flight never finalizes."""
         settings = make_settings(tmp_path)

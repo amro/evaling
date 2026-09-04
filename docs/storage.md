@@ -13,6 +13,7 @@ Runs live under the output directory (default `.evaling/runs/`, see
   run.json               # metadata and aggregates
   config.snapshot.yaml   # the exact config used, canonically serialized
   results.jsonl          # one record per variant×model×case
+  spend.json             # spend no record carries, written as it happens
   artifacts/             # binary inputs, content-addressed
 ```
 
@@ -131,10 +132,17 @@ for record in result.records:
 
 ## What `totals` includes
 
-`cost_usd` is what the run actually spent — matrix cells plus any LLM-judge
-calls. `judge_cost_usd` breaks out the judge portion, so per-cell costs sum to
-`cost_usd - judge_cost_usd`. A judge is not a matrix cell, so its spend cannot
-be attributed to one.
+`cost_usd` is what the run actually spent, from three sources: matrix cells,
+LLM-judge calls, and cells that paid for a model call and were then dropped
+when the cost ceiling refused their judge. `judge_cost_usd` and
+`unattributed_cost_usd` break out the last two, so per-cell costs sum to
+`cost_usd - judge_cost_usd - unattributed_cost_usd`. Neither a judge nor a
+dropped cell is a matrix cell, so their spend cannot be attributed to one.
+
+`unattributed_cost_usd` is usually zero. It is non-zero only when `--max-cost`
+stopped a run partway through a judged cell: the cell's own call had already
+been made and billed, and its record is deliberately not written so a resume
+retries it.
 
 `judge_calls` counts the judge calls the run made, which cost cannot stand in
 for: an unpriced judge model bills nothing and is still a call. Both judge

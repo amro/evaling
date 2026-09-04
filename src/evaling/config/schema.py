@@ -403,7 +403,13 @@ class EvalConfig(StrictModel):
         if isinstance(self.cases, list):
             if not self.cases:
                 raise ValueError("cases: at least one case is required")
-            _require_unique((c.id for c in self.cases if c.id is not None), "case id")
+            # Named as the user is entitled to see it: a duplicate is still an
+            # error worth reporting, but under no-look the raw id is the thing
+            # being protected, and this reaches a terminal or a CI log.
+            _require_unique(
+                (_shown_case_id(c.id, self.privacy) for c in self.cases if c.id is not None),
+                "case id",
+            )
 
         model_ids = {m.id for m in self.models}
         judged: dict[str, str] = {}
@@ -451,6 +457,15 @@ class EvalConfig(StrictModel):
                         f"criterion {crit.criterion!r} references unknown judge {judge!r}"
                     )
         return self
+
+
+def _shown_case_id(case_id: str, privacy: "Privacy") -> str:
+    """A case id as it may appear in a message: hashed when no-look hides it."""
+    if not privacy.no_look or privacy.keep_case_ids:
+        return case_id
+    from evaling.privacy import hash_case_id
+
+    return hash_case_id(case_id)
 
 
 def _require_unique(values: Any, kind: str) -> None:

@@ -320,11 +320,17 @@ class RunStore:
             except (OSError, ValueError):
                 data = {}
             if isinstance(data, dict):
-                return {k: float(v or 0.0) for k, v in data.items()}
+                try:
+                    return {k: float(v or 0.0) for k, v in data.items()}
+                except (TypeError, ValueError):
+                    # A hand-edited value should not stop a resume; the totals
+                    # below are the same numbers, one finalize behind.
+                    pass
         totals = self.load_meta(run_id).get("totals") or {}
         return {
             "judge_cost_usd": float(totals.get("judge_cost_usd") or 0.0),
             "unattributed_cost_usd": float(totals.get("unattributed_cost_usd") or 0.0),
+            "judge_calls": float(totals.get("judge_calls") or 0.0),
         }
 
     def load_meta(self, run_id: str) -> dict[str, Any]:

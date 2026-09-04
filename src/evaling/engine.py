@@ -366,7 +366,7 @@ async def _run_eval_impl(
     unattributed_spend = [prior_unattributed]
     # Counted alongside the spend, and cumulative for the same reason: both
     # describe the run, which a resume continues rather than replaces.
-    judge_calls = [int(_prior_judge_total(store, resume_run_id, "judge_calls"))]
+    judge_calls = [int(prior_spend["judge_calls"])]
 
     async def _governed_call(model: ModelSpec, rendered) -> Completion:
         """A model call from outside the matrix — currently an LLM judge.
@@ -427,6 +427,7 @@ async def _run_eval_impl(
                     writer.record_spend(
                         judge_cost_usd=judge_spend[0],
                         unattributed_cost_usd=unattributed_spend[0],
+                        judge_calls=judge_calls[0],
                     )
                 await budget.release(
                     completion.cost_usd if completion else None, failed=completion is None
@@ -491,6 +492,7 @@ async def _run_eval_impl(
                 writer.record_spend(
                     judge_cost_usd=judge_spend[0],
                     unattributed_cost_usd=unattributed_spend[0],
+                    judge_calls=judge_calls[0],
                 )
             budget_gone[0] = True
             stop_early[0] = True
@@ -839,26 +841,13 @@ def _prior_spend(store: RunStore, resume_run_id: str | None) -> dict[str, float]
     interrupted run had spent.
     """
     if resume_run_id is None:
-        return {"judge_cost_usd": 0.0, "unattributed_cost_usd": 0.0}
+        return {"judge_cost_usd": 0.0, "unattributed_cost_usd": 0.0, "judge_calls": 0.0}
     spend = store.load_spend(resume_run_id)
     return {
         "judge_cost_usd": float(spend.get("judge_cost_usd") or 0.0),
         "unattributed_cost_usd": float(spend.get("unattributed_cost_usd") or 0.0),
+        "judge_calls": float(spend.get("judge_calls") or 0.0),
     }
-
-
-def _prior_judge_total(store: RunStore, resume_run_id: str | None, field: str) -> float:
-    """A judge total already recorded on the run being resumed.
-
-    Judge calls are not cells, so they leave no record in results.jsonl —
-    only the run's totals remember them, and finalize() replaces that total
-    rather than adding to it. A run written before a field existed reports
-    nothing for it, which reads as zero.
-    """
-    if resume_run_id is None:
-        return 0.0
-    totals = store.load_meta(resume_run_id).get("totals") or {}
-    return float(totals.get(field) or 0.0)
 
 
 def _reported_case_id(case_id: str, privacy: "Privacy") -> str:
@@ -966,8 +955,9 @@ class _RunTally:
         return {
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
-            # What the run actually cost, cells plus judges. Per-cell costs sum
-            # to cost_usd - judge_cost_usd, because a judge is not a cell.
+            # What the run actually cost: cells, judges, and cells that paid
+            # for a call before the ceiling refused their judge. Per-cell costs
+            # are cost_usd minus the other two, since neither is a cell.
             "cost_usd": round(self.cost_usd + self.judge_cost_usd + self.unattributed_cost_usd, 10),
             "judge_cost_usd": round(self.judge_cost_usd, 10),
             "unattributed_cost_usd": round(self.unattributed_cost_usd, 10),
