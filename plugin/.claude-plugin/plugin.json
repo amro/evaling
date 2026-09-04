@@ -1,7 +1,7 @@
 {
   "name": "evaling",
   "description": "Compare prompt variants and models from Claude Code. Runs an eval matrix, scores it, and gates on regressions against a pinned baseline.",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "author": {
     "name": "Amro Mousa"
   },
