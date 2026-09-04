@@ -10,6 +10,8 @@ library, exactly like the CLI. The functions below are plain and directly
 testable; ``build_server()`` only registers them.
 """
 
+import functools
+import inspect
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -507,6 +509,40 @@ def config_schema_resource() -> dict[str, Any]:
     return schema
 
 
+def _surface_errors(fn):
+    """Re-raise evaling's own errors as ToolError, which the SDK preserves.
+
+    mcp 2.1 replaced the text of any exception that is not a ToolError with a
+    bare "Error executing tool <name>", so an agent that asked for a run which
+    does not exist learned nothing about why — on every tool, for every
+    failure. Our messages are written to be read by the caller and name the
+    thing to fix, so they are raised as the one type both 2.0 and 2.1 pass
+    through. Conversion has to happen inside the tool: by the time the SDK's
+    call_tool returns, the exception has already been swallowed.
+    """
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    if inspect.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await fn(*args, **kwargs)
+            except EvalingError as exc:
+                raise ToolError(str(exc)) from exc
+
+        return wrapper
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except EvalingError as exc:
+            raise ToolError(str(exc)) from exc
+
+    return wrapper
+
+
 def build_server(output_dir: str | None = None, config_path: str | None = None):
     """Register the tools on an MCP server (import is lazy: optional dep)."""
     # Bound once here so the tool wrappers below can take `config_path` as
@@ -546,6 +582,7 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         return set_up_eval_prompt(task)
 
     @server.tool(description=run_eval_tool.__doc__)
+    @_surface_errors
     async def run_eval(
         ctx: Context,
         config_path: str = config_path or "eval.yaml",
@@ -583,26 +620,32 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
         )
 
     @server.tool(description=get_run_tool.__doc__)
+    @_surface_errors
     def get_run(run_id: str, detail: str = "summary", page: int = 1) -> dict[str, Any]:
         return get_run_tool(run_id, detail, page, output_dir, config_path)
 
     @server.tool(description=get_case_result_tool.__doc__)
+    @_surface_errors
     def get_case_result(run_id: str, variant: str, model: str, case_id: str) -> dict[str, Any]:
         return get_case_result_tool(run_id, variant, model, case_id, output_dir, config_path)
 
     @server.tool(description=compare_runs_tool.__doc__)
+    @_surface_errors
     def compare_runs(run_a: str, run_b: str) -> dict[str, Any]:
         return compare_runs_tool(run_a, run_b, output_dir, config_path)
 
     @server.tool(description=list_runs_tool.__doc__)
+    @_surface_errors
     def list_runs(limit: int = 20) -> dict[str, Any]:
         return list_runs_tool(limit, output_dir, config_path)
 
     @server.tool(description=set_baseline_tool.__doc__)
+    @_surface_errors
     def set_baseline(run_id: str) -> dict[str, Any]:
         return set_baseline_tool(run_id, output_dir, config_path)
 
     @server.tool(description=render_prompt_tool.__doc__)
+    @_surface_errors
     def render_prompt(
         config_path: str | None = None,
         variant: str | None = None,

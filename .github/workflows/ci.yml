@@ -29,6 +29,31 @@ jobs:
       - run: uv export --no-dev --no-emit-project --format requirements-txt -o requirements-audit.txt
       - run: uvx pip-audit -r requirements-audit.txt
 
+  # The lockfile pins one `mcp`, but the published extra allows a range, so a
+  # user resolves whatever is newest. mcp 2.1 replaced every tool error message
+  # with a bare "Error executing tool <name>" and shipped to users unnoticed —
+  # CI was green the whole time, because CI only ever ran the pinned version.
+  # This job runs the MCP tests against the newest mcp the extra permits.
+  mcp-latest:
+    runs-on: ubuntu-latest
+    continue-on-error: true # a broken upstream release is news, not our red build
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev
+      - name: MCP tests against the newest permitted mcp
+        # --upgrade-package is load-bearing: without it uv reuses the locked
+        # mcp and this job silently re-tests the version CI already covers.
+        run: |
+          uv run --isolated --upgrade-package mcp --with-editable . \
+            --with 'mcp<3' --with pytest --with pytest-cov \
+            python -c 'from importlib.metadata import version; print("mcp under test:", version("mcp"))'
+          uv run --isolated --upgrade-package mcp --with-editable . \
+            --with 'mcp<3' --with pytest --with pytest-cov \
+            python -m pytest tests/test_mcp_server.py tests/test_surface_parity.py -q
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
