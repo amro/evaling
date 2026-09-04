@@ -92,9 +92,14 @@ The `command` contract, in full:
 
 - `command` is a single shell string (`python3 classify.py`), not a list.
 - It runs with the working directory set to the config file's directory.
-- Stdin is a JSON request whose `messages[]` each carry `role` and `parts[]`.
-  Every part has a `type`: a text part is `{"type": "text", "text": "..."}`.
-- Stdout is the completion text. A non-zero exit is reported as a cell error.
+- Stdin is a JSON request: `model`, `params`, and `messages[]`, each message
+  carrying `role` and `parts[]`. Every part has a `type`: a text part is
+  `{"type": "text", "text": "..."}`; a media part carries `media_type`,
+  `sha256` and `source`.
+- Stdout is the completion text — unless it is a JSON object with a `text`
+  key, which evaling unwraps, and which may also report `input_tokens`,
+  `output_tokens` and `cost_usd`. A non-zero exit is reported as a cell
+  error.
 - The default timeout is 300s; set `timeout_s` on the model to change it.
 
 ## Cost control

@@ -8,6 +8,7 @@ evaling [GLOBAL FLAGS] COMMAND [ARGS]
 
 | Flag | Effect |
 |---|---|
+| `--version` | Print the installed version and exit |
 | `-c, --config PATH` | Eval config file (default `eval.yaml`) |
 | `-o, --output-dir PATH` | Where runs are stored (top of the settings layers) |
 | `--cache-dir PATH` | Response cache location |

@@ -201,12 +201,14 @@ Four things the built-in rates deliberately do not know:
   `gemini-2.5-pro`, a broker reselling one — is priced as though it were that
   model. Set `pricing` on those.
 - **What a moving alias points at today.** Names like `gemini-flash-latest`
-  track whatever is current, and what that is changes without notice, so the
-  table carries no rate for them and evaling reports their cost as unknown.
-  That is deliberate: a recorded rate for a moving name goes stale silently and
-  in the dangerous direction — it under-counts spend once the alias moves to a
-  costlier model, which is exactly when `--max-cost` needs to hold. Name the
-  concrete model id you mean, or set `pricing`.
+  track whatever is current, and what that is changes without notice. Where a
+  provider prices such a name on its own card, the table carries that rate
+  (`chat-latest` is the one that does). Where it does not, the table carries
+  nothing and evaling reports the cost as unknown rather than inventing one: a
+  rate guessed for a moving name goes stale silently and in the dangerous
+  direction, under-counting spend once the alias moves to a costlier model,
+  which is exactly when `--max-cost` needs to hold. Either way, naming the
+  concrete model id you mean is the reliable option.
 
 A config `pricing` block always wins over the built-in table, so you can
 correct a stale rate without waiting for a release. Rates must be non-negative

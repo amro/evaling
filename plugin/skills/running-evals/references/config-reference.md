@@ -41,7 +41,7 @@ A list. Each entry:
 | --- | --- |
 | `id` | Model identifier, sent to the provider and shown in results. |
 | `provider` | One of the providers below. |
-| `base_url` | Endpoint override, for `openai-compatible`. |
+| `base_url` | Endpoint override, honoured by every HTTP provider — on `anthropic` or `openai` it sends that model's requests, and its key, elsewhere. Required by `openai-compatible`. |
 | `command` | The program to run. Required by, and only valid for, `command`. |
 | `api_key_env` | Environment variable holding the key. Must look like a variable name — a pasted key is rejected here rather than committed. |
 | `timeout_s` | Per-request timeout. Defaults to 120s, or 300s for `command`. |
@@ -49,7 +49,7 @@ A list. Each entry:
 | `max_concurrency` | Cap in-flight calls to this model. |
 | `requests_per_minute` | Proactive rate limit for this model. |
 | `role` | `candidate` (default, gets matrix cells), `judge` (only called by `llm-judge`), or `both`. |
-| `params` | Provider parameters — `max_tokens`, `temperature`, and `pricing` for cost overrides. |
+| `params` | Provider parameters, forwarded verbatim. Three are read by evaling: `model` (API name when it differs from `id`, and what pricing is keyed on), `pricing` (rate override), `max_tokens` (bounds the estimate). |
 
 ### variants
 
@@ -118,9 +118,13 @@ per variant.
 
 The `command` contract: `command` is a single shell string, run with the
 working directory set to the config's directory. The rendered request arrives
-on stdin as JSON — `messages[]` each with `role` and `parts[]`, every part
-carrying a `type`, a text part being `{"type": "text", "text": "..."}` — and
-the completion is read from stdout. A non-zero exit becomes a cell error.
+on stdin as JSON — `model`, `params`, and `messages[]`, each with `role` and
+`parts[]`; every part carries a `type`, a text part being
+`{"type": "text", "text": "..."}` and a media part carrying `media_type`,
+`sha256` and `source`. The completion is read from stdout, unless stdout is a
+JSON object with a `text` key, which evaling unwraps and which may also report
+`input_tokens`, `output_tokens` and `cost_usd`. A non-zero exit becomes a cell
+error.
 
 ## Scorer types
 

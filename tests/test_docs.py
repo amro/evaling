@@ -1,11 +1,18 @@
 """The docs are checked like code, because prose rots silently.
 
-Three classes of rot, each cheap to catch and expensive to find by hand:
+What is automated here is what breaks silently and reaches a reader
+immediately:
 
 * a YAML example that no longer matches the schema
-* a command or flag that exists but is undocumented (or documented but gone)
-* a documented invocation that the CLI would refuse to parse
-* a link to a file that has been moved or renamed
+* prose naming a command the CLI does not have, or a group without its
+  subcommand
+* a documented invocation the CLI would refuse to parse
+* a link or anchor pointing at something moved or renamed
+
+Deliberately not automated: whether every command and flag *appears* in
+docs/cli.md, and whether troubleshooting headings still quote real error text.
+Those are completeness checks a reader survives and a reviewer catches, so
+they are review discipline rather than a build failure.
 """
 
 import json

@@ -102,7 +102,12 @@ and a user keeps whatever evaling they already had, reading a skill that
 describes a newer one — and never receives a fix, since the bound is the only
 upgrade signal they get.
 
-The upper bound is the next minor, so it changes only when the minor does.
+The upper bound is the next minor, so it changes only when the minor does:
+a 0.2.4 → 0.2.5 patch gives `>=0.2.5,<0.3`, while 0.2.5 → 0.3.0 gives
+`>=0.3.0,<0.4`.
+
+Then `uv lock`, because the lockfile records evaling's own version too. A
+bump committed without it leaves the tagged tree disagreeing with itself.
 
 In `CHANGELOG.md`, retitle `## [Unreleased]` as `## [0.2.0] - YYYY-MM-DD` and
 leave a fresh empty `## [Unreleased]` above it.

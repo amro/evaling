@@ -90,7 +90,9 @@ class ModelSpec(StrictModel):
     provider: ProviderName = Field(description="Which adapter talks to this model.")
     base_url: str | None = Field(
         default=None,
-        description="Endpoint override. Required by `openai-compatible`; ignored elsewhere.",
+        description="Endpoint override, honoured by every HTTP provider — setting it on an "
+        "`anthropic` or `openai` model sends that model's requests, and its API key, to this "
+        "address instead. Required by `openai-compatible`; ignored by `command` and `mock`.",
     )
     command: str | None = Field(
         default=None,
@@ -149,7 +151,7 @@ class ModelSpec(StrictModel):
         default="candidate",
         description="What the model is here for. `candidate` is under test and gets matrix "
         "cells; `judge` is only called by an llm-judge scorer and gets none; `both` is graded "
-        "and grading. A judge left as `candidate` silently doubles the run.",
+        "and grading. A judge left as `candidate` is refused at load time.",
     )
     params: dict[str, Any] = Field(
         default_factory=dict,
@@ -320,7 +322,8 @@ class JudgeSpec(StrictModel):
     model: str = Field(
         min_length=1,
         description="Id of the model that grades. It must appear in `models` with role `judge` "
-        "or `both`, or it would also be evaluated as a candidate.",
+        "or `both`; a plain `candidate` is refused at load time, since it would be evaluated as "
+        "well as grading.",
     )
     rubric: str | list[Message] = Field(
         description="A string is a path to a rubric prompt file, relative to the config; a list "

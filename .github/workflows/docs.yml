@@ -5,8 +5,8 @@ name: Docs
 # Skipping CI entirely on markdown would be wrong here, because the docs are
 # genuinely tested: `ruff format` reformats Python inside markdown fences, and
 # tests/test_docs.py validates every YAML example against the real config
-# schema, checks that each command and flag appears in docs/cli.md, and
-# resolves every relative link. A broken docs change fails a build.
+# schema, refuses prose naming a command the CLI does not have, and resolves
+# every relative link and anchor. A broken docs change fails a build.
 #
 # What it does not need is nine of them. One ubuntu runner is the whole matrix
 # here: nothing about a prose change is platform- or version-dependent, and

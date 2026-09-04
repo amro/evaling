@@ -16,10 +16,13 @@ gpt-3.5-turbo-instruct-0914
 gemma-4-26b-a4b-it
 gemma-4-31b-it
 
-# -- Moving aliases -------------------------------------------------------
-# These track whatever is current, so any rate recorded for them goes stale
-# silently and under-counts once the alias moves to a costlier model. See the
-# note in docs/providers.md.
+# -- Moving aliases the card does not price -------------------------------
+# These track whatever is current, and no card gives them a rate of their own.
+# A rate guessed from today's target goes stale silently and under-counts once
+# the alias moves to a costlier model. See the note in docs/providers.md.
+#
+# Where a card *does* price an unversioned name, it goes in PRICES instead —
+# `chat-latest` is the one that does.
 gemini-flash-latest
 gemini-flash-lite-latest
 gemini-pro-latest

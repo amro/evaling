@@ -1,4 +1,4 @@
-"""The weekly coverage check, exercised without touching a network.
+"""The release-time coverage check, exercised without touching a network.
 
 The script's own job is to make network calls, so the parts worth testing are
 the ones that decide what counts as a finding: the text-model filter, the
