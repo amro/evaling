@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every config field now carries a description**, so the schema served at
+  `evaling://config-schema` says what a field is *for* rather than only what
+  type it is. All 53 were bare; a test fails if a new one arrives without one.
+
+- **A `set_up_eval` prompt on the MCP server**, carrying the workflow the
+  Claude Code plugin ships as `/evaling:init` — read the schema, compare at
+  least two variants, prefer a deterministic scorer, validate before spending.
+  Prompts are offered to every MCP client, so this is no longer Claude
+  Code-only.
+
+
 - **A note on moving aliases in `docs/providers.md`.** Names like
   `gemini-flash-latest` track whatever is current, so the table carries no rate
   and evaling reports their cost as unknown. Documented as deliberate: a

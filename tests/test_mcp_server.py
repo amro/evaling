@@ -27,6 +27,7 @@ from evaling.mcp_server import (
     render_prompt_tool,
     run_eval_tool,
     set_baseline_tool,
+    set_up_eval_prompt,
 )
 from evaling.providers import _REGISTRY
 from evaling.providers.mock import MockProvider
@@ -349,6 +350,21 @@ class TestConfigSchemaResource:
         with pytest.raises(ValidationError, match="requires 'base_url'"):
             EvalConfig.model_validate(config)
 
+    def test_every_field_carries_a_description(self):
+        """Types and enums say what is legal; only prose says what to choose.
+
+        A field added without one degrades the resource silently — the schema
+        still validates, and an agent reading it just has less to go on.
+        """
+        schema = self.schema()
+        bare = [
+            f"{owner}.{field}"
+            for owner, definition in [("EvalConfig", schema), *schema["$defs"].items()]
+            for field, spec in definition.get("properties", {}).items()
+            if not spec.get("description")
+        ]
+        assert not bare, "config fields with no description: " + ", ".join(sorted(bare))
+
     def test_it_covers_every_top_level_key(self):
         from evaling.config.schema import EvalConfig
 
@@ -389,6 +405,38 @@ class TestConfigSchemaResource:
     def test_the_instructions_point_at_it(self, tmp_path):
         """Nothing prompts a read unless the server says the resource is there."""
         assert CONFIG_SCHEMA_URI in build_server(output_dir=str(tmp_path)).instructions
+
+
+class TestSetUpEvalPrompt:
+    """The workflow the plugin ships as a command, served to every client.
+
+    A prompt is the only piece of that workflow a non-Claude-Code client can
+    reach, so what matters is that it arrives intact and carries the two things
+    an agent cannot infer: read the schema first, and validate before spending.
+    """
+
+    def test_it_is_advertised(self, tmp_path):
+        server = build_server(output_dir=str(tmp_path))
+        prompts = {p.name: p for p in asyncio.run(server.list_prompts())}
+        assert "set_up_eval" in prompts
+        assert prompts["set_up_eval"].description
+
+    def test_it_carries_the_task_it_was_given(self):
+        text = set_up_eval_prompt("classify support tickets")
+        assert "classify support tickets" in text
+
+    def test_it_stands_alone_without_a_task(self):
+        """Clients may offer a prompt with no arguments filled in."""
+        assert "the task the user describes" in set_up_eval_prompt()
+        assert set_up_eval_prompt("   ") == set_up_eval_prompt()
+
+    def test_it_names_the_two_things_an_agent_cannot_infer(self):
+        text = set_up_eval_prompt("anything")
+        assert CONFIG_SCHEMA_URI in text, "an agent will guess at the config without this"
+        assert "evaling validate" in text, "the cross-field rules are invisible otherwise"
+
+    def test_the_instructions_point_at_it(self, tmp_path):
+        assert "set_up_eval" in build_server(output_dir=str(tmp_path)).instructions
 
 
 class TestWhenMcpIsUnusable:
@@ -568,6 +616,18 @@ class TestOverTheProtocol:
         strictness = self.drive(project, body)
         permissive = [name for name, value in strictness.items() if value is not False]
         assert not permissive, f"these tools accept unknown arguments: {permissive}"
+
+    def test_the_prompt_is_reachable_over_the_protocol(self, project):
+        """Registered in-process is not the same as offered to a client."""
+
+        async def body(session, init):
+            listed = await session.list_prompts()
+            got = await session.get_prompt("set_up_eval", {"task": "triage tickets"})
+            return [p.name for p in listed.prompts], got.messages[0].content.text
+
+        names, text = self.drive(project, body)
+        assert "set_up_eval" in names
+        assert "triage tickets" in text
 
     def test_the_config_schema_is_readable_over_the_protocol(self, project):
         """Registered in-process is not the same as reachable by a client."""

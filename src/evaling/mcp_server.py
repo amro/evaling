@@ -53,6 +53,9 @@ exception — those pass through and are ignored.
 The schema cannot express the loader's cross-field rules, so a config that
 matches it can still be rejected. `evaling validate` is the check that catches
 those, and it calls no model.
+
+Setting one up from scratch: the set_up_eval prompt carries the whole workflow,
+including which scorer to reach for and what to check before spending anything.
 """
 
 #: URI of the config schema resource.
@@ -430,6 +433,45 @@ def _unusable_mcp_message(err: ImportError) -> str:
     return f"mcp {found} is installed but could not be loaded: {err}"
 
 
+def set_up_eval_prompt(task: str = "") -> str:
+    """Scaffold an eval and author a config for a task.
+
+    The same workflow the Claude Code plugin ships as /evaling:init, served
+    here so every MCP client has it rather than only that one.
+    """
+    goal = task.strip() or "the task the user describes"
+    return f"""Set up an evaling project in the current directory and write a
+working eval.yaml for: {goal}
+
+1. Read the evaling://config-schema resource first. It is generated from this
+   evaling, so its key names, types and enums are the ones enforced, and each
+   field carries a description. A mistyped top-level key is a load error.
+
+2. Scaffold with `evaling init` for a commented config, a .gitignore and a
+   secrets example. Do not overwrite an existing eval.yaml — read it and
+   extend it instead. If `evaling` is not on PATH, use
+   `uvx --from 'evaling[mcp]' evaling init`.
+
+3. Establish what is being compared. An eval needs at least two variants; one
+   prompt produces a number with nothing to compare it against. Ask if the
+   task above does not say.
+
+4. Prefer a deterministic scorer wherever the task admits one — `exact` or
+   `regex` for a label, `json-schema` for a structured response. Reach for
+   `llm-judge` only where correctness is genuinely a matter of judgement, and
+   say so: it costs a model call per cell.
+
+5. Run `evaling validate` before spending anything. It renders every prompt
+   and reports the request count without calling a model, and it catches the
+   cross-field rules the schema cannot express.
+
+6. Then run small — `--sample` and `--max-cost` — before a full run, and
+   report the request count and estimated cost before the first billable one.
+
+7. Pin the baseline once the first run looks right, so later changes are
+   measured against it rather than against nothing."""
+
+
 def config_schema_resource() -> dict[str, Any]:
     """JSON Schema for eval.yaml, as far as JSON Schema can express it.
 
@@ -494,6 +536,14 @@ def build_server(output_dir: str | None = None, config_path: str | None = None):
     )
     def config_schema() -> dict[str, Any]:
         return config_schema_resource()
+
+    @server.prompt(
+        name="set_up_eval",
+        title="Set up an eval",
+        description="Scaffold an evaling project and author an eval.yaml for a task.",
+    )
+    def set_up_eval(task: str = "") -> str:
+        return set_up_eval_prompt(task)
 
     @server.tool(description=run_eval_tool.__doc__)
     async def run_eval(
