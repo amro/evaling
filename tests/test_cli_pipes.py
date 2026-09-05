@@ -24,6 +24,7 @@ def test_cli_preserves_sigpipe_handler(tmp_path):
         signal.signal(signal.SIGPIPE, previous)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="SIGPIPE regression; Windows pipes report EINVAL")
 def test_closed_cli_output_exits_quietly(tmp_path):
     # Close the read end before launch: unlike `| head`, this cannot race
     # with a small output fitting in the pipe before the consumer exits.

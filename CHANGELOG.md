@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A command closing stdin early could terminate the CLI with SIGPIPE.**
   The CLI no longer changes the process-wide signal handler. Closed output
-  consumers still exit quietly through Click's broken-pipe handling.
+  consumers on POSIX still exit quietly through Click's broken-pipe handling.
 
 - **The request log's overwrite guard was effectively untested.** The test for
   the substitution window planted a replacement whose contents were not valid
