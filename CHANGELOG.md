@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Timed-out or cancelled command providers could leave scripts running and
+  pipes attached to a closed event loop.** Cleanup now terminates the command
+  group/tree, drains pipe I/O, and closes the subprocess transport before
+  returning. Repeated cancellation cannot interrupt that cleanup. Regression
+  tests check live descendant processes and pipe closure, not only shell exit.
+  Deliberately detached workers are outside this guarantee; see the command
+  provider's documented platform limits.
+
 - **The request log's overwrite guard was effectively untested.** The test for
   the substitution window planted a replacement whose contents were not valid
   JSON, so the content validator refused it and the test passed whether or not

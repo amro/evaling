@@ -96,6 +96,20 @@ models:
 config value — no case or template data is ever interpolated into it — but
 treat it like any other command you commit to a repo.
 
+On timeout or cancellation, evaling terminates the command's process group
+on POSIX, or uses `taskkill /T /F` for its process tree on Windows. It then
+drains and closes the subprocess pipes before returning; repeated cancellation
+does not abandon cleanup. Pipe draining has a five-second cleanup limit
+(Windows tree termination can take up to another five seconds), separate from
+the model's `timeout_s`.
+
+This is lifecycle cleanup, not process sandboxing. Keep wrappers alive until
+their workers finish. Processes that deliberately detach into another session
+can escape POSIX group termination; Windows tree termination requires the
+original command shell to remain alive and `taskkill` to succeed. If such a
+process keeps a pipe open, evaling closes its own end after the cleanup limit,
+but cannot promise that the detached worker was terminated.
+
 The stdin payload is `{"model": ..., "params": {...}, "messages": [...]}`, where
 each message has `role` and `parts`. Every part carries a `type` to switch on:
 a text part is `{"type": "text", "text": "..."}`, and a media part is its kind

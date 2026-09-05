@@ -49,6 +49,10 @@ A change touching only markdown gets `.github/workflows/docs.yml` instead of
 the full matrix: the same lint, format, and test run, on one runner. The docs
 are tested, so they still get a build — just a proportionate one.
 
+Unraisable exceptions (such as subprocess transports finalized after their
+event loop closed) fail the suite. A passing assertion count must not hide a
+resource-cleanup failure in the warnings summary.
+
 Faster loop while working:
 
 ```sh

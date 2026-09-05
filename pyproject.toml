@@ -70,6 +70,7 @@ packages = ["src/evaling"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
 markers = [
     "slow: end-to-end or scale tests (deselect with -m 'not slow')",
     "perf: timing and memory guards (CI runs these alone, without coverage)",
