@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MCP rebuilt large runs in memory.** Failure summaries now retain only
+  five examples, paginated reads only one page, and single-cell reads only
+  the matching cell. Exact totals and detection of later file corruption are
+  preserved by scanning the results stream to its end.
+
 - **Resume omitted scoring files from its fingerprint.** Editing a Python
   scorer or external JSON schema could mix two grading rules in one run.
   Both are now hashed; runs using them that started before 0.2.6 must restart.

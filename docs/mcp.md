@@ -292,6 +292,13 @@ on request, pagination on anything unbounded, and long outputs snipped with an
 explicit pointer to `get_case_result` — so a 40-cell run doesn't dump 200 KB
 into an agent's context.
 
+**Result inspection streams from disk.** `run_eval` counts all failures but
+keeps only five example rows. `get_run` keeps only its requested page, and
+`get_case_result` keeps only the matching cell. These operations still scan
+to EOF to preserve exact totals and detect corruption later in the file:
+memory does not grow with the number of result records, but read time does.
+The size of an individual cell (including full scorer details) still matters.
+
 **The server holds no logic of its own.** Every tool is a thin call into the
 same core library the CLI uses, so both surfaces behave identically and can't
 drift.

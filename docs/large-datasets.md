@@ -6,9 +6,10 @@ live in a warehouse, a ticket system, or an API, there are hundreds of
 thousands of them, and nobody wants a copy in git.
 
 A **case source** is Python you write that evaling calls for pages of cases.
-Cases stream a page at a time, so a run's memory is bounded by concurrency
-rather than by case count — a run over 500,000 cases costs no more up front
-than a run over ten.
+Cases stream a page at a time, so case-content memory is bounded by page size
+and concurrency rather than total case count. Cursor-cycle detection retains
+one cursor per fetched page; that bookkeeping set still grows with the
+number of pages. A large run does not load its entire dataset up front.
 
 If the data is also something you are not permitted to read, that is a second,
 separate feature layered on this one: [no-look mode](no-look.md).
@@ -127,8 +128,9 @@ real one; otherwise the output says it is a sample.
 
 ## What sources cost you
 
-Streaming cases removes the last part of a run whose memory grew with the
-number of cases. Three things change in exchange:
+Streaming cases avoids retaining the whole dataset and its result records.
+Cursor tracking still grows per page, as noted above. Three things change
+in exchange:
 
 - **`--case` filtering doesn't work.** evaling doesn't know the ids in advance.
   Filter inside your source (that is what `params` is for), or use `limit`.

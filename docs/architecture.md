@@ -76,18 +76,22 @@ The matrix is a generator, not a list, and cells stream through a fixed worker
 pool — so in-flight work is bounded by `concurrency` rather than by cell
 count. Aggregates accumulate per record (`scoring.Aggregator`) instead of
 being computed from a retained list, and records above a cap aren't kept at
-all. A case source extends the same idea to the cases themselves, which were
-the last part of a run whose cost grew with its size.
+all. A case source extends the same idea to the cases themselves, retaining
+one page plus in-flight cases. Its cursor-cycle detector still keeps one
+cursor per fetched page. MCP result inspection streams from disk and retains
+only the requested rows, even when every result failed.
 
 `aggregate()` is implemented on top of `Aggregator`, so there is one
 implementation of the arithmetic rather than two that can drift apart.
 
-### Redaction happens at one place
+### Redaction happens before public surfaces
 
 No-look mode strips case content the moment a cell finishes scoring, before
 the record reaches storage, callbacks, display, reports, or MCP. Everything
 downstream is then structurally unable to leak it. The alternative — asking
-each subsystem to remember — works until the seventh one forgets.
+each subsystem to remember — works until the seventh one forgets. Source
+errors bypass cell records, so the engine also withholds their diagnostics
+and exception chains under no-look, including during dry-runs.
 
 Scorers deliberately sit *before* that boundary: a scorer sees the real output
 and emits a verdict plus whatever detail its author deems safe, which puts the

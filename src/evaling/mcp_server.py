@@ -12,6 +12,7 @@ testable; ``build_server()`` only registers them.
 
 import functools
 import inspect
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,7 @@ from evaling.engine import (
 )
 from evaling.errors import EvalingError
 from evaling.render import render_messages
-from evaling.scoring import cell_summary, compare_aggregates, filter_failures, selection_note
+from evaling.scoring import cell_summary, compare_aggregates, selection_note
 from evaling.storage import ResultRecord, RunStore, serialize_messages
 
 #: Cap on inlined model output. Full text is one get_case_result away.
@@ -120,6 +121,26 @@ def _run_summary(meta: dict[str, Any]) -> dict[str, Any]:
         "aggregates": meta.get("aggregates"),
         "gate": meta.get("gate"),
     }
+
+
+def _record_page(
+    records: Iterable[ResultRecord], *, start: int, size: int, failures_only: bool = False
+) -> tuple[list[dict[str, Any]], int]:
+    """Count all matching cells, retaining only the requested rows.
+
+    Read to EOF even once the page is full: totals must be exact and storage
+    corruption must not be hidden by pagination. Memory is bounded by the page
+    size, including for an entirely failing run.
+    """
+    rows = []
+    total = 0
+    for record in records:
+        if failures_only and cell_summary(record)[1]:
+            continue
+        if start <= total < start + size:
+            rows.append(_cell_row(record))
+        total += 1
+    return rows, total
 
 
 # -- tools ---------------------------------------------------------------
@@ -228,12 +249,12 @@ async def run_eval_tool(
     if result.incomplete:
         summary["incomplete"] = True
         summary["hint"] = "the cost ceiling stopped this run; resume it with a higher one"
-    # result.records is empty above the retention cap, so stream from disk —
-    # without materializing the run, which can be far larger than the failures.
-    failures = filter_failures(result.iter_records())
-    if failures:
-        summary["failure_count"] = len(failures)
-        summary["first_failures"] = [_cell_row(record) for record in failures[:5]]
+    first_failures, failure_count = _record_page(
+        result.iter_records(), start=0, size=5, failures_only=True
+    )
+    if failure_count:
+        summary["failure_count"] = failure_count
+        summary["first_failures"] = first_failures
         summary["hint"] = 'call get_run(detail="failures") for the rest'
     return summary
 
@@ -254,19 +275,22 @@ def get_run_tool(
     if detail == "summary":
         return payload
 
-    records = store.load_results(resolved)
-    selected = filter_failures(records) if detail == "failures" else records
     if page < 1:
         raise EvalingError("page must be >= 1")
     start = (page - 1) * PAGE_SIZE
-    window = selected[start : start + PAGE_SIZE]
-    payload["cells"] = [_cell_row(record) for record in window]
+    window, total = _record_page(
+        store.iter_results(resolved),
+        start=start,
+        size=PAGE_SIZE,
+        failures_only=detail == "failures",
+    )
+    payload["cells"] = window
     payload["page"] = {
         "page": page,
         "page_size": PAGE_SIZE,
         "returned": len(window),
-        "total": len(selected),
-        "has_more": start + len(window) < len(selected),
+        "total": total,
+        "has_more": start + len(window) < total,
     }
     return payload
 
@@ -282,19 +306,24 @@ def get_case_result_tool(
     """One cell in full: untruncated output, every criterion, the prompt sent."""
     store = _store(output_dir, config_path)
     resolved = store.resolve_ref(run_id)
-    for record in store.load_results(resolved):
-        if (record.variant, record.model, record.case_id) == (variant, model, case_id):
-            row = _cell_row(record, snippet=False)
-            row["scores"] = record.scores
-            row["messages"] = record.messages
-            row["usage"] = {
-                "input_tokens": record.input_tokens,
-                "output_tokens": record.output_tokens,
-                "cost_usd": record.cost_usd,
-                "latency_ms": record.latency_ms,
-                "cached": record.cached,
-            }
-            return row
+    selected = None
+    for record in store.iter_results(resolved):
+        if selected is None and record.key == (variant, model, case_id):
+            selected = record
+    # Scan to EOF before returning, as load_results did, so a matching cell
+    # near the start cannot conceal corruption later in the stored run.
+    if selected is not None:
+        row = _cell_row(selected, snippet=False)
+        row["scores"] = selected.scores
+        row["messages"] = selected.messages
+        row["usage"] = {
+            "input_tokens": selected.input_tokens,
+            "output_tokens": selected.output_tokens,
+            "cost_usd": selected.cost_usd,
+            "latency_ms": selected.latency_ms,
+            "cached": selected.cached,
+        }
+        return row
     raise EvalingError(
         f"no cell {variant!r} × {model!r} × {case_id!r} in run {resolved} "
         '(call get_run(detail="full") to list them)'
