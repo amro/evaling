@@ -15,6 +15,16 @@ WORKFLOWS = REPO / ".github" / "workflows"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
+def test_newest_mcp_job_includes_all_mcp_test_modules():
+    import yaml
+
+    workflow = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+    commands = "\n".join(step.get("run", "") for step in workflow["jobs"]["mcp-latest"]["steps"])
+    for path in (REPO / "tests").glob("test_mcp*.py"):
+        assert f"tests/{path.name}" in commands, f"newest-MCP job omits {path.name}"
+    assert "tests/test_source_privacy.py" in commands
+
+
 def uses(path: Path) -> list[str]:
     """Every `uses:` reference in a workflow, in file order."""
     return re.findall(r"^\s*-?\s*uses:\s*(\S+)", path.read_text(encoding="utf-8"), re.M)

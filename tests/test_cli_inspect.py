@@ -1,5 +1,4 @@
 import json
-import os
 
 import pytest
 from click.testing import CliRunner
@@ -277,8 +276,8 @@ class TestEmptyOptionValuesAreRefused:
         # case fails on "config not found" and the test passes for the wrong
         # reason — which it did on the first attempt.
         base = ["-o", str(project / "runs"), "--cache-dir", str(project / "c")]
-        with CliRunner().isolated_filesystem(temp_dir=project) as _:
-            os.chdir(project)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.chdir(project)
             return CliRunner().invoke(main, base + list(args), env=ENV, catch_exceptions=False)
 
     @pytest.mark.parametrize(

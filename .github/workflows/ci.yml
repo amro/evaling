@@ -52,7 +52,8 @@ jobs:
             python -c 'from importlib.metadata import version; print("mcp under test:", version("mcp"))'
           uv run --isolated --upgrade-package mcp --with-editable . \
             --with 'mcp<3' --with pytest --with pytest-cov \
-            python -m pytest tests/test_mcp_server.py tests/test_surface_parity.py -q
+            python -m pytest tests/test_mcp_server.py tests/test_mcp_streaming.py \
+              tests/test_source_privacy.py tests/test_surface_parity.py -q
 
   test:
     runs-on: ${{ matrix.os }}

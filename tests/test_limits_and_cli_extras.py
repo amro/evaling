@@ -334,17 +334,18 @@ class TestValidateCommand:
 
 
 class TestInitProvider:
-    def test_scaffold_includes_gitignore_and_secrets_example(self):
+    def test_scaffold_includes_gitignore_and_secrets_example(self, tmp_path, monkeypatch):
         runner = CliRunner()
-        with runner.isolated_filesystem() as root:
-            from pathlib import Path
+        monkeypatch.chdir(tmp_path)
+        root = tmp_path
+        from pathlib import Path
 
-            result = runner.invoke(main, ["init"], env=ENV, catch_exceptions=False)
-            assert result.exit_code == 0
-            gitignore = (Path(root) / ".gitignore").read_text(encoding="utf-8")
-            assert ".evaling/" in gitignore
-            assert ".evaling.secrets.yaml" in gitignore
-            assert (Path(root) / ".evaling.secrets.yaml.example").is_file()
+        result = runner.invoke(main, ["init"], env=ENV, catch_exceptions=False)
+        assert result.exit_code == 0
+        gitignore = (Path(root) / ".gitignore").read_text(encoding="utf-8")
+        assert ".evaling/" in gitignore
+        assert ".evaling.secrets.yaml" in gitignore
+        assert (Path(root) / ".evaling.secrets.yaml.example").is_file()
 
     @pytest.mark.parametrize(
         "provider,marker",
@@ -354,26 +355,27 @@ class TestInitProvider:
             ("openai-compatible", "base_url: http://localhost:11434/v1"),
         ],
     )
-    def test_provider_scaffolds(self, provider, marker):
+    def test_provider_scaffolds(self, provider, marker, tmp_path, monkeypatch):
         runner = CliRunner()
-        with runner.isolated_filesystem() as root:
-            from pathlib import Path
+        monkeypatch.chdir(tmp_path)
+        root = tmp_path
+        from pathlib import Path
 
-            result = runner.invoke(
-                main, ["init", "--provider", provider], env=ENV, catch_exceptions=False
-            )
-            assert result.exit_code == 0, result.output
-            config = (Path(root) / "eval.yaml").read_text(encoding="utf-8")
-            assert marker in config
-            assert "provider: mock" not in config
+        result = runner.invoke(
+            main, ["init", "--provider", provider], env=ENV, catch_exceptions=False
+        )
+        assert result.exit_code == 0, result.output
+        config = (Path(root) / "eval.yaml").read_text(encoding="utf-8")
+        assert marker in config
+        assert "provider: mock" not in config
 
-    def test_scaffolded_provider_config_validates(self):
+    def test_scaffolded_provider_config_validates(self, tmp_path, monkeypatch):
         runner = CliRunner()
-        with runner.isolated_filesystem():
-            runner.invoke(main, ["init", "--provider", "anthropic"], env=ENV)
-            # dry-run needs no API key, so this checks the scaffold is well-formed
-            result = runner.invoke(main, ["validate"], env=ENV, catch_exceptions=False)
-            assert result.exit_code == 0, result.output
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(main, ["init", "--provider", "anthropic"], env=ENV)
+        # dry-run needs no API key, so this checks the scaffold is well-formed
+        result = runner.invoke(main, ["validate"], env=ENV, catch_exceptions=False)
+        assert result.exit_code == 0, result.output
 
 
 class TestStreamingReads:
