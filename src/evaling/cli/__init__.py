@@ -1,9 +1,7 @@
 """Command-line interface: a thin wrapper over the evaling core library."""
 
-import contextlib
 import functools
 import json as jsonlib
-import signal
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -89,6 +87,11 @@ def cli_errors(fn):
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
+        except BrokenPipeError:
+            # Click handles closed output pipes quietly (including final
+            # stream flushing). Do not turn `evaling list | head` into an
+            # error diagnostic, or make SIGPIPE fatal for provider stdin.
+            raise
         except (EvalingError, OSError) as exc:
             # Escape the message: brackets in it (a JSON path, "evaling[mcp]",
             # a model's own output) would otherwise be eaten as rich markup or
@@ -131,9 +134,6 @@ def cli_errors(fn):
 @click.pass_context
 def main(ctx, config_path, output_dir, cache_dir, no_color, quiet, verbose, json_output):
     """Compare prompt variants and models, easily."""
-    # `evaling list | head` should end quietly, not raise BrokenPipeError
-    with contextlib.suppress(AttributeError, ValueError):  # Windows / non-main thread
-        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     ctx.obj = App(config_path, output_dir, cache_dir, no_color, quiet, verbose, json_output)
 
 

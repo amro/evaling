@@ -110,6 +110,9 @@ original command shell to remain alive and `taskkill` to succeed. If such a
 process keeps a pipe open, evaling closes its own end after the cleanup limit,
 but cannot promise that the detached worker was terminated.
 
+A command may close stdin without consuming the whole request; this does not
+terminate evaling. Its stdout and exit status still determine the result.
+
 The stdin payload is `{"model": ..., "params": {...}, "messages": [...]}`, where
 each message has `role` and `parts`. Every part carries a `type` to switch on:
 a text part is `{"type": "text", "text": "..."}`, and a media part is its kind

@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Deliberately detached workers are outside this guarantee; see the command
   provider's documented platform limits.
 
+- **A command closing stdin early could terminate the CLI with SIGPIPE.**
+  The CLI no longer changes the process-wide signal handler. Closed output
+  consumers still exit quietly through Click's broken-pipe handling.
+
 - **The request log's overwrite guard was effectively untested.** The test for
   the substitution window planted a replacement whose contents were not valid
   JSON, so the content validator refused it and the test passed whether or not
