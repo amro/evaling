@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Source errors could reveal case data under no-look.** Cursor values,
+  attachment paths, and source import, factory, fetch, count, or cleanup
+  exceptions are now withheld at the engine boundary, including dry-runs and
+  MCP calls. Outside no-look the original diagnostics remain available.
+
 - **Request logging could truncate a dataset or results file.** Any JSON first
   line used to pass the overwrite guard. Traces now carry a format marker on
   every entry, and all existing lines must be marked before reuse. Unmarked

@@ -4,12 +4,11 @@ The use case is validating a prompt or a model against production traffic in a
 setting where a human looking at that traffic is the thing being prevented. The
 scores are the deliverable; the data is not.
 
-Redaction happens in exactly one place — :func:`redact_record`, called by the
-engine the moment a cell finishes scoring and before the record reaches
-anything else. Everything downstream (storage, callbacks, the progress
-display, reports, exports, the MCP server) then has nothing to leak. A mode
-that instead asked six subsystems to remember to redact would eventually meet
-a seventh.
+Record redaction happens in :func:`redact_record`, called by the engine the
+moment a cell finishes scoring and before the record reaches anything else.
+Source failures have a separate engine boundary in ``sources.source_errors``:
+they abort the run without producing a cell record. Downstream surfaces do
+not need to remember to scrub either path themselves.
 
 What survives: variant, model, case id, per-criterion scores and pass/fail,
 token counts, cost, latency, and whether a cell errored. None of that contains

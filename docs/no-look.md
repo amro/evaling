@@ -145,6 +145,12 @@ looking for, `agreement` reports the label and the extracted verdict, and a
 judge's rationale quotes the text it graded. A criterion's `error` is replaced
 too — it is an exception message from a scorer that had the output in hand.
 
+Source failures are withheld too, including import/factory errors, paging
+cursors, attachment paths, counts, and cleanup errors. CLI runs, dry-runs, and
+MCP calls report `case source failed — detail withheld (no-look)` without the
+underlying exception chain. Reproduce source problems with synthetic data and
+no-look disabled to see the original diagnostic.
+
 ### Nothing is written and then deleted
 
 Case data is never written to disk in the first place. Redaction happens the

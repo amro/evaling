@@ -22,6 +22,7 @@ a walk do not cause pages to skip or repeat.
 """
 
 import asyncio
+import contextlib
 import importlib.util
 import inspect
 from abc import ABC, abstractmethod
@@ -80,6 +81,22 @@ class BaseCaseSource(ABC):
 
 class SourceError(ConfigError):
     """A case source could not be loaded or produced something unusable."""
+
+
+@contextlib.contextmanager
+def source_errors(*, no_look: bool):
+    """Keep source data out of errors exposed by the engine's public surfaces.
+
+    Cursors, attachment paths, and user-code exceptions can all contain case
+    data. Do not retain even the exception type or chain in no-look messages:
+    these also come from user code. Cancellation still propagates normally.
+    """
+    try:
+        yield
+    except (Exception, SystemExit):
+        if no_look:
+            raise SourceError("case source failed — detail withheld (no-look)") from None
+        raise
 
 
 def load_source(spec: str, base_dir: Path, params: dict[str, Any] | None = None) -> Any:

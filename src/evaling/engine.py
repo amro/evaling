@@ -51,6 +51,7 @@ from evaling.sources import (
     iter_source_cases,
     load_source,
     source_count,
+    source_errors,
 )
 from evaling.storage import (
     ResultRecord,
@@ -603,20 +604,22 @@ async def _run_eval_impl(
     # Cases are the outer loop for a source, because a source can only be
     # walked once; for a fixed list the original variant-major order is kept.
     if source_ref is not None:
-        source = load_source(source_ref.source, config.base_dir, source_ref.params)
+        with source_errors(no_look=privacy.no_look):
+            source = load_source(source_ref.source, config.base_dir, source_ref.params)
 
         async def factories():
-            try:
-                async for case in iter_source_cases(
-                    source, source_ref.page_size, source_ref.limit, config.base_dir
-                ):
-                    for variant in variants_sel:
-                        for model in models_sel:
-                            if stop_early[0]:
-                                return
-                            yield partial(execute, variant.name, model, case)
-            finally:
-                await close_source(source)
+            with source_errors(no_look=privacy.no_look):
+                try:
+                    async for case in iter_source_cases(
+                        source, source_ref.page_size, source_ref.limit, config.base_dir
+                    ):
+                        for variant in variants_sel:
+                            for model in models_sel:
+                                if stop_early[0]:
+                                    return
+                                yield partial(execute, variant.name, model, case)
+                finally:
+                    await close_source(source)
 
         cell_stream = factories()
         expected_total = None
@@ -1349,7 +1352,8 @@ def _dry_run_source(
     create_scorers(config, providers)
 
     source_ref = config.cases
-    source = load_source(source_ref.source, config.base_dir, source_ref.params)
+    with source_errors(no_look=config.privacy.no_look):
+        source = load_source(source_ref.source, config.base_dir, source_ref.params)
 
     async def sample() -> tuple[list[Case], int | None]:
         try:
@@ -1362,7 +1366,8 @@ def _dry_run_source(
         finally:
             await close_source(source)
 
-    cases, total = asyncio.run(sample())
+    with source_errors(no_look=config.privacy.no_look):
+        cases, total = asyncio.run(sample())
     cells = []
     for variant in variants_sel:
         for model in models_sel:
