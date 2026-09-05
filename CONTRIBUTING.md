@@ -57,6 +57,34 @@ uv run pytest tests/test_engine.py   # one file
 uv run pytest -k cache               # by name
 ```
 
+### Change validation loop
+
+For a completed change, use this loop (including documentation changes):
+
+1. Add regression tests for the reported behavior and implement an atomic fix.
+   Update the relevant docs and changelog with any compatibility limits.
+2. Review the code, tests, and documentation together. Check error paths,
+   privacy, data preservation, and scale, not only the happy path. Fix review
+   follow-ups and rerun the affected tests.
+3. Run lint, formatting, the full suite, and the Python 3.10 compatibility
+   suite above. Keep live calls separate: the test suite must remain offline.
+4. Commit and push atomic changes. Inspect CI for the exact pushed commit,
+   including the advisory newest-MCP job; fix failures and repeat the loop.
+5. Exercise the built tool through both the CLI and a real MCP stdio client
+   (initialize, discover tools, run an eval, inspect results, and check errors).
+   Calling server functions directly is useful in tests but does not validate
+   the installed entry point or transport.
+6. When live-provider validation is authorized and keys are available, make
+   one small, bounded call per provider: Anthropic, OpenAI, and Gemini. Check
+   actual output, scoring, token usage, and errors. Load credentials privately
+   into the process environment, never print them or put them in configs,
+   request traces, repository files, or CI secrets. Report any unvalidated
+   provider explicitly rather than counting a mock call as live validation.
+
+After follow-ups, verify the final commit's checks again and report the commit,
+CI result, tests, smoke-test outcomes, and any remaining limitations. Release
+build/install checks and the price-table review still follow [RELEASING.md](RELEASING.md).
+
 ### Fuzzing
 
 `tests/test_config_fuzz.py` mutates a valid config — structurally, and at the
