@@ -43,7 +43,8 @@ class TestTheRequestLogWillNotClobber:
     def test_it_still_truncates_its_own_log(self, tmp_path):
         """Each run starts a fresh trace; a previous one is ours to replace."""
         log = tmp_path / "trace.jsonl"
-        log.write_text('{"model": "old"}\n', encoding="utf-8")
+        RequestLog(log).record(model="old")
+        assert log.stat().st_size > 0
         RequestLog(log)
         assert log.read_text(encoding="utf-8") == ""
 
