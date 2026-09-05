@@ -29,10 +29,11 @@ What to look for, in order of how much it costs to miss:
   the cloud platforms.
 - **Changed rates.** These are silent: an estimate stays plausible while being
   wrong.
-- **Promotional pricing, which the table deliberately does not follow.** It
-  carries standard rates, so an estimate reads high while a promotion runs
-  rather than low after it ends. Record the promotion and its end date in a
-  comment beside the entry, so the number does not later look like a mistake.
+- **Promotional pricing.** Prefer a published post-promotion standard rate,
+  so an estimate reads high during the promotion rather than low afterwards.
+  If no later rate is published (currently GPT-5.6 Sol), retain the current
+  published rate rather than guess. Record the promotion, its stated duration,
+  and any uncertainty in a comment and the CLI estimate caveats.
 
 The table is standard first-party rates only — not batch, not cached input,
 not fast mode, and not the partner platforms' own pricing. Those belong in a
@@ -139,9 +140,10 @@ against the version, builds, runs `twine check`, and uploads. Watch it:
 gh run watch $(gh run list --workflow=Publish --limit 1 --json databaseId -q '.[0].databaseId')
 ```
 
-If it fails, nothing was published and the version number is still free. If it
-succeeds, that version is permanent — PyPI lets you yank a release but never
-reuse the number.
+If it fails, inspect the upload logs and PyPI before retrying: some artifacts
+may already have been uploaded. Do not assume a failed workflow means the
+version is unused. Uploaded filenames cannot be reused, even after deletion;
+do not delete or move a published tag to try to replace its artifacts.
 
 ## 5. Smoke test what you actually published
 

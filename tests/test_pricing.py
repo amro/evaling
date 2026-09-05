@@ -21,6 +21,11 @@ def test_small_usage_precision():
     assert estimate_cost("claude-opus-5", 1000, 500) == pytest.approx(1000 * 5e-6 + 500 * 25e-6)
 
 
+def test_cyber_model_uses_its_published_rate():
+    assert estimate_cost("gpt-5.6-cyber", 1_000_000, 0) == pytest.approx(12.50)
+    assert estimate_cost("gpt-5.6-cyber", 0, 1_000_000) == pytest.approx(75.00)
+
+
 def test_unknown_model_has_no_cost():
     assert estimate_cost("some-local-llama", 100, 100) is None
 

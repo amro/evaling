@@ -138,6 +138,13 @@ estimates read high until it ends. Gemini's Pro models are priced at their short
 whose prompts run past ~200k input tokens reads low. Set `params.pricing` on a
 model to override the table with the rate you are actually paying.
 
+OpenAI's GPT-5.6 Sol uses its currently published $4/$20 rate per million
+input/output tokens. OpenAI calls this promotional through at least November
+21, 2026, without publishing a subsequent rate; recheck it after that date.
+OpenAI's long-context tiers are also not applied automatically: for models
+with a >272k-token surcharge, override `params.pricing` for those requests.
+See the [OpenAI rate card](https://developers.openai.com/api/docs/pricing).
+
 LLM judges *are* counted — a judge is a billable call per cell, so a scorecard
 with two judged criteria makes three calls per cell.
 

@@ -82,8 +82,10 @@ PRICES: dict[str, Price] = {
     "claude-haiku-3-5": Price(0.80, 4.00),
     # -- OpenAI -----------------------------------------------------------
     "gpt-6-astra": Price(10.00, 50.00),
-    # Cut from $5.00/$30.00 on the card between 2026-08-17 and 2026-09-04.
+    # Current published rate, promotional at least through 2026-11-21. No
+    # post-promotion rate is published; do not assume the old $5/$30 returns.
     "gpt-5.6-sol": Price(4.00, 20.00),
+    "gpt-5.6-cyber": Price(12.50, 75.00),
     "gpt-5.6-terra": Price(2.00, 12.00),
     "gpt-5.6-luna": Price(0.20, 1.20),
     "gpt-5.5": Price(5.00, 30.00),

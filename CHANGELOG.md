@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Release pricing audit:** added GPT-5.6 Cyber's published rate and documented
+  Sol's promotional-rate uncertainty and OpenAI long-context estimate limits.
+
 - **CI runs the MCP tests against the newest `mcp` the extra permits**, not
   only the pinned one. The lockfile pins a single version while users resolve
   whatever is newest, so an upstream release could break every install while CI
