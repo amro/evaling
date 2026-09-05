@@ -81,6 +81,10 @@ PRICES: dict[str, Price] = {
     "claude-haiku-4-5": Price(1.00, 5.00),
     "claude-haiku-3-5": Price(0.80, 4.00),
     # -- OpenAI -----------------------------------------------------------
+    # Astra and GPT-5.5/5.5 Pro use the short-context rates below. Above
+    # 272k input tokens, their published long-context tier charges 2x input
+    # and 1.5x output. Sol and GPT-5.4/5.4 Pro also have this surcharge.
+    # It is not applied automatically: use params.pricing for long requests.
     "gpt-6-astra": Price(10.00, 50.00),
     # Current published rate, promotional at least through 2026-11-21. No
     # post-promotion rate is published; do not assume the old $5/$30 returns.

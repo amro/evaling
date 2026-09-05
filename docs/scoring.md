@@ -43,7 +43,11 @@ Keys other than `type` are parameters.
 ## LLM judges
 
 A judge is a first-class prompt: a text-only rubric plus a judge model, defined
-once and reusable across criteria:
+once and reusable across criteria. Image and audio parts are rejected both in
+inline rubrics and in referenced rubric files. Resume fingerprints include the
+rubric file itself; there is no supported rubric-media dependency to hash.
+
+For example:
 
 ```yaml
 models:

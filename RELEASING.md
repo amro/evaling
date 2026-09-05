@@ -41,8 +41,10 @@ config's `params.pricing`, not here. It carries text models, since those are
 the ones evaling can call; a new image or embedding model is not an omission.
 
 Where a model's rate depends on something evaling doesn't know at estimate
-time — Gemini's Pro models charge more above ~200k input tokens — the table
-takes the tier ordinary evals fall in and names the other in a comment.
+time — Gemini's Pro models charge more above ~200k input tokens, and several
+OpenAI models above 272k — the table takes the tier ordinary evals fall in
+and names the other in a comment next to the affected entries. Mirror that
+limitation in the CLI estimate caveats; a comment is not automatic tiering.
 
 `tools/check_model_coverage.py` does the *coverage* half mechanically — it
 lists each provider's models and reports any the table does not price:

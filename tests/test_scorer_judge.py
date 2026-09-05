@@ -122,10 +122,18 @@ def test_invalid_pass_at_rejected_at_construction():
         build_judge(judge_config('{"score": 1}', scorer_params={"pass_at": 1.5}))
 
 
-def test_media_rubric_rejected_at_construction():
+@pytest.mark.parametrize("from_file", [False, True])
+@pytest.mark.parametrize("media", [{"image": "x.png"}, {"audio": "x.wav"}])
+def test_media_rubric_rejected_at_construction(tmp_path, from_file, media):
+    rubric = [{"role": "user", "content": [{"text": "grade"}, media]}]
+    if from_file:
+        path = tmp_path / "rubric.yaml"
+        path.write_text(json.dumps(rubric), encoding="utf-8")
+        rubric = "rubric.yaml"
     config = judge_config(
         '{"score": 1}',
-        rubric=[{"role": "user", "content": [{"text": "grade"}, {"image": "x.png"}]}],
+        rubric=rubric,
+        tmp_path=tmp_path,
     )
     with pytest.raises(ScoringError, match="text content only"):
         build_judge(config)
