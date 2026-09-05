@@ -85,6 +85,13 @@ Guarantees and limits:
   file is a hard error.
 - Resume requires the **exact config the run started with** (verified against
   the run's recorded config hash) and refuses runs already marked complete.
+  The hash includes directly referenced prompts, judge rubrics, datasets,
+  attachments, Python scorer files, and external JSON-schema files. Editing
+  any of these requires a fresh run (or restoring the original content).
+  Imported Python helpers, packages, environment variables, and other files
+  user code reads are not tracked: keep those unchanged yourself. Runs with
+  Python scorers or external schemas started before 0.2.6 must be restarted,
+  because their old fingerprints did not cover those scoring files.
 - One process per run directory: resuming the same run from two processes at
   once is unsupported and can record duplicate cells.
 

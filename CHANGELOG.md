@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Resume omitted scoring files from its fingerprint.** Editing a Python
+  scorer or external JSON schema could mix two grading rules in one run.
+  Both are now hashed; runs using them that started before 0.2.6 must restart.
+
 - **Source errors could reveal case data under no-look.** Cursor values,
   attachment paths, and source import, factory, fetch, count, or cleanup
   exceptions are now withheld at the engine boundary, including dry-runs and

@@ -305,7 +305,7 @@ async def _run_eval_impl(
             raise StorageError(
                 f"config does not match run {resume_run_id!r} "
                 "(a resumed run must use the exact config — including referenced prompt, "
-                "case, and attachment files — it started with)"
+                "case, attachment, Python scorer, and JSON-schema files — it started with)"
             )
         _check_resumable_matrix(resume_run_id, writer.meta.get("matrix"), matrix)
         prior_records = store.load_results(resume_run_id)
@@ -1075,9 +1075,10 @@ def _describe_error(exc: Exception, *, safe: bool = False) -> str:
 def config_fingerprint(config: EvalConfig) -> str:
     """Hash of the config AND the content of every file it references.
 
-    The resume guard compares this, so editing a referenced prompt file, case
-    dataset, or attachment between run and resume is caught — the plain config
-    snapshot only contains those files' paths.
+    The resume guard compares this, so editing a referenced prompt, case
+    dataset, attachment, Python scorer, or JSON schema is caught — the plain
+    config snapshot only contains those files' paths. Imports and other
+    dependencies read by user code are not discovered transitively.
     """
     snapshot, _ = snapshot_config(config)
     digest = hashlib.sha256(snapshot.encode())
@@ -1103,6 +1104,15 @@ def _referenced_files(config: EvalConfig) -> list[str]:
     for judge in config.judges.values():
         if isinstance(judge.rubric, str):
             paths.add(str((config.base_dir / judge.rubric).resolve()))
+    for criterion in config.scorecard:
+        scorer = criterion.scorer
+        reference = None
+        if scorer.type == "python":
+            reference = scorer.params.get("file")
+        elif scorer.type == "json-schema":
+            reference = scorer.params.get("schema")
+        if isinstance(reference, str):
+            paths.add(str((config.base_dir / reference).resolve()))
     if isinstance(config.cases, CaseSourceRef):
         # The source's data is not a file and is not necessarily stable, so
         # only the code that produces it can be fingerprinted. Resume is
