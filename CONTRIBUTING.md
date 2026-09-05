@@ -189,7 +189,10 @@ RefusedRequest: this test tried to reach https://api.example.com/v1 for real.
 
 If you see that, stage the call instead — `provider._client =
 httpx.AsyncClient(transport=httpx.MockTransport(handler))`, or use the mock
-provider. `tests/test_suite_isolation.py` covers the guards themselves.
+provider. An attempt ledger also fails the test at teardown if an error
+boundary catches or withholds the refusal. Only the tests that deliberately
+exercise this guard acknowledge those attempts.
+`tests/test_suite_isolation.py` covers the guards themselves.
 
 **Commits are small and individually green.** Each commit should leave the
 tree passing on its own, so `git bisect` stays useful.

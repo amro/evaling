@@ -89,11 +89,15 @@ def source_errors(*, no_look: bool):
 
     Cursors, attachment paths, and user-code exceptions can all contain case
     data. Do not retain even the exception type or chain in no-look messages:
-    these also come from user code. Cancellation still propagates normally.
+    these also come from user code, including custom BaseException subclasses.
+    KeyboardInterrupt, asyncio.CancelledError, and GeneratorExit still propagate
+    normally; this boundary is not a sandbox for code that prints data itself.
     """
     try:
         yield
-    except (Exception, SystemExit):
+    except (KeyboardInterrupt, asyncio.CancelledError, GeneratorExit):
+        raise
+    except BaseException:
         if no_look:
             raise SourceError("case source failed — detail withheld (no-look)") from None
         raise

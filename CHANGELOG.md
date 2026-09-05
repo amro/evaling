@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Withhold source failures derived directly from `BaseException` in no-look
+  mode, while preserving interruption and cancellation. Source-count coverage
+  now checks that normal runs do not call `count()` instead of skipping them.
+- Keep offline-test network violations visible even when an error boundary
+  withholds the original failure.
+
 ## [0.2.6] - 2026-09-04
 
 ### Fixed

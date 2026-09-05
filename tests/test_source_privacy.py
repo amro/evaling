@@ -16,10 +16,13 @@ from evaling.sources import SourceError, source_errors
 CANARY = "customer-private-Z9@example.test"
 
 
-def source_project(tmp_path, stage, *, no_look=True):
+def source_project(tmp_path, stage, *, no_look=True, exception="RuntimeError"):
     code = f"""
 from pathlib import Path
 from evaling import BaseCaseSource, Case, CasePage
+
+class PrivateTimeout(BaseException):
+    pass
 
 CANARY = {CANARY!r}
 STAGE = {stage!r}
@@ -32,6 +35,7 @@ class Source(BaseCaseSource):
             raise RuntimeError(CANARY)
 
     def count(self):
+        Path(__file__).with_name("counted").touch()
         if STAGE == "count":
             raise RuntimeError(CANARY)
         return None
@@ -50,6 +54,7 @@ class Source(BaseCaseSource):
         if STAGE == "close":
             raise RuntimeError(CANARY)
 """
+    code = code.replace("raise RuntimeError(CANARY)", f"raise {exception}(CANARY)")
     (tmp_path / "source.py").write_text(code, encoding="utf-8")
     config = {
         "settings": {"output_dir": str(tmp_path / "runs"), "cache": False},
@@ -68,10 +73,23 @@ class Source(BaseCaseSource):
     "stage", ["import", "factory", "count", "fetch", "cursor", "attachment", "close"]
 )
 @pytest.mark.parametrize("surface", ["engine-run", "engine-dry", "cli-run", "cli-dry", "mcp"])
-def test_source_error_is_private(tmp_path, stage, surface):
+@pytest.mark.parametrize("exception", ["RuntimeError", "PrivateTimeout", "SystemExit"])
+def test_source_error_is_private(tmp_path, stage, surface, exception):
     if stage == "count" and surface not in ("engine-dry", "cli-dry"):
-        pytest.skip("only dry-run requests the source count")
-    path = source_project(tmp_path, stage)
+        # Do not silently skip this assumption: if runs start counting, this
+        # must fail and the privacy matrix must grow to cover those calls.
+        path = source_project(tmp_path, stage, exception=exception)
+        if surface == "engine-run":
+            run_eval(load_config(path))
+        elif surface == "cli-run":
+            result = CliRunner().invoke(main, ["run", str(path)])
+            assert result.exit_code == 0, result.output
+        else:
+            asyncio.run(build_server().call_tool("run_eval", {"config_path": str(path)}))
+        assert not (tmp_path / "counted").exists()
+        assert (tmp_path / "closed").exists()
+        return
+    path = source_project(tmp_path, stage, exception=exception)
     if surface.startswith("cli"):
         args = ["run", str(path)]
         if surface == "cli-dry":
@@ -115,6 +133,17 @@ def test_source_exit_message_is_withheld():
     assert CANARY not in "".join(traceback.format_exception(caught.value))
 
 
-def test_source_cancellation_is_not_converted_to_an_error():
-    with pytest.raises(asyncio.CancelledError), source_errors(no_look=True):
-        raise asyncio.CancelledError
+@pytest.mark.parametrize("kind", [KeyboardInterrupt, asyncio.CancelledError, GeneratorExit])
+@pytest.mark.parametrize("no_look", [True, False])
+def test_source_cancellation_is_not_converted_to_an_error(kind, no_look):
+    original = kind()
+    with pytest.raises(kind) as caught, source_errors(no_look=no_look):
+        raise original
+    assert caught.value is original
+
+
+def test_normal_base_exception_is_unchanged():
+    original = BaseException(CANARY)
+    with pytest.raises(BaseException) as caught, source_errors(no_look=False):
+        raise original
+    assert caught.value is original

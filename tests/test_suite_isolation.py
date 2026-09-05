@@ -16,13 +16,31 @@ from pathlib import Path
 import httpx
 import pytest
 
-from conftest import CANARY_VAR, CREDENTIAL_SUFFIXES
+from conftest import CANARY_VAR, CREDENTIAL_SUFFIXES, _RefuseSync, network_attempt_guard
 from evaling.config.schema import ModelSpec
 from evaling.providers.anthropic import AnthropicProvider
 from evaling.providers.http import ProviderError
 
 
 class TestNoTestReachesTheNetwork:
+    @pytest.fixture(autouse=True)
+    def acknowledge_deliberate_refusals(self, network_attempts):
+        yield
+        # These tests deliberately exercise the guard, not a real endpoint.
+        network_attempts.clear()
+
+    def test_withheld_source_errors_still_fail_the_network_guard(self):
+        from evaling.sources import SourceError, source_errors
+
+        with (
+            pytest.raises(pytest.fail.Exception, match="Unacknowledged network attempts"),
+            network_attempt_guard() as attempts,
+            pytest.raises(SourceError, match="detail withheld"),
+            source_errors(no_look=True),
+            httpx.Client(transport=_RefuseSync(attempts)) as client,
+        ):
+            client.get("https://unreachable.invalid/private")
+
     async def request(self, client):
         return await client.get("https://unreachable.invalid/v1/messages")
 

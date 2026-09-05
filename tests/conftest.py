@@ -23,6 +23,7 @@ without an injected transport gets one that refuses to send.
 import os
 import shutil
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -48,7 +49,9 @@ class RefusedRequest(BaseException):
     that one provider failure cannot lose a whole run, which would have turned
     this into a recorded cell error and a green run — the accident would be
     prevented but silent, which is the wrong half of the job. Nothing in
-    evaling catches ``BaseException``, so it comes out.
+    evaling's per-cell handling catches ``BaseException``, so it comes out.
+    Source privacy boundaries do withhold it; a separate attempt ledger fails
+    the test at teardown even if user code or an error boundary catches it.
 
     Deliberately not imported by name in the tests that assert on it: mutmut
     runs the suite from a copied tree, where ``conftest`` is a second module
@@ -65,13 +68,37 @@ def _refusal(request: httpx.Request) -> str:
 
 
 class _RefuseAsync(httpx.AsyncBaseTransport):
+    def __init__(self, attempts):
+        self.attempts = attempts
+
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.attempts.append(_refusal(request))
         raise RefusedRequest(_refusal(request))
 
 
 class _RefuseSync(httpx.BaseTransport):
+    def __init__(self, attempts):
+        self.attempts = attempts
+
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        self.attempts.append(_refusal(request))
         raise RefusedRequest(_refusal(request))
+
+
+@contextmanager
+def network_attempt_guard():
+    attempts = []
+    try:
+        yield attempts
+    finally:
+        if attempts:
+            pytest.fail("Unacknowledged network attempts: " + "; ".join(attempts))
+
+
+@pytest.fixture
+def network_attempts():
+    with network_attempt_guard() as attempts:
+        yield attempts
 
 
 @pytest.fixture(autouse=True)
@@ -134,7 +161,7 @@ def _no_credentials(monkeypatch, _credential_canary):
 
 
 @pytest.fixture(autouse=True)
-def _no_network(monkeypatch):
+def _no_network(monkeypatch, network_attempts):
     """A client with no transport injected gets one that refuses to send.
 
     Refusing at construction would be simpler, but one test legitimately
@@ -152,7 +179,7 @@ def _no_network(monkeypatch):
             # and still consults the OS proxy resolver. `transport` composes
             # with `mounts` — it is the fallback for what they do not match.
             if kwargs.get("transport") is None:
-                kwargs["transport"] = _refuse()
+                kwargs["transport"] = _refuse(network_attempts)
             return _original(self, *args, **kwargs)
 
         monkeypatch.setattr(client, "__init__", guarded)
