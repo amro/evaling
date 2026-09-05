@@ -81,23 +81,24 @@ PRICES: dict[str, Price] = {
     "claude-haiku-4-5": Price(1.00, 5.00),
     "claude-haiku-3-5": Price(0.80, 4.00),
     # -- OpenAI -----------------------------------------------------------
-    # Astra and GPT-5.5/5.5 Pro use the short-context rates below. Above
-    # 272k input tokens, their published long-context tier charges 2x input
-    # and 1.5x output. Sol and GPT-5.4/5.4 Pro also have this surcharge.
-    # It is not applied automatically: use params.pricing for long requests.
-    "gpt-6-astra": Price(10.00, 50.00),
+    # Six models carry a long-context tier above 272k input tokens: 2x input,
+    # 1.5x output. As with Gemini's Pro models, the table holds the tier
+    # ordinary evals fall in and names the other beside each entry, so editing
+    # one does not require finding this paragraph. Past 272k input tokens per
+    # call, set params.pricing.
+    "gpt-6-astra": Price(10.00, 50.00),  # >272k: $20.00 / $75.00
     # Current published rate, promotional at least through 2026-11-21. No
     # post-promotion rate is published; do not assume the old $5/$30 returns.
-    "gpt-5.6-sol": Price(4.00, 20.00),
+    "gpt-5.6-sol": Price(4.00, 20.00),  # >272k: $8.00 / $30.00
     "gpt-5.6-cyber": Price(12.50, 75.00),
     "gpt-5.6-terra": Price(2.00, 12.00),
     "gpt-5.6-luna": Price(0.20, 1.20),
-    "gpt-5.5": Price(5.00, 30.00),
-    "gpt-5.5-pro": Price(30.00, 180.00),
-    "gpt-5.4": Price(2.50, 15.00),
+    "gpt-5.5": Price(5.00, 30.00),  # >272k: $10.00 / $45.00
+    "gpt-5.5-pro": Price(30.00, 180.00),  # >272k: $60.00 / $270.00
+    "gpt-5.4": Price(2.50, 15.00),  # >272k: $5.00 / $22.50
     "gpt-5.4-mini": Price(0.75, 4.50),
     "gpt-5.4-nano": Price(0.20, 1.25),
-    "gpt-5.4-pro": Price(30.00, 180.00),
+    "gpt-5.4-pro": Price(30.00, 180.00),  # >272k: $60.00 / $270.00
     # 5.3 ships only as these two; there is no plain `gpt-5.3` on the card.
     # Lookup is by exact id, so a variant priced the same as its base still
     # has to be listed or it reports an unknown cost.

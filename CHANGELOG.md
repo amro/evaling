@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The request log's overwrite guard was effectively untested.** The test for
+  the substitution window planted a replacement whose contents were not valid
+  JSON, so the content validator refused it and the test passed whether or not
+  the identity check existed — deleting that check left 80 tests green. The
+  replacement is now a real trace, which only the identity check can refuse,
+  and three more tests cover a symlink planted before the open, substitution
+  after it, and the path becoming a directory. Removing the identity block
+  fails them.
+
+  Those tests assert the behaviour, not which line produces it. The checks
+  overlap by design: with `st_nlink` and the pre-open comparison both removed
+  the scenarios are still refused, so no single line is individually
+  observable, and a test claiming otherwise would be the same false positive
+  in a new place.
+
+- **The long-context tier is now named beside each entry it applies to** in the
+  price table, as `RELEASING.md` requires and as the Gemini entries already
+  did. It sat in one paragraph above `gpt-6-astra` while covering five models
+  up to twelve lines below it, so anyone editing those saw nothing. No rate
+  changed.
+
 ## [0.2.7] - 2026-09-04
 
 ### Fixed
