@@ -99,6 +99,14 @@ checked before truncation. Other files, including JSONL datasets and results,
 are refused. Traces from versions before 0.2.6 have no marker and are also
 refused: choose a new filename for those.
 
+Targets must be regular files: directories, symbolic links, hard links, and
+named pipes are refused. Validation, truncation, and subsequent writes use
+the same open file, so replacing the pathname cannot redirect the log into
+another file. Use a trusted directory and do not share one log between runs:
+this does not protect against concurrent edits to the same file or changes
+to its parent directories. Python callers that construct `RequestLog`
+directly should call `close()` when finished; engine runs close it themselves.
+
 **Headers are never written.** The API key travels in a header, so the way to
 guarantee the file cannot contain one is to have no code path that writes
 them. Values from your secrets file are additionally redacted from the bodies,

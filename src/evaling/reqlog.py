@@ -24,8 +24,11 @@ script reads.
 """
 
 import json
+import os
+import stat
+from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from evaling.errors import EvalingError
 from evaling.secrets import redact
@@ -34,33 +37,76 @@ TRACE_MARKER = "_evaling_request_log"
 TRACE_VERSION = 1
 
 
-def _refuse_to_clobber(path: Path) -> None:
-    """Refuse a target that is not an empty file or a trace we wrote.
+def _validate_trace(handle: TextIO) -> None:
+    """Validate every line of the opened file, before truncating that same file."""
+    for line in handle:
+        entry = json.loads(line)
+        if (
+            not isinstance(entry, dict)
+            or type(entry.get(TRACE_MARKER)) is not int
+            or entry[TRACE_MARKER] != TRACE_VERSION
+        ):
+            raise ValueError("not an evaling request log")
+    handle.seek(0)
 
-    Each run truncates its log, and `--log-requests eval.yaml` is an easy
-    thing to type. Destroying the file someone pointed at is not a thing a
-    debugging flag gets to do. Every line must carry our format marker:
-    ordinary datasets and result files are JSONL too. Old, unmarked traces
-    are deliberately refused rather than guessed at.
+
+def _open_checked(path: Path, *, create: bool) -> TextIO | None:
+    """Open without truncation, refuse links/devices, and validate the descriptor.
+
+    O_NONBLOCK keeps a concurrently substituted FIFO from blocking on POSIX.
+    O_NOFOLLOW rejects final-component symlinks there; lstat/fstat identity
+    checks also protect platforms without that flag. Parent directories and
+    concurrent writes to the same inode must still be trusted.
     """
+    descriptor = None
     try:
-        if not path.is_file() or path.stat().st_size == 0:
-            return
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            for line in handle:
-                entry = json.loads(line)
-                if (
-                    not isinstance(entry, dict)
-                    or type(entry.get(TRACE_MARKER)) is not int
-                    or entry[TRACE_MARKER] != TRACE_VERSION
-                ):
-                    raise ValueError("not an evaling request log")
-    except (OSError, ValueError):
+        try:
+            before = path.lstat()
+        except FileNotFoundError:
+            if not create:
+                return None
+            before = None
+        if before is not None and not stat.S_ISREG(before.st_mode):
+            raise ValueError("target must be a regular file, not a link or device")
+        flags = os.O_RDWR if create else os.O_RDONLY
+        flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        flags |= getattr(os, "O_BINARY", 0)
+        if before is None:
+            flags |= os.O_CREAT | os.O_EXCL
+        descriptor = os.open(path, flags, 0o600)
+        opened = os.fstat(descriptor)
+        current = path.lstat()
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or not stat.S_ISREG(current.st_mode)
+            or not os.path.samestat(opened, current)
+            or (before is not None and not os.path.samestat(before, opened))
+            or opened.st_nlink != 1
+        ):
+            raise ValueError("target changed or is not a single regular file")
+        handle = os.fdopen(descriptor, "r+" if create else "r", encoding="utf-8", newline="\n")
+        descriptor = None  # the file object now owns it
+        try:
+            _validate_trace(handle)
+        except BaseException:
+            handle.close()
+            raise
+        return handle
+    except (OSError, ValueError) as exc:
         raise EvalingError(
-            f"refusing to overwrite {path}: its content could not be verified as "
-            "an evaling request log. Each run truncates its log, so point "
+            f"refusing to overwrite {path}: could not open request log or verify "
+            f"a regular evaling trace ({exc}). Each run truncates its log, so point "
             "--log-requests at a new file."
         ) from None
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _refuse_to_clobber(path: Path) -> None:
+    handle = _open_checked(path, create=False)
+    if handle is not None:
+        handle.close()
 
 
 class RequestLog:
@@ -73,17 +119,24 @@ class RequestLog:
     def __init__(self, path: str | Path, secret_values: "list[str] | tuple[str, ...]" = ()):
         self.path = Path(path)
         self._secrets = [value for value in secret_values if value]
-        _refuse_to_clobber(self.path)
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            # Truncate: a log that accumulates across runs is unreadable, and
-            # the interesting question is always about the run you just made.
-            self.path.write_text("", encoding="utf-8", newline="\n")
+            self._handle = _open_checked(self.path, create=True)
+            try:
+                self._handle.truncate(0)
+            except BaseException:
+                self._handle.close()
+                raise
         except (OSError, ValueError) as exc:
             # ValueError as well as OSError: a path with a NUL in it, which an
             # unset shell variable can produce, raises from io.open rather than
             # from the filesystem.
             raise EvalingError(f"could not open request log {self.path}: {exc}") from exc
+
+    def close(self) -> None:
+        """Release the verified file; safe to call more than once."""
+        with suppress(OSError):
+            self._handle.close()
 
     def add_secret(self, value: "str | None") -> None:
         """Register a credential to scrub from every entry, past this point.
@@ -108,9 +161,9 @@ class RequestLog:
             line = json.dumps({"error": "entry was not serializable", TRACE_MARKER: TRACE_VERSION})
         line = redact(line, self._secrets)
         try:
-            with self.path.open("a", encoding="utf-8", newline="\n") as handle:
-                handle.write(line + "\n")
-        except OSError:
+            self._handle.write(line + "\n")
+            self._handle.flush()
+        except (OSError, ValueError):
             # A full disk is not a reason to lose the run this was diagnosing.
             pass
 

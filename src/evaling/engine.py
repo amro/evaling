@@ -161,11 +161,10 @@ async def run_eval_async(
     # environment first, then any secrets file next to the config.
     secret_env, secret_warnings = build_env(config.base_dir)
     request_log = open_log(log_requests, secret_env, no_look=config.privacy.no_look)
-    providers = {
-        model.id: create_provider(model, secret_env, config.base_dir, request_log)
-        for model in config.models
-    }
+    providers = {}
     try:
+        for model in config.models:
+            providers[model.id] = create_provider(model, secret_env, config.base_dir, request_log)
         return await _run_eval_impl(
             config,
             settings,
@@ -184,9 +183,13 @@ async def run_eval_async(
             extra_warnings=secret_warnings,
         )
     finally:
-        await asyncio.gather(
-            *(provider.aclose() for provider in providers.values()), return_exceptions=True
-        )
+        try:
+            await asyncio.gather(
+                *(provider.aclose() for provider in providers.values()), return_exceptions=True
+            )
+        finally:
+            if request_log is not None:
+                request_log.close()
 
 
 async def _run_eval_impl(
@@ -1102,6 +1105,8 @@ def _referenced_files(config: EvalConfig) -> list[str]:
         for message in resolve_prompt(variant.prompt, config.base_dir):
             paths.update(_literal_media_paths(message, config.base_dir))
     for judge in config.judges.values():
+        # JudgeScorer rejects media parts, including those in rubric files.
+        # If multimodal judging is added, hash its literal media here too.
         if isinstance(judge.rubric, str):
             paths.add(str((config.base_dir / judge.rubric).resolve()))
     for criterion in config.scorecard:

@@ -264,11 +264,9 @@ class TestItNeverBreaksARun:
             exploded.append(True)
             raise OSError("disk full")
 
-        monkeypatch.setattr(type(log.path), "open", explode, raising=False)
+        monkeypatch.setattr(log._handle, "write", explode)
         log.record(model="m")  # must not raise
-        # Without this the test passes when the patch misses — swapping
-        # `self.path.open(...)` for `open(self.path, ...)` would leave the
-        # write working and the failure never injected.
+        # Assert the failure was actually injected into the retained handle.
         assert exploded, "the write failure was never injected"
 
         monkeypatch.undo()
@@ -409,9 +407,7 @@ class TestRefusingSomebodyElsesFile:
         assert target.read_bytes() == before
 
     def test_a_file_that_is_not_utf8_is_refused_not_raised(self, project):
-        """The first line is read with errors="replace" for exactly this.
-
-        A user pointing --log-requests at a binary file should be told no,
+        """A user pointing --log-requests at a binary file should be told no,
         not shown a UnicodeDecodeError from inside evaling.
         """
         target = project / "photo.jpg"
