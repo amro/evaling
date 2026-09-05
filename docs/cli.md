@@ -93,9 +93,11 @@ evaling run --sample 3 --log-requests trace.jsonl
 jq -r 'select(.status >= 400) | .response // .response_text' trace.jsonl
 ```
 
-The target must be a new file or a previous trace: pointing it at something
-else — `--log-requests eval.yaml` is an easy thing to type — is refused rather
-than truncated.
+The target must be a new or empty file, or a previous marked evaling trace.
+Every trace entry carries `_evaling_request_log: 1`; every existing line is
+checked before truncation. Other files, including JSONL datasets and results,
+are refused. Traces from versions before 0.2.6 have no marker and are also
+refused: choose a new filename for those.
 
 **Headers are never written.** The API key travels in a header, so the way to
 guarantee the file cannot contain one is to have no code path that writes

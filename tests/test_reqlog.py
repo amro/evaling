@@ -17,7 +17,7 @@ from evaling.cli import main
 from evaling.config import Settings, load_config
 from evaling.engine import run_eval
 from evaling.errors import EvalingError
-from evaling.reqlog import RequestLog, open_log
+from evaling.reqlog import TRACE_MARKER, TRACE_VERSION, RequestLog, open_log
 
 ENV = {"EVALING_USER_CONFIG": "/nonexistent"}
 
@@ -353,7 +353,10 @@ class TestTheThingsThatMustNotBreakARun:
         log = RequestLog(project / "trace.jsonl")
         log.record(model="m", payload=circular)
         [written] = entries(project / "trace.jsonl")
-        assert written == {"error": "entry was not serializable"}
+        assert written == {
+            "error": "entry was not serializable",
+            TRACE_MARKER: TRACE_VERSION,
+        }
 
     def test_a_nested_parent_directory_is_created(self, project):
         log = RequestLog(project / "deep" / "nested" / "trace.jsonl")
@@ -362,6 +365,49 @@ class TestTheThingsThatMustNotBreakARun:
 
 
 class TestRefusingSomebodyElsesFile:
+    @pytest.mark.parametrize(
+        "content",
+        [
+            '{"id":"case-1","vars":{"q":"keep me"}}\n',
+            '{"type":"object"}\n',
+            '{"case_id":"c1","output":"keep me"}\n',
+            "[]\n",
+            "null\n",
+            "42\n",
+            "\n",
+            '\n{"id":"case-1"}\n',
+            '{"model":"m","request":{},"response":{}}\n',
+            '{"_evaling_request_log":true}\n',
+            '{"_evaling_request_log":2}\n',
+            '{"_evaling_request_log":1}\n{"id":"case-1"}\n',
+        ],
+    )
+    def test_only_marked_traces_can_be_overwritten(self, project, content):
+        target = project / "valuable.jsonl"
+        target.write_text(content, encoding="utf-8")
+        before = target.read_bytes()
+        with pytest.raises(EvalingError, match="refusing to overwrite"):
+            RequestLog(target)
+        assert target.read_bytes() == before
+
+    def test_cli_refuses_its_own_dataset_as_the_log(self, project):
+        target = project / "cases.jsonl"
+        target.write_text('{"id":"c1","vars":{"q":"keep me"}}\n', encoding="utf-8")
+        config = CONFIG.replace(
+            "cases: [{id: c1, vars: {q: alpha}}, {id: c2, vars: {q: beta}}]",
+            "cases: {file: cases.jsonl}",
+        )
+        (project / "eval.yaml").write_text(config, encoding="utf-8")
+        before = target.read_bytes()
+        result = CliRunner().invoke(
+            main,
+            ["run", str(project / "eval.yaml"), "--log-requests", str(target)],
+            env=ENV,
+        )
+        assert result.exit_code == 2
+        assert "refusing to overwrite" in result.output
+        assert target.read_bytes() == before
+
     def test_a_file_that_is_not_utf8_is_refused_not_raised(self, project):
         """The first line is read with errors="replace" for exactly this.
 

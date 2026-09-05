@@ -30,31 +30,37 @@ from typing import Any
 from evaling.errors import EvalingError
 from evaling.secrets import redact
 
+TRACE_MARKER = "_evaling_request_log"
+TRACE_VERSION = 1
+
 
 def _refuse_to_clobber(path: Path) -> None:
     """Refuse a target that is not an empty file or a trace we wrote.
 
     Each run truncates its log, and `--log-requests eval.yaml` is an easy
     thing to type. Destroying the file someone pointed at is not a thing a
-    debugging flag gets to do, so anything whose first line is not JSON is
-    treated as somebody else's.
+    debugging flag gets to do. Every line must carry our format marker:
+    ordinary datasets and result files are JSONL too. Old, unmarked traces
+    are deliberately refused rather than guessed at.
     """
     try:
         if not path.is_file() or path.stat().st_size == 0:
             return
         with path.open("r", encoding="utf-8", errors="replace") as handle:
-            first = handle.readline().strip()
-    except OSError:
-        return  # unreadable: the open below will report it properly
-    if first:
-        try:
-            json.loads(first)
-        except ValueError:
-            raise EvalingError(
-                f"refusing to overwrite {path}: it already has content and does not look "
-                "like a request log. Each run truncates its log, so point --log-requests "
-                "at a new file."
-            ) from None
+            for line in handle:
+                entry = json.loads(line)
+                if (
+                    not isinstance(entry, dict)
+                    or type(entry.get(TRACE_MARKER)) is not int
+                    or entry[TRACE_MARKER] != TRACE_VERSION
+                ):
+                    raise ValueError("not an evaling request log")
+    except (OSError, ValueError):
+        raise EvalingError(
+            f"refusing to overwrite {path}: its content could not be verified as "
+            "an evaling request log. Each run truncates its log, so point "
+            "--log-requests at a new file."
+        ) from None
 
 
 class RequestLog:
@@ -95,11 +101,11 @@ class RequestLog:
     def record(self, **fields: Any) -> None:
         """Write one entry. Never raises: logging must not fail a run."""
         try:
-            line = json.dumps(fields, default=str, sort_keys=True)
+            line = json.dumps({**fields, TRACE_MARKER: TRACE_VERSION}, default=str, sort_keys=True)
         except (TypeError, ValueError):
             # `default=str` handles almost everything, but not a circular
             # structure: json.dumps raises before `default` is consulted.
-            line = json.dumps({"error": "entry was not serializable"})
+            line = json.dumps({"error": "entry was not serializable", TRACE_MARKER: TRACE_VERSION})
         line = redact(line, self._secrets)
         try:
             with self.path.open("a", encoding="utf-8", newline="\n") as handle:

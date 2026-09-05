@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Request logging could truncate a dataset or results file.** Any JSON first
+  line used to pass the overwrite guard. Traces now carry a format marker on
+  every entry, and all existing lines must be marked before reuse. Unmarked
+  traces from older versions require a new filename.
+
 - **Every MCP tool error lost its message on mcp 2.1.** That release replaced
   the text of any exception that is not a `ToolError` with a bare
   `Error executing tool <name>`, so an agent asking for a run that does not
