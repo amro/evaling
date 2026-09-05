@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-09-04
+
 ### Fixed
 
 - Withhold source failures derived directly from `BaseException` in no-look
@@ -14,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now checks that normal runs do not call `count()` instead of skipping them.
 - Keep offline-test network violations visible even when an error boundary
   withholds the original failure.
+- Validate, truncate, and write request logs through one retained file handle.
+  Refuse symlinks, hard links, devices, and directories; FIFO targets no longer
+  hang waiting for a reader. Close logs on successful and failed runs.
+
+### Changed
+
+- Replace deprecated Click filesystem test helpers with pytest fixtures, and
+  include streaming and source-privacy tests in newest-MCP compatibility CI.
+- Document OpenAI long-context pricing limits beside the affected entries.
+  Test rejection of media in external judge rubric files as well as inline
+  rubrics; multimodal judging remains unsupported.
 
 ## [0.2.6] - 2026-09-04
 
