@@ -15,14 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the identity check existed — deleting that check left 80 tests green. The
   replacement is now a real trace, which only the identity check can refuse,
   and three more tests cover a symlink planted before the open, substitution
-  after it, and the path becoming a directory. Removing the identity block
-  fails them.
+  after it, and the path becoming a directory. The before-open symlink test
+  also runs on Windows when symlink permissions allow.
 
   Those tests assert the behaviour, not which line produces it. The checks
-  overlap by design: with `st_nlink` and the pre-open comparison both removed
-  the scenarios are still refused, so no single line is individually
-  observable, and a test claiming otherwise would be the same false positive
-  in a new place.
+  overlap for the after-open substitutions: removing the pre-open comparison
+  alone is caught by the before-open regular-file test, while removing the
+  whole identity block is caught by both regular-file substitution tests and
+  the directory substitution test. The symlink test can still pass through
+  `O_NOFOLLOW`, and the post-validation replacement test is independently
+  protected by the retained handle.
 
 - **The long-context tier is now named beside each entry it applies to** in the
   price table, as `RELEASING.md` requires and as the Gemini entries already

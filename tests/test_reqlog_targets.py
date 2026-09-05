@@ -107,13 +107,13 @@ def test_file_replaced_before_open_is_not_truncated(tmp_path, monkeypatch):
     )
 
 
-@pytest.mark.skipif(os.name == "nt", reason="Windows disallows replacing an open file")
 def test_symlink_planted_before_open_is_refused(tmp_path, monkeypatch):
     """A symlink swapped in after the target was checked and before it is opened.
 
     O_NOFOLLOW refuses this on POSIX and the identity checks refuse it
     everywhere else, which is why the two are kept together — see the note on
-    the test below about not asserting which one fires.
+    the test below about not asserting which one fires. No file is open at
+    substitution time, so Windows runs this too when symlink permissions allow.
     """
     target = tmp_path / "trace"
     target.write_text("", encoding="utf-8")
@@ -145,9 +145,11 @@ def test_file_replaced_after_open_is_refused(tmp_path, monkeypatch):
 
     Which line refuses it is deliberately not asserted. The identity checks are
     layered and overlap: with `st_nlink` and the pre-open `samestat` both
-    removed this is still refused, and removing any single line changes no
-    behaviour at all. What is pinned is the property — deleting the whole block
-    fails this test and the two below it.
+    removed this scenario is still refused. Deleting the whole block fails
+    this test, the before-open regular-file substitution test, and the
+    directory substitution test. The symlink test can still be protected by
+    O_NOFOLLOW; replacement after validation is protected independently by
+    retaining the verified handle.
     """
     target = tmp_path / "trace"
     target.write_text("", encoding="utf-8")
