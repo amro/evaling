@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Upgraded locked dependencies.** `certifi` 2026.7.22 carried
+  PYSEC-2026-4320, which CI's `pip-audit` job had started failing on every
+  branch; the lock now takes 2026.10.23. The same refresh moves `mcp` to
+  2.3.0, `pydantic` to 2.14.1 and `ruff` to 0.17.2, with no lint, format or
+  test change. The declared ranges are unchanged.
+
 ## [0.2.8] - 2026-09-05
 
 ### Fixed
