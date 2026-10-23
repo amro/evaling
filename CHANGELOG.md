@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-10-23
+
 ### Security
 
 - **Upgraded locked dependencies.** `certifi` 2026.7.22 carried
