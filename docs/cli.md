@@ -140,11 +140,14 @@ magnitude for deciding, and `--max-cost` as the thing that actually holds.
 Known biases, in both directions. The character approximation assumes roughly
 four characters per token, and the newest Claude models use a tokenizer that
 produces around 30% more tokens for the same text — so the input half reads
-low for those. Gemini's 3.8, 3.7 and 3.6 Flash models are priced at their
-standard rate, not the promotion running until the end of 2026, so their
-estimates read high until it ends. Gemini's Pro models are priced at their short-prompt tier, so an eval
-whose prompts run past ~200k input tokens reads low. Set `params.pricing` on a
-model to override the table with the rate you are actually paying.
+low for those. Gemini's 3.8 and 3.6 Flash models are priced at their
+standard rate, not the $0.75/$3.75 running until the end of 2026, and Gemini 4
+Argon at the $4/$20 that applies from December 2026 rather than the $2/$10
+before it, so those estimates read high until then. Gemini's Pro models are
+priced at their short-prompt tier, so an eval whose prompts run past ~200k
+input tokens reads low; Claude Haiku 5.5 likewise takes its under-100k tier,
+so prompts past 100k input tokens read low. Set `params.pricing` on a model to
+override the table with the rate you are actually paying.
 
 OpenAI's GPT-5.6 Sol uses its currently published $4/$20 rate per million
 input/output tokens. OpenAI calls this promotional through at least November

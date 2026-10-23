@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 #: When the built-in table was last checked against published pricing.
-PRICING_AS_OF = "2026-09-04"
+PRICING_AS_OF = "2026-10-23"
 
 
 @dataclass(frozen=True)
@@ -63,6 +63,7 @@ PRICES: dict[str, Price] = {
     "claude-mythos-5-1": Price(10.00, 50.00),
     "claude-fable-5": Price(10.00, 50.00),
     "claude-mythos-5": Price(10.00, 50.00),
+    "claude-opus-5-5": Price(4.00, 20.00),
     "claude-opus-5": Price(5.00, 25.00),
     "claude-opus-4-8": Price(5.00, 25.00),
     "claude-opus-4-7": Price(5.00, 25.00),
@@ -70,6 +71,7 @@ PRICES: dict[str, Price] = {
     "claude-opus-4-5": Price(5.00, 25.00),
     "claude-opus-4-1": Price(15.00, 75.00),
     "claude-opus-4": Price(15.00, 75.00),
+    "claude-sonnet-5-5": Price(2.00, 10.00),
     # $2/$10 launched as introductory pricing through 2026-08-31; Anthropic has
     # since made it the standard rate and cancelled the rise to $3/$15. This
     # table carried the $3/$15 until 2026-08-17 on the assumption the increase
@@ -78,38 +80,54 @@ PRICES: dict[str, Price] = {
     "claude-sonnet-4-6": Price(3.00, 15.00),
     "claude-sonnet-4-5": Price(3.00, 15.00),
     "claude-sonnet-4": Price(3.00, 15.00),
+    # Prompts over 100k input tokens bill $0.50 / $2.50. As with the tiered
+    # OpenAI and Gemini entries below, the table takes the tier ordinary evals
+    # fall in; past 100k input tokens per call, set params.pricing.
+    "claude-haiku-5-5": Price(0.10, 0.50),  # >100k: $0.50 / $2.50
     "claude-haiku-4-5": Price(1.00, 5.00),
     "claude-haiku-3-5": Price(0.80, 4.00),
     # -- OpenAI -----------------------------------------------------------
-    # Six models carry a long-context tier above 272k input tokens: 2x input,
-    # 1.5x output. As with Gemini's Pro models, the table holds the tier
+    # Several models carry a long-context tier above 272k input tokens: 2x
+    # input, 1.5x output. As with Gemini's Pro models, the table holds the tier
     # ordinary evals fall in and names the other beside each entry, so editing
     # one does not require finding this paragraph. Past 272k input tokens per
     # call, set params.pricing.
     "gpt-6-astra": Price(10.00, 50.00),  # >272k: $20.00 / $75.00
+    "gpt-6.1-sol": Price(2.00, 10.00),  # >272k: $4.00 / $15.00
+    "gpt-6-sol": Price(2.00, 10.00),  # >272k: $4.00 / $15.00
+    "gpt-6-luna": Price(0.10, 0.50),  # >272k: $0.20 / $0.75
     # Current published rate, promotional at least through 2026-11-21. No
     # post-promotion rate is published; do not assume the old $5/$30 returns.
     "gpt-5.6-sol": Price(4.00, 20.00),  # >272k: $8.00 / $30.00
     "gpt-5.6-cyber": Price(12.50, 75.00),
-    "gpt-5.6-terra": Price(2.00, 12.00),
-    "gpt-5.6-luna": Price(0.20, 1.20),
+    "gpt-5.5-cyber": Price(12.50, 75.00),
+    "gpt-5.6-terra": Price(2.00, 12.00),  # >272k: $4.00 / $18.00
+    "gpt-5.6-luna": Price(0.20, 1.20),  # >272k: $0.40 / $1.80
     "gpt-5.5": Price(5.00, 30.00),  # >272k: $10.00 / $45.00
     "gpt-5.5-pro": Price(30.00, 180.00),  # >272k: $60.00 / $270.00
     "gpt-5.4": Price(2.50, 15.00),  # >272k: $5.00 / $22.50
     "gpt-5.4-mini": Price(0.75, 4.50),
     "gpt-5.4-nano": Price(0.20, 1.25),
     "gpt-5.4-pro": Price(30.00, 180.00),  # >272k: $60.00 / $270.00
-    # 5.3 ships only as these two; there is no plain `gpt-5.3` on the card.
-    # Lookup is by exact id, so a variant priced the same as its base still
-    # has to be listed or it reports an unknown cost.
-    "gpt-5.3-chat-latest": Price(1.75, 14.00),
+    # There is no plain `gpt-5.3` on the card. Lookup is by exact id, so a
+    # variant priced the same as its base still has to be listed or it reports
+    # an unknown cost.
     "gpt-5.3-codex": Price(1.75, 14.00),
+    # Left the rate card between 2026-09-04 and 2026-10-23 but still listed by
+    # the API on the latter date, so each keeps its last published rate rather
+    # than reporting an unknown cost. Drop them when the API stops listing them.
+    "gpt-5.3-chat-latest": Price(1.75, 14.00),
+    "gpt-5.2-chat-latest": Price(1.75, 14.00),
+    "gpt-3.5-turbo-1106": Price(1.00, 2.00),
+    # Life-sciences models behind OpenAI's trusted-access program; listed
+    # because the card prices them, though most keys cannot call them.
+    "gpt-rosalind-research": Price(5.00, 25.00),
+    "gpt-rosalind-discovery": Price(5.00, 25.00),
     # Unversioned alias for the current flagship chat model, and priced as one
     # rather than as the 5.2/5.3 entries above.
     "chat-latest": Price(5.00, 30.00),
     "gpt-5.2": Price(1.75, 14.00),
     "gpt-5.2-pro": Price(21.00, 168.00),
-    "gpt-5.2-chat-latest": Price(1.75, 14.00),
     "gpt-5.1": Price(1.25, 10.00),
     "gpt-5": Price(1.25, 10.00),
     "gpt-5-mini": Price(0.25, 2.00),
@@ -127,7 +145,6 @@ PRICES: dict[str, Price] = {
     "gpt-4-0613": Price(30.00, 60.00),
     "gpt-3.5-turbo": Price(0.50, 1.50),
     "gpt-3.5-turbo-0125": Price(0.50, 1.50),
-    "gpt-3.5-turbo-1106": Price(1.00, 2.00),
     "o1": Price(15.00, 60.00),
     "o1-pro": Price(150.00, 600.00),
     "o3": Price(2.00, 8.00),
@@ -143,13 +160,19 @@ PRICES: dict[str, Price] = {
     # estimate for a threshold almost nobody crosses would make the number
     # useless for the runs people actually have. Past ~200k input tokens per
     # call, set `params.pricing` to the long-prompt tier.
-    # 3.8, 3.7 and 3.6 Flash are all promoted to $0.75/$3.75 through
-    # 2026-12-31, reverting to the standard rate below. The table carries
-    # standard rates, so these read high while the promotion runs rather than
-    # low after it ends.
+    # Gemini 4 Argon is $2/$10 through 2026-11-30 and $4/$20 from 2026-12-01.
+    # The table carries the later standard rate, so it reads high until then
+    # rather than low afterwards.
+    "gemini-4-argon": Price(4.00, 20.00),
+    # 3.8 and 3.6 Flash are $0.75/$3.75 through 2026-12-31, reverting to the
+    # standard rate below. The table carries standard rates, so these read
+    # high while the introductory rate runs rather than low after it ends.
     "gemini-3.8-flash": Price(1.50, 7.50),
-    "gemini-3.7-flash": Price(1.50, 7.50),
     "gemini-3.6-flash": Price(1.50, 7.50),
+    # Left the rate card between 2026-09-04 and 2026-10-23 but still listed by
+    # the API on the latter date, so each keeps its last published rate rather
+    # than reporting an unknown cost. Drop them when the API stops listing them.
+    "gemini-3.7-flash": Price(1.50, 7.50),
     "gemini-3.5-flash": Price(1.50, 9.00),
     "gemini-3.5-flash-lite": Price(0.30, 2.50),
     # Text input; audio in costs $0.50.

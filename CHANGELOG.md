@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2.3.0, `pydantic` to 2.14.1 and `ruff` to 0.17.2, with no lint, format or
   test change. The declared ranges are unchanged.
 
+### Changed
+
+- **Price table checked against all three rate cards on 2026-10-23.** Added
+  Claude Opus 5.5 ($4/$20), Sonnet 5.5 ($2/$10) and Haiku 5.5 ($0.10/$0.50 at
+  the under-100k-token tier; prompts over 100k input tokens bill $0.50/$2.50);
+  OpenAI's gpt-6.1-sol and gpt-6-sol ($2/$10), gpt-6-luna ($0.10/$0.50),
+  gpt-5.5-cyber ($12.50/$75) and the two GPT-Rosalind models ($5/$25); and
+  Gemini 4 Argon at the $4/$20 that applies from 2026-12-01 rather than the
+  $2/$10 before it. No existing rate changed. Five models left the cards but
+  are still listed by their APIs — gpt-5.3-chat-latest, gpt-5.2-chat-latest,
+  gpt-3.5-turbo-1106, gemini-3.7-flash and gemini-3.5-flash — so each keeps
+  its last published rate rather than reporting an unknown cost.
+  `gemini-3.8-live`, a speech model, is recorded as deliberately unpriced. The
+  CLI estimate caveats name the Argon and Haiku 5.5 tiers.
+
 ## [0.2.8] - 2026-09-05
 
 ### Fixed

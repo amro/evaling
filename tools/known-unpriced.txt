@@ -11,6 +11,10 @@ davinci-002
 gpt-3.5-turbo-instruct
 gpt-3.5-turbo-instruct-0914
 
+# Live API (speech-to-speech) model. The coverage tool skips the `-live-`
+# infix, which this suffix form does not match.
+gemini-3.8-live
+
 # Gemma is open-weights and usually self-hosted, so the operator sets the
 # rate. Priced with params.pricing, like any local model.
 gemma-4-26b-a4b-it
