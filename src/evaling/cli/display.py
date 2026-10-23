@@ -143,8 +143,6 @@ def cell_block(record: ResultRecord) -> Group:
         row("error", *_clip(record.error, OUTPUT_LINES, OUTPUT_CHARS), style="red")
     elif record.output is not None:
         row("output", *_clip(record.output, OUTPUT_LINES, OUTPUT_CHARS))
-        if record.truncated:
-            row("stop", "truncated at max_tokens: raise the model's max_tokens", style="yellow")
     elif not record.messages:
         # Both gone and no error: no-look stripped them before the record
         # reached any display. Said, rather than rendered as a blank block.
@@ -152,6 +150,10 @@ def cell_block(record: ResultRecord) -> Group:
         # lost only its output is not labelled with a privacy mode nobody
         # turned on.
         grid.add_row("│", Text("prompt and output withheld (no-look)", style="dim"))
+    if record.truncated and not record.error:
+        # Outside the output branch: the flag describes the call, not the
+        # content, so a no-look cell with its output withheld keeps it.
+        row("stop", "truncated at max_tokens: raise the model's max_tokens", style="yellow")
 
     for name, entry in record.scores.items():
         mark = "pass" if entry.get("passed") else "fail"

@@ -12,8 +12,11 @@ import json
 
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 from evaling.cli import main
+from evaling.cli.display import cell_block
+from evaling.config import EvalConfig
 from evaling.engine import run_eval
 from evaling.export import export_run
 from evaling.mcp_server import get_run_tool
@@ -21,7 +24,7 @@ from evaling.providers import _REGISTRY
 from evaling.providers.base import Completion
 from evaling.providers.mock import MockProvider
 from evaling.report import render_run_html
-from evaling.storage import RunStore, record_from_dict
+from evaling.storage import ResultRecord, RunStore, record_from_dict
 from helpers import make_config, make_settings
 
 ENV = {"EVALING_USER_CONFIG": "/nonexistent"}
@@ -130,3 +133,38 @@ class TestSurfaces:
         out = get_run_tool("latest", detail="failures", output_dir=str(tmp_path / "runs"))
         assert out["cells"][0]["truncated"] is True
         assert out["counts"]["truncated"] == 1
+
+
+class TestNoLook:
+    """The flag is about the call, not the content, so no-look keeps it."""
+
+    def test_the_flag_survives_redaction(self, tmp_path, cut_off):
+        config = EvalConfig.model_validate(
+            {
+                "models": [{"id": "mock", "provider": "mock"}],
+                "variants": [{"name": "v1", "prompt": [{"role": "user", "content": "{{ q }}"}]}],
+                "cases": [{"id": "c1", "vars": {"q": "alpha"}, "expected": "alpha"}],
+                "scorecard": [{"criterion": "acc", "scorer": {"type": "exact"}}],
+                "privacy": {"no_look": True},
+            }
+        )
+        config._base_dir = tmp_path
+        settings = make_settings(tmp_path)
+        result = run_eval(config, settings)
+        store = RunStore(settings.output_dir)
+        records = store.load_results(result.run_id)
+        assert [r.truncated for r in records] == [True]
+        assert records[0].output is None
+        assert store.load_meta(result.run_id)["counts"]["truncated"] == 1
+
+    def test_the_withheld_cell_still_names_the_truncation(self):
+        record = ResultRecord(
+            variant="v1", model="m", case_id="hashed", output=None, truncated=True
+        )
+        console = Console(file=io.StringIO(), width=120, no_color=True, highlight=False)
+        console.print(cell_block(record))
+        text = console.file.getvalue()
+        assert "withheld (no-look)" in text
+        # The header names it; the hint below the output must not depend on
+        # there being an output to print it under.
+        assert "raise the model's max_tokens" in text
