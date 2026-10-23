@@ -131,6 +131,33 @@ class TestAnthropicRealisticShapes:
         assert completion.input_tokens is None
         assert completion.cost_usd is None  # unknown, not free
 
+    def test_end_turn_is_not_truncated(self, tmp_path):
+        completion = call(
+            AnthropicProvider,
+            {"id": "claude-sonnet-5", "provider": "anthropic"},
+            ANTHROPIC_FULL,
+            tmp_path,
+        )
+        assert completion.truncated is False
+
+    def test_max_tokens_marks_the_completion_truncated(self, tmp_path):
+        # Seen live from Haiku 5.5: the cap spent on thinking, no text block.
+        payload = {
+            **ANTHROPIC_FULL,
+            "content": [{"type": "thinking", "thinking": "", "signature": "abc"}],
+            "stop_reason": "max_tokens",
+            "usage": {"input_tokens": 92, "output_tokens": 200},
+        }
+        completion = call(
+            AnthropicProvider,
+            {"id": "claude-haiku-5-5", "provider": "anthropic"},
+            payload,
+            tmp_path,
+        )
+        assert completion.text == ""
+        assert completion.output_tokens == 200
+        assert completion.truncated is True
+
 
 class TestOpenAIRealisticShapes:
     def test_full_response(self, tmp_path):
@@ -141,6 +168,15 @@ class TestOpenAIRealisticShapes:
         assert completion.input_tokens == 2095
         assert completion.output_tokens == 503
         assert completion.raw["finish_reason"] == "stop"
+        assert completion.truncated is False
+
+    def test_length_marks_the_completion_truncated(self, tmp_path):
+        payload = json.loads(json.dumps(OPENAI_FULL))
+        payload["choices"][0]["finish_reason"] = "length"
+        completion = call(
+            OpenAIProvider, {"id": "gpt-5.2", "provider": "openai"}, payload, tmp_path
+        )
+        assert completion.truncated is True
 
     def test_null_content_does_not_crash(self, tmp_path):
         # e.g. a refusal or a tool-call-only turn

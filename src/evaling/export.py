@@ -71,6 +71,7 @@ def export_csv(records: list[ResultRecord]) -> str:
         *[f"score:{name}" for name in criteria],
         *[f"passed:{name}" for name in criteria],
         "cached",
+        "truncated",
         "latency_ms",
         "input_tokens",
         "output_tokens",
@@ -92,6 +93,7 @@ def export_csv(records: list[ResultRecord]) -> str:
             "cell_score": score,
             "cell_passed": passed,
             "cached": record.cached,
+            "truncated": record.truncated,
             "latency_ms": record.latency_ms,
             "input_tokens": record.input_tokens,
             "output_tokens": record.output_tokens,
@@ -164,7 +166,8 @@ def export_md(meta: dict[str, Any], records: list[ResultRecord]) -> str:
                     for name, entry in record.scores.items()
                     if entry.get("passed") is not True
                 ]
-                lines.append(f"- **{key}** — failed criteria: {'; '.join(failed)}")
+                note = " (truncated at max_tokens)" if record.truncated else ""
+                lines.append(f"- **{key}**{note} — failed criteria: {'; '.join(failed)}")
         if len(failures) > 20:
             lines.append(f"- … and {len(failures) - 20} more")
         lines.append("")

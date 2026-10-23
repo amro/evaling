@@ -132,7 +132,7 @@ def test_bad_usage_fails_the_cell_not_the_run(tmp_path):
         encoding="utf-8",
     )
     result = run_eval(load_config(tmp_path / "eval.yaml"), make_settings(tmp_path))
-    assert result.counts == {"total": 2, "succeeded": 1, "failed": 1, "cached": 0}
+    assert result.counts == {"total": 2, "succeeded": 1, "failed": 1, "cached": 0, "truncated": 0}
     assert result.totals["input_tokens"] == 7  # the quoted count, coerced
     by_id = {record.case_id: record for record in result.records}
     assert "input_tokens" in by_id["bad"].error

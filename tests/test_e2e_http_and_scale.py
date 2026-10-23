@@ -133,6 +133,7 @@ class TestScale:
             "succeeded": 500,
             "failed": 0,
             "cached": 0,
+            "truncated": 0,
         }
         assert result.aggregates["overall"]["pass_rate"] == 1.0
 

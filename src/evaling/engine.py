@@ -561,6 +561,7 @@ async def _run_eval_impl(
         record.input_tokens = completion.input_tokens
         record.output_tokens = completion.output_tokens
         record.cost_usd = completion.cost_usd
+        record.truncated = completion.truncated
 
         for criterion, scorer in scorecard:
             entry: dict[str, Any] = {"weight": criterion.weight}
@@ -918,7 +919,7 @@ class _RunTally:
     """
 
     def __init__(self) -> None:
-        self.total = self.succeeded = self.failed = self.cached = 0
+        self.total = self.succeeded = self.failed = self.cached = self.truncated = 0
         self.input_tokens = self.output_tokens = 0
         self.cost_usd = 0.0
         self.judge_cost_usd = 0.0
@@ -937,6 +938,7 @@ class _RunTally:
         self.failed += record.error is not None
         self.succeeded += record.error is None
         self.cached += bool(record.cached)
+        self.truncated += bool(record.truncated)
         self.input_tokens += record.input_tokens or 0
         self.output_tokens += record.output_tokens or 0
         # A cached cell made no call. Its record keeps the cost it *would*
@@ -954,6 +956,7 @@ class _RunTally:
             "succeeded": self.succeeded,
             "failed": self.failed,
             "cached": self.cached,
+            "truncated": self.truncated,
         }
 
     @property

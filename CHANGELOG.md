@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.9] - 2026-10-23
 
+### Fixed
+
+- **A response cut off at the output cap is now recorded as truncated.**
+  Observed with Claude Haiku 5.5 under `max_tokens: 200`: the model spent
+  the whole cap reasoning and returned no text, the API said
+  `stop_reason: max_tokens`, and evaling stored the cell as succeeded with an
+  empty output and a score of 0, indistinguishable from a wrong answer. The
+  Anthropic (`stop_reason: max_tokens`) and OpenAI-compatible
+  (`finish_reason: length`) providers now set `truncated` on the completion,
+  the result record persists it, and the run's counts carry `truncated`. It
+  shows in the `run` and `show` totals line, the cell header and the
+  `--failures` list, the CSV (`truncated` column), Markdown, JSON and HTML
+  exports, and MCP `get_run` rows (`"truncated": true`). The cell is still
+  scored: the partial output is what the model produced under that cap.
+
 ### Security
 
 - **Upgraded locked dependencies.** `certifi` 2026.7.22 carried

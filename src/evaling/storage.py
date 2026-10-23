@@ -49,6 +49,10 @@ class ResultRecord:
     cost_usd: float | None = None
     latency_ms: float | None = None
     cached: bool = False
+    #: The call completed but stopped at the output cap. Scored like any other
+    #: cell, and counted separately, so a low score from a cut-off answer is
+    #: not mistaken for one the model actually gave.
+    truncated: bool = False
     error: str | None = None
     scores: dict[str, Any] = field(default_factory=dict)
 

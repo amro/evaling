@@ -208,6 +208,11 @@ returns just the failing cells with their reasons. `detail="full"` returns
 every cell, 20 per page — pass `page` to walk them, and check
 `page.has_more`.
 
+A cell row carries `"truncated": true` when the provider stopped at the
+output cap rather than because the model finished, and `counts.truncated`
+tallies them for the run. Such a cell is scored on what it managed to say,
+so a low score there is a `max_tokens` problem before it is a prompt one.
+
 ### `render_prompt`
 
 With `variant` and `case_id`, returns the exact messages that case renders to.

@@ -223,6 +223,12 @@ rather than what you think the template says.
 The header carries the verdict, then latency and cost — or `cached` alone,
 when the response came from the response cache rather than the provider. A
 cached cell made no call, so it has neither a duration nor a price this run.
+A header that says `truncated at max_tokens` is a score for an answer the
+model was not allowed to finish: the provider stopped at the output cap. The
+run's totals line counts these, and `show --failures` names them, because a
+cut-off answer scores like a wrong one and nothing else tells the two apart.
+Raise the model's `max_tokens`; a model that reasons before answering can
+spend a small cap entirely on reasoning and return no text.
 
 Bounded so a runaway generation can't fill the scrollback: 20 lines per prompt
 message and 200 lines of response, then a `… N more lines` note.

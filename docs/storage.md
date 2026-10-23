@@ -32,7 +32,7 @@ created in the same millisecond still order correctly.
   "started_at": "2026-07-24T14:15:30Z",
   "finished_at": "2026-07-24T14:15:41Z",
   "config_sha256": "…",
-  "counts": {"total": 8, "succeeded": 7, "failed": 1, "cached": 4},
+  "counts": {"total": 8, "succeeded": 7, "failed": 1, "cached": 4, "truncated": 0},
   "totals": {"input_tokens": 5120, "output_tokens": 890, "cost_usd": 0.023},
   "matrix": {"variants": ["concise", "verbose"], "models": ["claude-sonnet-5"],
              "cases": "…", "population": "…", "count": 2},
@@ -64,8 +64,17 @@ warn when two runs did not cover the same cases.
 One JSON object per line, one line per matrix cell, **appended as each cell
 completes**. Fields: `variant`, `model`, `case_id`, `messages` (the rendered
 conversation actually sent, media parts content-addressed), `output`,
-`input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `cached`, `error`,
-and `scores` (per-criterion results).
+`input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `cached`,
+`truncated`, `error`, and `scores` (per-criterion results).
+
+`truncated` is true when the provider stopped at the output cap
+(`max_tokens`, or `finish_reason: length`) rather than because the model
+finished. The cell is still scored, since the partial output is what the
+model produced under that cap, and the run's `counts.truncated` tallies
+them: a cut-off answer scores like a wrong one, and nothing else in the
+record tells the two apart. Raise the model's `max_tokens` to clear it. A
+model that reasons before answering can spend a small cap entirely on
+reasoning and return no text at all.
 
 Failure isolation: a cell that fails to render or whose model call fails (after
 retries) records its `error` and the run continues. Aggregates count it as

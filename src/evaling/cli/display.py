@@ -88,6 +88,10 @@ def _cell_header(record: ResultRecord) -> str:
     else:
         verdict = f"[red]FAIL[/red] {score3(score)}"
     facts = []
+    if record.truncated:
+        # Before the cost, where the eye lands first: the score above is a
+        # score for an answer the model was not allowed to finish.
+        facts.append("[yellow]truncated at max_tokens[/yellow]")
     if record.cached:
         # Said plainly: an instant run with no explanation reads as a no-op.
         # Alone, with neither latency nor cost — a cached cell made no call,
@@ -139,6 +143,8 @@ def cell_block(record: ResultRecord) -> Group:
         row("error", *_clip(record.error, OUTPUT_LINES, OUTPUT_CHARS), style="red")
     elif record.output is not None:
         row("output", *_clip(record.output, OUTPUT_LINES, OUTPUT_CHARS))
+        if record.truncated:
+            row("stop", "truncated at max_tokens: raise the model's max_tokens", style="yellow")
     elif not record.messages:
         # Both gone and no error: no-look stripped them before the record
         # reached any display. Said, rather than rendered as a blank block.
@@ -234,6 +240,8 @@ def case_table(records: list[ResultRecord]) -> Table:
     for record in sorted(records, key=lambda r: (r.variant, r.model)):
         score, passed = cell_summary(record)
         body = f"[red]{snip(record.error)}[/red]" if record.error else snip(record.output)
+        if record.truncated and not record.error:
+            body = f"[yellow]truncated at max_tokens[/yellow] {body}".rstrip()
         table.add_row(
             safe(record.variant),
             safe(record.model),
@@ -257,7 +265,10 @@ def failure_lines(records: list[ResultRecord]) -> list[str]:
                 if entry.get("passed") is not True
             ]
             # 100 chars truncated an LLM judge's rationale to uselessness.
-            lines.append(f"{key} — [red]failed:[/red] {snip('; '.join(failed), 300)}")
+            why = snip("; ".join(failed), 300)
+            if record.truncated:
+                why = f"[yellow]truncated at max_tokens[/yellow]; {why}"
+            lines.append(f"{key} — [red]failed:[/red] {why}")
     return lines
 
 

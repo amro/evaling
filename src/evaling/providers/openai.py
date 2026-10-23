@@ -55,6 +55,7 @@ class OpenAIProvider(HttpProvider):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=estimate_cost(self.api_model, input_tokens, output_tokens, self.spec.params),
+            truncated=choices[0].get("finish_reason") == "length",
             raw={
                 "finish_reason": choices[0].get("finish_reason"),
                 "model": data.get("model"),

@@ -43,7 +43,7 @@ def test_runs_full_matrix(tmp_path):
         ],
     )
     result = run_eval(config, make_settings(tmp_path))
-    assert result.counts == {"total": 8, "succeeded": 8, "failed": 0, "cached": 0}
+    assert result.counts == {"total": 8, "succeeded": 8, "failed": 0, "cached": 0, "truncated": 0}
     keys = {r.key for r in result.records}
     assert ("v2", "m2", "c2") in keys
     by_key = {r.key: r for r in result.records}
@@ -533,7 +533,7 @@ def test_raising_on_result_callback_does_not_abort_run(tmp_path):
         raise RuntimeError("progress bar exploded")
 
     result = run_eval(make_config(tmp_path), make_settings(tmp_path), on_result=bad_callback)
-    assert result.counts == {"total": 2, "succeeded": 2, "failed": 0, "cached": 0}
+    assert result.counts == {"total": 2, "succeeded": 2, "failed": 0, "cached": 0, "truncated": 0}
 
 
 def test_dry_run_reports_matrix_and_render_errors(tmp_path):

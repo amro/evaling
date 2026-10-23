@@ -216,6 +216,8 @@ def _criteria_list(record: ResultRecord) -> str:
 def _cell(record: ResultRecord, no_look: bool = False) -> str:
     score, passed = cell_summary(record)
     bits = []
+    if record.truncated:
+        bits.append("truncated at max_tokens")
     if record.cached:
         bits.append("cached")
     if record.latency_ms is not None:
@@ -318,10 +320,11 @@ def render_run_html(meta: dict[str, Any], records: list[ResultRecord]) -> str:
     counts = meta.get("counts") or {}
     totals = meta.get("totals") or {}
     cost = totals.get("cost_usd") or 0.0
+    truncated = f" · {counts['truncated']} truncated" if counts.get("truncated") else ""
     totals_line = (
         f"{counts.get('succeeded', 0)}/{counts.get('total', len(records))} succeeded"
         f" · {counts.get('failed', 0)} failed"
-        f" · {counts.get('cached', 0)} cached"
+        f" · {counts.get('cached', 0)} cached{truncated}"
         f" · {totals.get('input_tokens', 0)} in / {totals.get('output_tokens', 0)} out tokens"
         f" · ${cost:.4f}"
     )

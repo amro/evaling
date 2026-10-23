@@ -100,6 +100,9 @@ def _cell_row(record: ResultRecord, *, snippet: bool = True) -> dict[str, Any]:
         row["error"] = _snip(record.error) if snippet else record.error
     else:
         row["output"] = _snip(record.output) if snippet else record.output
+    if record.truncated:
+        # Only when true, so the common row stays as short as it was.
+        row["truncated"] = True
     failed = {
         name: entry.get("detail") or entry.get("error") or "failed"
         for name, entry in record.scores.items()

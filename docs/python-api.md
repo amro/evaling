@@ -112,8 +112,9 @@ failures = [r for r in result.iter_records() if r.error]
 ### `ResultRecord`
 
 One cell: `variant`, `model`, `case_id`, `messages` (what was sent), `output`,
-`input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `cached`, `error`,
-and `scores`, keyed by criterion:
+`input_tokens`, `output_tokens`, `cost_usd`, `latency_ms`, `cached`,
+`truncated` (the provider stopped at the output cap; the cell is scored but
+counted separately), `error`, and `scores`, keyed by criterion:
 
 ```python
 record.scores  # {'accuracy': {'weight': 1.0, 'score': 1.0, 'passed': True}}

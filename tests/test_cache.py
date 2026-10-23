@@ -168,3 +168,10 @@ class TestJudgeCallsAreCachedToo:
         assert cached, "nothing was cached, so nothing here was checked"
         for path in cached:
             assert secret not in path.read_text(encoding="utf-8"), path
+
+
+def test_truncation_survives_the_cache(tmp_path):
+    cache = ResponseCache(tmp_path)
+    key = cache.key_for(spec(), rendered(tmp_path=tmp_path))
+    cache.put(key, Completion(text="", output_tokens=200, truncated=True))
+    assert cache.get(key).truncated is True

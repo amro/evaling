@@ -45,6 +45,11 @@ class Completion:
     input_tokens: int | None = None
     output_tokens: int | None = None
     cost_usd: float | None = None
+    #: The provider stopped at the output cap (``max_tokens`` and its
+    #: equivalents) rather than because the model finished. Persisted into
+    #: the result, unlike ``raw``: a cut-off answer scores like a wrong one,
+    #: and nothing else tells the two apart.
+    truncated: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):

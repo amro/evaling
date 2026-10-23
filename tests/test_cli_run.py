@@ -77,7 +77,13 @@ def test_run_json_output(tmp_path):
     result = invoke(tmp_path, "--json", *run_args(tmp_path))
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["counts"] == {"total": 2, "succeeded": 2, "failed": 0, "cached": 0}
+    assert payload["counts"] == {
+        "total": 2,
+        "succeeded": 2,
+        "failed": 0,
+        "cached": 0,
+        "truncated": 0,
+    }
     assert payload["aggregates"]["overall"]["pass_rate"] == 1.0
     assert payload["gate"] is None
 

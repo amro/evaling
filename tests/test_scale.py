@@ -287,7 +287,7 @@ class TestReportDegradesGracefully:
             "id": "run1",
             "status": "complete",
             "started_at": "now",
-            "counts": {"total": n, "succeeded": n, "failed": 0, "cached": 0},
+            "counts": {"total": n, "succeeded": n, "failed": 0, "cached": 0, "truncated": 0},
             "totals": {"input_tokens": 1, "output_tokens": 1, "cost_usd": 0.0},
             "aggregates": {
                 "overall": {"cases": n, "score": 1.0, "pass_rate": 1.0, "errors": 0},

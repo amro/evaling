@@ -469,9 +469,12 @@ def _execute(config, settings, label, resume_run_id, baseline_ref, filters, max_
 
 def _say_totals(app, counts, totals):
     cost = totals.get("cost_usd") or 0.0
+    # Only when it happened: a cut-off answer is scored, so nothing else on
+    # this line says the score may be for an answer the model never finished.
+    truncated = f", {counts['truncated']} truncated" if counts.get("truncated") else ""
     app.say(
         f"{counts['succeeded']}/{counts['total']} succeeded, "
-        f"{counts['failed']} failed, {counts['cached']} cached — "
+        f"{counts['failed']} failed, {counts['cached']} cached{truncated} — "
         f"{totals['input_tokens']} in / {totals['output_tokens']} out tokens, ${cost:.4f}"
     )
 

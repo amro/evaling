@@ -588,7 +588,13 @@ class TestOverTheProtocol:
             return json.loads(result.content[0].text)
 
         summary = self.drive(project, body)
-        assert summary["counts"] == {"total": 2, "succeeded": 2, "failed": 0, "cached": 0}
+        assert summary["counts"] == {
+            "total": 2,
+            "succeeded": 2,
+            "failed": 0,
+            "cached": 0,
+            "truncated": 0,
+        }
         assert summary["aggregates"]["overall"]["cases"] == 2
 
     def test_errors_reach_the_client_as_errors(self, project):
