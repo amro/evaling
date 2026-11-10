@@ -10,13 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Price table reviewed on 2026-11-10 against all three official rate cards.**
-  Added Claude Mythos 5.2 ($8/$40), GPT-6.1 Terra ($1/$5), GPT-6 Cyber
+  Added Claude Fable 5.2 and Mythos 5.2 ($8/$40), GPT-6.1 Terra ($1/$5), GPT-6 Cyber
   ($20/$100), GPT-6 Rosalind ($15/$75), GPT-6 Astra for Law ($10/$50), and
   the exact `gpt-5.5-cyber-preview` id ($12.50/$75), per million input/output
   tokens. Existing rates are unchanged. OpenAI long-context tiers require
   `params.pricing`; Astra for Law's rate is promotional at least through
   December 31, with no later rate published. GPT-5.6 Sol's promotion now ends
-  November 30. Gemini entries retain published post-promotion rates.
+  November 30. Gemini entries retain published post-promotion rates, including
+  Gemini 4 Carbon ($4/$20 from December 1; $2/$10 through November 30), found
+  alongside Fable 5.2 by the authenticated model-coverage check.
 - **Refreshed compatible locked dependencies.** Updated 12 packages, including
   Click 8.5.1, Pydantic 2.14.3, pytest 9.2.0, Ruff 0.17.4, AnyIO 4.16.0,
   and Starlette 1.10.0. Declared dependency ranges are unchanged; Python 3.10

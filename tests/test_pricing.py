@@ -134,12 +134,15 @@ def test_the_table_is_dated():
 @pytest.mark.parametrize(
     ("model", "input_rate", "output_rate"),
     [
+        ("claude-fable-5-2", 8.0, 40.0),
         ("claude-mythos-5-2", 8.0, 40.0),
         ("gpt-6.1-terra", 1.0, 5.0),
         ("gpt-6-cyber", 20.0, 100.0),
         ("gpt-6-rosalind", 15.0, 75.0),
         ("gpt-6-astra-law", 10.0, 50.0),
         ("gpt-5.5-cyber-preview", 12.5, 75.0),
+        # Published post-introductory rate, as with Argon.
+        ("gemini-4-carbon", 4.0, 20.0),
     ],
 )
 def test_models_added_on_the_2026_11_10_review(model, input_rate, output_rate):

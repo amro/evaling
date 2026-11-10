@@ -142,8 +142,8 @@ four characters per token, and the newest Claude models use a tokenizer that
 produces around 30% more tokens for the same text — so the input half reads
 low for those. Gemini's 3.8 and 3.6 Flash models are priced at their
 standard rate, not the $0.75/$3.75 running until the end of 2026, and Gemini 4
-Argon at the $4/$20 that applies from December 2026 rather than the $2/$10
-before it, so those estimates read high until then. Gemini's Pro models are
+Carbon and Argon at the $4/$20 that applies from December 2026 rather than
+the $2/$10 before it, so those estimates read high until then. Gemini's Pro models are
 priced at their short-prompt tier, so an eval whose prompts run past ~200k
 input tokens reads low; Claude Haiku 5.5 likewise takes its under-100k tier,
 so prompts past 100k input tokens read low. Set `params.pricing` on a model to

@@ -59,6 +59,7 @@ class Price:
 PRICES: dict[str, Price] = {
     # -- Anthropic --------------------------------------------------------
     # Cloud platforms bill their own rates; the figure here is first-party.
+    "claude-fable-5-2": Price(8.00, 40.00),
     "claude-mythos-5-2": Price(8.00, 40.00),
     "claude-fable-5-1": Price(10.00, 50.00),
     "claude-mythos-5-1": Price(10.00, 50.00),
@@ -167,9 +168,11 @@ PRICES: dict[str, Price] = {
     # estimate for a threshold almost nobody crosses would make the number
     # useless for the runs people actually have. Past ~200k input tokens per
     # call, set `params.pricing` to the long-prompt tier.
-    # Gemini 4 Argon is $2/$10 through 2026-11-30 and $4/$20 from 2026-12-01.
+    # Gemini 4 Carbon and Argon are $2/$10 through 2026-11-30 and $4/$20
+    # from 2026-12-01.
     # The table carries the later standard rate, so it reads high until then
     # rather than low afterwards.
+    "gemini-4-carbon": Price(4.00, 20.00),
     "gemini-4-argon": Price(4.00, 20.00),
     # 3.8 and 3.6 Flash are $0.75/$3.75 through 2026-12-31, reverting to the
     # standard rate below. The table carries standard rates, so these read
