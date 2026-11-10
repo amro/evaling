@@ -129,3 +129,20 @@ def test_every_model_evaling_itself_suggests_is_priced():
 def test_the_table_is_dated():
     """A rate card with no date cannot be checked against a published one."""
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", PRICING_AS_OF)
+
+
+@pytest.mark.parametrize(
+    ("model", "input_rate", "output_rate"),
+    [
+        ("claude-mythos-5-2", 8.0, 40.0),
+        ("gpt-6.1-terra", 1.0, 5.0),
+        ("gpt-6-cyber", 20.0, 100.0),
+        ("gpt-6-rosalind", 15.0, 75.0),
+        ("gpt-6-astra-law", 10.0, 50.0),
+        ("gpt-5.5-cyber-preview", 12.5, 75.0),
+    ],
+)
+def test_models_added_on_the_2026_11_10_review(model, input_rate, output_rate):
+    # Check each side separately: swapping input/output must not pass.
+    assert estimate_cost(model, 1_000_000, 0) == pytest.approx(input_rate)
+    assert estimate_cost(model, 0, 1_000_000) == pytest.approx(output_rate)

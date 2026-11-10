@@ -211,8 +211,9 @@ Four things the built-in rates deliberately do not know:
   rates. Batch processing, cached input, and the cloud platforms' own pricing
   are all cheaper or different, and none of them are visible to evaling.
 - **Rates that depend on the request.** Gemini's Pro models cost more above
-  roughly 200k input tokens; the table carries the tier ordinary evals fall
-  in. If your prompts are longer than that, set `pricing`.
+  roughly 200k input tokens, several OpenAI models above 272k, and Claude
+  Haiku 5.5 above 100k. The table carries the short-prompt tier. For longer
+  prompts, set `pricing`.
 - **Who is actually serving a model id.** Lookup is by id alone, so an
   endpoint serving something under a published name — a local model you called
   `gemini-2.5-pro`, a broker reselling one — is priced as though it were that
@@ -226,6 +227,12 @@ Four things the built-in rates deliberately do not know:
   direction, under-counting spend once the alias moves to a costlier model,
   which is exactly when `--max-cost` needs to hold. Either way, naming the
   concrete model id you mean is the reliable option.
+
+The table was reviewed on **2026-11-10** against the
+[Anthropic](https://platform.claude.com/docs/en/about-claude/pricing),
+[OpenAI](https://developers.openai.com/api/docs/pricing), and
+[Gemini](https://ai.google.dev/gemini-api/docs/pricing) rate cards.
+See the [CLI estimate caveats](cli.md#evaling-run-config) for promotional rates and limits.
 
 A config `pricing` block always wins over the built-in table, so you can
 correct a stale rate without waiting for a release. Rates must be non-negative

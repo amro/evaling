@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any
 
 #: When the built-in table was last checked against published pricing.
-PRICING_AS_OF = "2026-10-23"
+PRICING_AS_OF = "2026-11-10"
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,7 @@ class Price:
 PRICES: dict[str, Price] = {
     # -- Anthropic --------------------------------------------------------
     # Cloud platforms bill their own rates; the figure here is first-party.
+    "claude-mythos-5-2": Price(8.00, 40.00),
     "claude-fable-5-1": Price(10.00, 50.00),
     "claude-mythos-5-1": Price(10.00, 50.00),
     "claude-fable-5": Price(10.00, 50.00),
@@ -94,13 +95,15 @@ PRICES: dict[str, Price] = {
     # call, set params.pricing.
     "gpt-6-astra": Price(10.00, 50.00),  # >272k: $20.00 / $75.00
     "gpt-6.1-sol": Price(2.00, 10.00),  # >272k: $4.00 / $15.00
+    "gpt-6.1-terra": Price(1.00, 5.00),  # >272k: $2.00 / $7.50
     "gpt-6-sol": Price(2.00, 10.00),  # >272k: $4.00 / $15.00
     "gpt-6-luna": Price(0.10, 0.50),  # >272k: $0.20 / $0.75
-    # Current published rate, promotional at least through 2026-11-21. No
+    # Current published rate, promotional through 2026-11-30. No
     # post-promotion rate is published; do not assume the old $5/$30 returns.
     "gpt-5.6-sol": Price(4.00, 20.00),  # >272k: $8.00 / $30.00
     "gpt-5.6-cyber": Price(12.50, 75.00),
     "gpt-5.5-cyber": Price(12.50, 75.00),
+    "gpt-5.5-cyber-preview": Price(12.50, 75.00),
     "gpt-5.6-terra": Price(2.00, 12.00),  # >272k: $4.00 / $18.00
     "gpt-5.6-luna": Price(0.20, 1.20),  # >272k: $0.40 / $1.80
     "gpt-5.5": Price(5.00, 30.00),  # >272k: $10.00 / $45.00
@@ -119,8 +122,12 @@ PRICES: dict[str, Price] = {
     "gpt-5.3-chat-latest": Price(1.75, 14.00),
     "gpt-5.2-chat-latest": Price(1.75, 14.00),
     "gpt-3.5-turbo-1106": Price(1.00, 2.00),
-    # Life-sciences models behind OpenAI's trusted-access program; listed
-    # because the card prices them, though most keys cannot call them.
+    # Specialized text models. Cyber and life-sciences entries require
+    # trusted access; the card prices them even though most keys cannot call them.
+    "gpt-6-rosalind": Price(15.00, 75.00),  # >272k: $30.00 / $112.50
+    "gpt-6-cyber": Price(20.00, 100.00),  # >272k: $40.00 / $150.00
+    # Promotional at least through 2026-12-31; no later rate is published.
+    "gpt-6-astra-law": Price(10.00, 50.00),
     "gpt-rosalind-research": Price(5.00, 25.00),
     "gpt-rosalind-discovery": Price(5.00, 25.00),
     # Unversioned alias for the current flagship chat model, and priced as one

@@ -150,8 +150,10 @@ so prompts past 100k input tokens read low. Set `params.pricing` on a model to
 override the table with the rate you are actually paying.
 
 OpenAI's GPT-5.6 Sol uses its currently published $4/$20 rate per million
-input/output tokens. OpenAI calls this promotional through at least November
-21, 2026, without publishing a subsequent rate; recheck it after that date.
+input/output tokens. OpenAI calls this promotional through November
+30, 2026, without publishing a subsequent rate; recheck it after that date.
+GPT-6 Astra for Law likewise uses its published $10/$50 promotional rate,
+available at least through December 31, 2026, with no later rate published.
 OpenAI's long-context tiers are also not applied automatically: for models
 with a >272k-token surcharge, override `params.pricing` for those requests.
 See the [OpenAI rate card](https://developers.openai.com/api/docs/pricing).
