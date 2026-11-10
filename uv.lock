@@ -517,7 +517,7 @@ wheels = [
 
 [[package]]
 name = "evaling"
-version = "0.2.9"
+version = "0.2.10"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
